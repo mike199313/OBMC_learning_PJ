@@ -1,0 +1,27 @@
+From c2325de404d01c3e4dca774dd56a8d12bf80573b Mon Sep 17 00:00:00 2001
+From: Joseph Liu <kwliu@nuvoton.com>
+Date: Mon, 8 Aug 2022 11:11:14 +0800
+Subject: [PATCH] hwmon temp: add tmp100 support
+
+Signed-off-by: Joseph Liu <kwliu@nuvoton.com>
+---
+ src/HwmonTempMain.cpp | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/HwmonTempMain.cpp b/src/HwmonTempMain.cpp
+index 8df8a8c5..9997328c 100644
+--- a/src/HwmonTempMain.cpp
++++ b/src/HwmonTempMain.cpp
+@@ -70,7 +70,8 @@ static auto sensorTypes{
+                                 "xyz.openbmc_project.Configuration.TMP421",
+                                 "xyz.openbmc_project.Configuration.TMP441",
+                                 "xyz.openbmc_project.Configuration.TMP75",
+-                                "xyz.openbmc_project.Configuration.W83773G"})};
++                                "xyz.openbmc_project.Configuration.W83773G",
++                                "xyz.openbmc_project.Configuration.TMP100"})};
+ 
+ static struct SensorParams
+     getSensorParameters(const std::filesystem::path& path)
+-- 
+2.34.1
+

@@ -1,0 +1,59 @@
+From 9ca6371966f07c00236b2d8c23e76e1f75b69d4b Mon Sep 17 00:00:00 2001
+From: Stanley Chu <yschu@nuvoton.com>
+Date: Thu, 23 Jun 2022 16:05:41 +0800
+Subject: [PATCH] p2011: skip status check
+
+Signed-off-by: Stanley Chu <yschu@nuvoton.com>
+Signed-off-by: Joseph Liu <kwliu@nuvoton.com>
+---
+ arch/arm64/boot/dts/nuvoton/nuvoton-npcm845-scm.dts | 2 +-
+ drivers/hwmon/pmbus/pmbus.c                         | 1 +
+ drivers/hwmon/pmbus/pmbus_core.c                    | 6 +++++-
+ 3 files changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/nuvoton/nuvoton-npcm845-scm.dts b/arch/arm64/boot/dts/nuvoton/nuvoton-npcm845-scm.dts
+index c6ac2abb05f2..6395a42aea2c 100644
+--- a/arch/arm64/boot/dts/nuvoton/nuvoton-npcm845-scm.dts
++++ b/arch/arm64/boot/dts/nuvoton/nuvoton-npcm845-scm.dts
+@@ -799,7 +799,7 @@ adm1278@11 {
+ 		reg = <0x11>;
+ 	};
+ 	pmbus@58 {
+-		compatible = "pmbus";
++		compatible = "p2011";
+ 		reg = <0x58>;
+ 	};
+ };
+diff --git a/drivers/hwmon/pmbus/pmbus.c b/drivers/hwmon/pmbus/pmbus.c
+index 20f1af9165c2..19afad3a9e73 100644
+--- a/drivers/hwmon/pmbus/pmbus.c
++++ b/drivers/hwmon/pmbus/pmbus.c
+@@ -227,6 +227,7 @@ static const struct i2c_device_id pmbus_id[] = {
+ 	{"tps544c20", (kernel_ulong_t)&pmbus_info_one},
+ 	{"tps544c25", (kernel_ulong_t)&pmbus_info_one},
+ 	{"udt020", (kernel_ulong_t)&pmbus_info_one},
++	{"p2011", (kernel_ulong_t)&pmbus_info_zero},
+ 	{}
+ };
+ 
+diff --git a/drivers/hwmon/pmbus/pmbus_core.c b/drivers/hwmon/pmbus/pmbus_core.c
+index 60ea917936a7..5a97fc0445a8 100644
+--- a/drivers/hwmon/pmbus/pmbus_core.c
++++ b/drivers/hwmon/pmbus/pmbus_core.c
+@@ -2224,8 +2224,12 @@ static int pmbus_init_common(struct i2c_client *client, struct pmbus_data *data,
+ 	 * limit registers need to be disabled.
+ 	 */
+ 	ret = i2c_smbus_read_byte_data(client, PMBUS_WRITE_PROTECT);
+-	if (ret > 0 && (ret & PB_WP_ANY))
++	if (ret == 0xFF && (!strcmp(client->name, "p2011"))) {
++		printk("pmbus: no write-protect\n");
++		data->flags |= PMBUS_SKIP_STATUS_CHECK;
++	} else if (ret > 0 && (ret & PB_WP_ANY)) {
+ 		data->flags |= PMBUS_WRITE_PROTECTED | PMBUS_SKIP_STATUS_CHECK;
++	}
+ 
+ 	if (data->info->pages)
+ 		pmbus_clear_faults(client);
+-- 
+2.34.1
+

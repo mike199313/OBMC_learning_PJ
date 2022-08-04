@@ -1,0 +1,13 @@
+[Unit]
+Description=Fan Control Daemon
+After=xyz.openbmc_project.fansensor.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/swampd
+Restart=always
+RestartSec=5
+StartLimitInterval=0
+
+[Install]
+WantedBy=basic.target

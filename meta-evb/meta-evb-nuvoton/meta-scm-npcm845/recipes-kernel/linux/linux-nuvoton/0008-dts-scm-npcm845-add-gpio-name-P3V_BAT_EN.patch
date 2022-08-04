@@ -1,0 +1,36 @@
+From 38d865949cfd5f8b19ddc356cf0c9216a35b2524 Mon Sep 17 00:00:00 2001
+From: Joseph Liu <kwliu@nuvoton.com>
+Date: Wed, 13 Jul 2022 19:20:12 +0800
+Subject: [PATCH] dts: scm-npcm845: add gpio name P3V_BAT_EN
+
+Signed-off-by: Joseph Liu <kwliu@nuvoton.com>
+---
+ arch/arm64/boot/dts/nuvoton/nuvoton-npcm845-scm.dts | 12 +++++++++++-
+ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm64/boot/dts/nuvoton/nuvoton-npcm845-scm.dts b/arch/arm64/boot/dts/nuvoton/nuvoton-npcm845-scm.dts
+index 88b97539806f..ce5a52b2c266 100644
+--- a/arch/arm64/boot/dts/nuvoton/nuvoton-npcm845-scm.dts
++++ b/arch/arm64/boot/dts/nuvoton/nuvoton-npcm845-scm.dts
+@@ -552,7 +552,17 @@ &pin4_slew
+ 				&pin5_slew
+ 				&pin6_slew
+ 				&pin7_slew>;
+-
++		gpio2: gpio@f0012000 {
++			/* P3V_BAT_EN=gpio83 */
++			interrupt-controller;
++			#interrupt-cells = <2>;
++			gpio-line-names =
++			/*64-95*/
++			"","","","","","","","",
++			"","","","","","","","",
++			"","","","P3V_BAT_EN","","","","",
++			"","","","","","","","";
++		};
+ 		gpio3: gpio@f0013000 {
+ 			/* NMI_BUTTON=gpio96 */
+ 			interrupt-controller;
+-- 
+2.34.1
+

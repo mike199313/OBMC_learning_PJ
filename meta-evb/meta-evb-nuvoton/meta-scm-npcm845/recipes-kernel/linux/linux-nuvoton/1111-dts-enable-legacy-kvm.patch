@@ -1,0 +1,92 @@
+From 5aa400d881ff3f2962ce2ec7da14c0476ea8a399 Mon Sep 17 00:00:00 2001
+From: Joseph Liu <kwliu@nuvoton.com>
+Date: Tue, 12 Jul 2022 12:54:28 +0800
+Subject: [PATCH] dts: enable legacy kvm
+
+Signed-off-by: Joseph Liu <kwliu@nuvoton.com>
+---
+ .../dts/nuvoton/nuvoton-common-npcm8xx.dtsi   | 18 +++++++++++
+ .../boot/dts/nuvoton/nuvoton-npcm845-scm.dts  | 31 ++++++++++++++-----
+ 2 files changed, 41 insertions(+), 8 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/nuvoton/nuvoton-common-npcm8xx.dtsi b/arch/arm64/boot/dts/nuvoton/nuvoton-common-npcm8xx.dtsi
+index 195410002634..b43fc14c8143 100644
+--- a/arch/arm64/boot/dts/nuvoton/nuvoton-common-npcm8xx.dtsi
++++ b/arch/arm64/boot/dts/nuvoton/nuvoton-common-npcm8xx.dtsi
+@@ -325,6 +325,24 @@ pcimbox: pcimbox@f0848000 {
+ 			interrupts = <GIC_SPI 8 IRQ_TYPE_LEVEL_HIGH>;
+ 		};
+ 
++		vcd: vcd@f0810000 {
++			compatible = "nuvoton,npcm845-vcd";
++			reg = <0x0 0xf0810000 0x0 0x10000>;
++			interrupts = <GIC_SPI 22 IRQ_TYPE_LEVEL_HIGH>;
++			resets = <&rstc NPCM8XX_RESET_IPSRST2 NPCM8XX_RESET_VCD>;
++			status = "disabled";
++			gcr-syscon = <&gcr>;
++			gfxi-syscon = <&gfxi>;
++		};
++
++		ece: ece@f0820000 {
++			compatible = "nuvoton,npcm845-ece";
++			reg = <0x0 0xf0820000 0x0 0x2000>;
++			interrupts = <GIC_SPI 24 IRQ_TYPE_LEVEL_HIGH>;
++			resets = <&rstc NPCM8XX_RESET_IPSRST2 NPCM8XX_RESET_ECE>;
++			status = "disabled";
++		};
++
+ 		video: video@f0810000 {
+ 			compatible = "nuvoton,npcm845-video";
+ 			reg = <0x0 0xf0810000 0x0 0x10000>, <0x0 0xf0820000 0x0 0x2000>;
+diff --git a/arch/arm64/boot/dts/nuvoton/nuvoton-npcm845-scm.dts b/arch/arm64/boot/dts/nuvoton/nuvoton-npcm845-scm.dts
+index b824fce1fb85..57ddeea165b5 100644
+--- a/arch/arm64/boot/dts/nuvoton/nuvoton-npcm845-scm.dts
++++ b/arch/arm64/boot/dts/nuvoton/nuvoton-npcm845-scm.dts
+@@ -71,11 +71,21 @@ reserved-memory {
+ 		#size-cells = <2>;
+ 		ranges;
+ 
+-		video_memory: framebuffer@0x33000000 {
+-			compatible = "shared-dma-pool";
+-			reg = <0x0 0x33000000 0x0 0x02000000>;
+-			reusable;
+-			linux,cma-default;
++		vcd_memory: framebuffer@0x33900000 {
++			reg = <0x0 0x33900000 0x0 0x600000>;
++			no-map;
++		};
++
++		gfx_memory: framebuffer@0x1f000000 {
++			reg = <0x0 0x1F000000 0x0 0xc00000>, <0x0 0x1B000000 0x0 0xc00000>,
++			<0x0 0x3F000000 0x0 0xc00000>, <0x0 0x37000000 0x0 0xc00000>,
++			<0x0 0x7F000000 0x0 0xc00000>, <0x0 0x6F000000 0x0 0xc00000>;
++			no-map;
++		};
++
++		ece_memory: framebuffer@0x33F00000 {
++			reg = <0x0 0x33F00000 0x0 0x600000>;
++			no-map;
+ 		};
+ 	};
+ 
+@@ -319,9 +329,14 @@ udc9:udc@f0839000 {
+ 			status = "okay";
+ 		};
+ 
+-		video: video@f0810000 {
+-			status = "okay";
+-			memory-region = <&video_memory>;
++		vcd:vcd@f0810000 {
++			status = "okay";
++			memory-region = <&vcd_memory>, <&gfx_memory>;
++		};
++
++		ece:ece@f0820000 {
++			status = "okay";
++			memory-region = <&ece_memory>;
+ 		};
+ 
+ 		apb {
+-- 
+2.34.1
+

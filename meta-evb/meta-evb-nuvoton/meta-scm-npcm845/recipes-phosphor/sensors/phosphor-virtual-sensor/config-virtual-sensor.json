@@ -1,0 +1,148 @@
+[
+    {
+        "Desc": {
+            "Name": "Temp_M2_High",
+            "SensorType": "temperature",
+            "MaxValue": 127.0,
+            "MinValue": -128.0
+        },
+        "Threshold": {
+            "CriticalHigh": 80,
+            "CriticalLow": 0,
+            "WarningHigh": 77,
+            "WarningLow": 0
+        },
+        "Associations":[
+           [
+              "chassis",
+              "all_sensors",
+              "/xyz/openbmc_project/inventory/system/board/C2195"
+           ],
+           [
+              "inventory",
+              "sensors",
+              "/xyz/openbmc_project/inventory/system/board/C2195"
+           ]
+        ],
+        "Params": {
+            "DbusParam": [
+                {
+                    "ParamName": "M2_S1",
+                    "Desc": {
+                        "Name": "M2_S1",
+                        "SensorType": "temperature"
+                    }
+                },
+                {
+                    "ParamName": "M2_S2",
+                    "Desc": {
+                        "Name": "M2_S2",
+                        "SensorType": "temperature"
+                    }
+                }
+            ]
+        },
+        "Expression": "max(M2_S1, M2_S2)"
+    },
+    {
+        "Desc": {
+            "Name": "Temp_E1S_High",
+            "SensorType": "temperature",
+            "MaxValue": 127.0,
+            "MinValue": -128.0
+        },
+        "Threshold": {
+            "CriticalHigh": 80,
+            "CriticalLow": 0,
+            "WarningHigh": 77,
+            "WarningLow": 0
+        },
+        "Associations":[
+           [
+              "chassis",
+              "all_sensors",
+              "/xyz/openbmc_project/inventory/system/board/C2195"
+           ],
+           [
+              "inventory",
+              "sensors",
+              "/xyz/openbmc_project/inventory/system/board/C2195"
+           ]
+        ],
+        "Params": {
+            "DbusParam": [
+                {
+                    "ParamName": "E1_S1",
+                    "Desc": {
+                        "Name": "E1_S1",
+                        "SensorType": "temperature"
+                    }
+                },
+                {
+                    "ParamName": "E1_S2",
+                    "Desc": {
+                        "Name": "E1_S2",
+                        "SensorType": "temperature"
+                    }
+                },
+                {
+                    "ParamName": "E1_S3",
+                    "Desc": {
+                        "Name": "E1_S3",
+                        "SensorType": "temperature"
+                    }
+                },
+                {
+                    "ParamName": "E1_S4",
+                    "Desc": {
+                        "Name": "E1_S4",
+                        "SensorType": "temperature"
+                    }
+                },
+                {
+                    "ParamName": "E1_S5",
+                    "Desc": {
+                        "Name": "E1_S5",
+                        "SensorType": "temperature"
+                    }
+                },
+                {
+                    "ParamName": "E1_S6",
+                    "Desc": {
+                        "Name": "E1_S6",
+                        "SensorType": "temperature"
+                    }
+                },
+                {
+                    "ParamName": "E1_S7",
+                    "Desc": {
+                        "Name": "E1_S7",
+                        "SensorType": "temperature"
+                    }
+                },
+                {
+                    "ParamName": "E1_S8",
+                    "Desc": {
+                        "Name": "E1_S8",
+                        "SensorType": "temperature"
+                    }
+                },
+                {
+                    "ParamName": "E1_S9",
+                    "Desc": {
+                        "Name": "E1_S9",
+                        "SensorType": "temperature"
+                    }
+                },
+                {
+                    "ParamName": "E1_S10",
+                    "Desc": {
+                        "Name": "E1_S10",
+                        "SensorType": "temperature"
+                    }
+                }
+            ]
+        },
+        "Expression": "max(E1_S1, E1_S2, E1_S3, E1_S4, E1_S5, E1_S6, E1_S7, E1_S8, E1_S9, E1_S10)"
+    }
+]
