@@ -60,4 +60,5 @@ SRC_URI:append  = " file://0001-Removed-Get-Device-ID-command.patch \
                     file://0024-Implement-SEL-timestamp-correction.patch \
                     file://0025-get-sensor-enable-after-setting.patch \
                     file://0026-Bug-1360-AddDeleteSDR-setSensorReadingAndEventStatus.patch \
+                    file://0027-Fix-sel-list-can-not-update-after-clear.patch \
                   "

@@ -1,0 +1,97 @@
+From 9f3624997e78cb471ab0154b6b732d3f6313e19e Mon Sep 17 00:00:00 2001
+From: Tommy Lin <lin.tommysc@inventec.com>
+Date: Thu, 29 Sep 2022 07:21:29 +0000
+Subject: [PATCH] Fix sel list can not update after clear
+
+Symptom/Reason:
+- After sel clear, ipmitool may not be able to retrieve new SEL log
+
+Root Cause:
+- There was a time gap from message was sent to journal to message was really persisted to sel log file.
+
+Solution/Change:
+- [intel-ipmi-oem]
+  - Refine procedure to get 1st record
+
+Entry Test:
+- List all SEL entry
+  - ipmitool sel elist
+---
+ src/storagecommands.cpp | 54 ++++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 53 insertions(+), 1 deletion(-)
+
+diff --git a/src/storagecommands.cpp b/src/storagecommands.cpp
+index d5184f2..78022de 100644
+--- a/src/storagecommands.cpp
++++ b/src/storagecommands.cpp
+@@ -1343,6 +1343,35 @@ ipmi::RspType<uint8_t,  // SEL version
+                                  eraseTimeStamp, operationSupport);
+ }
+ 
++static uint16_t parseEntryID(const std::string& entry)
++{
++    uint16_t id = ipmi::sel::lastEntry;
++    auto location = entry.find_first_of(' ');
++
++    if (location != std::string::npos)
++    {
++        std::string strTmp = entry.substr(location + 1);
++
++        if (!strTmp.empty())
++        {
++            location = strTmp.find_first_of(",");
++            if (location != std::string::npos)
++            {
++                try
++                {
++                    id = static_cast<uint16_t>(std::stoi(strTmp.substr(0, location), 0));
++                }
++                catch (const std::invalid_argument& ia)
++                {
++                    std::cerr << "parseSelID failed: " << ia.what() << '\n';
++                }
++            }
++        }
++    }
++
++    return id;
++}
++
+ using systemEventType = std::tuple<
+     uint32_t, // Timestamp
+     uint16_t, // Generator ID
+@@ -1401,7 +1430,30 @@ ipmi::RspType<uint16_t, // Next Record ID
+             return ipmi::responseUnspecifiedError();
+         }
+ 
+-        if (!std::getline(logStream, targetEntry))
++        static const int MAX_SEARCH_LINES = 20;
++        std::string entry;
++        int targetId = 0;
++        int entryId = 0;
++
++        for (int line = 0; line < MAX_SEARCH_LINES; line++)
++        {
++            if (std::getline(logStream, entry))
++            {
++                entryId = parseEntryID(entry);
++
++                if (line == 0 || entryId < targetId)
++                {
++                    targetEntry = entry;
++                    targetId = entryId;
++                }
++            }
++            else
++            {
++                break;
++            }
++        }
++
++        if (targetEntry.empty())
+         {
+             return ipmi::responseUnspecifiedError();
+         }
+-- 
+2.17.1
+
