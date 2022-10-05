@@ -1,6 +1,7 @@
 {
-    "Name": "Intel Eth E810-CQDA2",
-    "Probe": "xyz.openbmc_project.FruDevice({'BOARD_PRODUCT_NAME':'Intel Eth E810-CQDA2'})",
+    "Exposes": [],
+    "Name": "$BOARD_PRODUCT_NAME bus-$bus",
+    "Probe": "xyz.openbmc_project.FruDevice({'BOARD_PRODUCT_NAME':'E810*'})",
     "Type": "Board",
     "xyz.openbmc_project.Inventory.Decorator.Asset": {
         "Manufacturer": "$BOARD_MANUFACTURER",

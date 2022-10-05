@@ -7,7 +7,7 @@ SRC_URI += "file://motherboard.json"
 SRC_URI += "file://runbmc.json"
 SRC_URI += "file://scmbridge.json"
 SRC_URI += "file://event.json"
-SRC_URI += "file://Intel_Eth_E810-CQDA2.json"
+SRC_URI += "file://Intel_Eth_E810.json"
 
 do_install:append() {
     install -d 0755 ${D}/usr/share/entity-manager/configurations
@@ -17,5 +17,5 @@ do_install:append() {
     install -m 0644 ${WORKDIR}/runbmc.json ${D}/usr/share/entity-manager/configurations
     install -m 0644 ${WORKDIR}/scmbridge.json ${D}/usr/share/entity-manager/configurations
     install -m 0644 ${WORKDIR}/event.json ${D}/usr/share/entity-manager/configurations
-    install -m 0644 ${WORKDIR}/Intel_Eth_E810-CQDA2.json ${D}/usr/share/entity-manager/configurations
+    install -m 0644 ${WORKDIR}/Intel_Eth_E810.json ${D}/usr/share/entity-manager/configurations
 }
