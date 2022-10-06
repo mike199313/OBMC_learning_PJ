@@ -1,0 +1,63 @@
+Docker usage:
+    1. get into inv/docker folder.
+    2. bash builder.sh [CONTAINER_NAME]
+
+Build image in one command:
+    1. get into inv/docker folder.
+    2. bash builder.sh -t <platform>
+       ex. bash builder.sh -t transformers
+
+
+QEMU usage:
+    1. get into inv folder.
+    2. bash start_qemu.sh [-m MACHINE] [-qm QEMU MACHINE] [-p PORT_OFFSET]
+       or
+       bash start_qemu.sh --ref
+
+       i.   MACHINE is the target you built, default is transformers.
+       ii.  QEMU MACHINE is the qemu target machine, default is ast2600-evb.
+       iii. --ref would run romulus directly.
+       iv.  PORT_OFFSET is the port redirect offet, please refer to QEMU network setting.
+
+    3. Edit start_qemu.sh to change network config.
+       i. USER_NETWORK_OPTION is the user network setting for qemu.
+       ii. TAP_NETWORK_OPTION is the tap network setting, should use create_bridge_tap.sh first(need sudo).
+
+iQEMU uasge:
+    start-iqemu.sh:
+    USAGE: start-iqemu.sh <Image path> [OPTIONS]
+
+    Options:
+    -m     QEMU machine name, default is transformers-bmc
+    -p     Platform name, default is transformers
+    -v     Print version
+    -h     Print this message
+
+    Example:  start-iqemu.sh
+            start-iqemu.sh xxx.mtd
+            start-iqemu.sh -m transformers-bmc
+            start-iqemu.sh -m ast2600-evb
+            start-iqemu.sh -m ast2600-evb xxx.mtd
+            start-iqemu.sh -m transformers-bmc your/mtd/path/xxx.mtd
+            start-iqemu.sh -p transformers
+
+    iqemu-util.sh:
+    USAGE: iqemu-util.sh [COMMAND] <options..>
+
+    Commands:
+    help      Print this message
+    show      Show command examples
+    ssh       Connect to QEMU container via SSH
+    web       Open firefox and browse OpenBMC WebUI
+    ipmi      Run ipmitool command
+    scp       Copy file from host to guest
+    cleankey  Clean RSA host key for container
+    version   Show version of this script
+
+    Example:  iqemu-util.sh show
+            iqemu-util.sh ssh
+            iqemu-util.sh web
+            iqemu-util.sh ipmi mc info
+            iqemu-util.sh ipmi sdr
+            iqemu-util.sh scp file /guest/path
+
