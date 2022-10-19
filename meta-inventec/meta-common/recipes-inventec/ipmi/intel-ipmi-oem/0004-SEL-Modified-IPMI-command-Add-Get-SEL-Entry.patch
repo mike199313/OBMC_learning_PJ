@@ -1,0 +1,205 @@
+From 87ad62767b0865c2a363e56e406355c07482c02d Mon Sep 17 00:00:00 2001
+From: "pj.chen" <chen.pj@inventec.com>
+Date: Mon, 7 Mar 2022 02:11:15 +0000
+Subject: [PATCH 04/25] SEL - Modified IPMI command "Add/Get SEL Entry"
+
+- "Add SEL Entry" command to log "SEL Event Records" byte data
+- "Get SEL Entry" command to support "SEL Event Records" byte
+  when record type is 02h
+- "Clear SEL" command to log ipmi clear sel event after finish
+- Modified IPMI Clear SEL function to enhanced log clear sel event
+  - Add SIGHUP signal directly
+  - Log Clear SEL event directly
+---
+ src/storagecommands.cpp | 134 ++++++++++++++++++++++++++++++++++++----
+ 1 file changed, 122 insertions(+), 12 deletions(-)
+
+diff --git a/src/storagecommands.cpp b/src/storagecommands.cpp
+index 8e0bec7..5b76015 100644
+--- a/src/storagecommands.cpp
++++ b/src/storagecommands.cpp
+@@ -54,8 +54,14 @@ const std::vector<std::string> timeSyncMethodValue = {
+ 
+ namespace intel_oem::ipmi::sel
+ {
+-static const std::filesystem::path selLogDir = "/var/log";
++static const std::filesystem::path selLogDir = "/var/lib/sel_log";
+ static const std::string selLogFilename = "ipmi_sel";
++const static constexpr char* selService = "xyz.openbmc_project.Logging.IPMI";
++const static constexpr char* selPath = "/xyz/openbmc_project/Logging/IPMI";
++const static constexpr char* selAddIntf = "xyz.openbmc_project.Logging.IPMI";
++const static constexpr char* selAdd = "IpmiSelAdd";
++const static constexpr char* selAddOem = "IpmiSelAddOem";
++
+ 
+ static int getFileTimestamp(const std::filesystem::path& file)
+ {
+@@ -827,6 +833,32 @@ ipmi_ret_t getFruSdrs(ipmi::Context::ptr ctx, size_t index,
+     return IPMI_CC_OK;
+ }
+ 
++uint16_t sendIpmiSelToDbus(std::vector<uint8_t> event, uint8_t recordType)
++{
++    uint16_t recordId = 0xFFFF;
++    std::shared_ptr<sdbusplus::asio::connection> bus = getSdBus();
++
++    sdbusplus::message::message writeSEL = bus->new_method_call(
++        intel_oem::ipmi::sel::selService,
++        intel_oem::ipmi::sel::selPath,
++        intel_oem::ipmi::sel::selAddIntf,
++        intel_oem::ipmi::sel::selAddOem);
++    writeSEL.append("ipmiAddSELEntry", event, recordType);
++
++    try
++    {
++        auto ret = bus->call(writeSEL);
++        ret.read(recordId);
++    }
++    catch (sdbusplus::exception_t& e)
++    {
++        std::cerr << "failed to call sendIpmiSelToDbus method\n";
++        throw std::runtime_error("sendIpmiSelToDbus fail");
++    }
++
++    return recordId;
++}
++
+ static bool getSELLogFiles(std::vector<std::filesystem::path>& selLogFiles)
+ {
+     // Loop through the directory looking for ipmi_sel log files
+@@ -1111,6 +1143,20 @@ ipmi::RspType<uint16_t, // Next Record ID
+             timestamp = std::mktime(&timeStruct);
+         }
+ 
++        // For "Add SEL command" from IpmiSelAddOem log 9 Bytes data
++        if ((targetEntryFields.size() == 4) && (eventDataBytes.size() == 9))
++        {
++            // Only keep the bytes that fit in the record
++            std::array<uint8_t, intel_oem::ipmi::sel::oemTsEventSize> eventData{};
++            std::copy_n(eventDataBytes.begin(),
++                        std::min(eventDataBytes.size(), eventData.size()),
++                        eventData.begin());
++
++            return ipmi::responseSuccess(nextRecordID, recordID, recordType,
++                                     oemTsEventType{timestamp, eventData});
++        }
++
++
+         // Set the event message revision
+         uint8_t evmRev = intel_oem::ipmi::sel::eventMsgRev;
+ 
+@@ -1209,6 +1255,30 @@ ipmi::RspType<uint16_t> ipmiStorageAddSELEntry(
+     uint8_t eventType, uint8_t eventData1, uint8_t eventData2,
+     uint8_t eventData3)
+ {
++    uint16_t responseID = 0xFFFF;
++
++    std::vector<uint8_t> eventData(9, 0xFF);
++    eventData[0] = generatorID;
++    eventData[1] = generatorID >> 8;
++    eventData[2] = evmRev;
++    eventData[3] = sensorType;
++    eventData[4] = sensorNum;
++    eventData[5] = eventType;
++    eventData[6] = eventData1;
++    eventData[7] = eventData2;
++    eventData[8] = eventData3;
++
++    try
++    {
++        responseID = sendIpmiSelToDbus(eventData, recordType);
++    }
++    catch (sdbusplus::exception_t& e)
++    {
++        std::cerr << "failed to call IpmiSelAdd method\n";
++        return ipmi::responseUnspecifiedError();
++    }
++
++
+     // Per the IPMI spec, need to cancel any reservation when a SEL entry is
+     // added
+     cancelSELReservation();
+@@ -1219,7 +1289,6 @@ ipmi::RspType<uint16_t> ipmiStorageAddSELEntry(
+         recordID, recordType, timestamp, generatorID, evmRev, sensorType,
+         sensorNum, eventType, eventData1, eventData2, eventData3);
+ 
+-    uint16_t responseID = 0xFFFF;
+     return ipmi::responseSuccess(responseID);
+ }
+ 
+@@ -1270,21 +1339,62 @@ ipmi::RspType<uint8_t> ipmiStorageClearSEL(ipmi::Context::ptr ctx,
+         }
+     }
+ 
+-    // Reload rsyslog so it knows to start new log files
+-    std::shared_ptr<sdbusplus::asio::connection> dbus = getSdBus();
+-    sdbusplus::message::message rsyslogReload = dbus->new_method_call(
+-        "org.freedesktop.systemd1", "/org/freedesktop/systemd1",
+-        "org.freedesktop.systemd1.Manager", "ReloadUnit");
+-    rsyslogReload.append("rsyslog.service", "replace");
+-    try
++    std::string clearMsg = "";
++    std::string clearTime = "";
++    constexpr const char* ipmiSelFile = "/var/lib/sel_log/ipmi_sel";
++    constexpr const char* ipmiClrSelFile = "/var/lib/sel_log/clear_sel";
++    time_t rawtime;
++    struct tm * timeinfo;
++    char buffer [80];
++    FILE *fp;
++
++    // Signal rsyslog so it knows to start new log files
++    snprintf(buffer, sizeof(buffer), "kill -HUP $(ps | grep 'rsyslogd' | grep -v 'grep'| awk '{print $1}')");
++    fp = popen(buffer, "r");
++
++    if (fp == NULL)
+     {
+-        sdbusplus::message::message reloadResponse = dbus->call(rsyslogReload);
++        return ipmi::responseUnspecifiedError();
+     }
+-    catch (const sdbusplus::exception_t& e)
++    pclose(fp);
++
++    std::memset(buffer, 0, sizeof(buffer));
++
++    time (&rawtime);
++    timeinfo = localtime(&rawtime);
++    strftime(buffer, 80, "%FT%T%Ez", timeinfo);
++    clearTime = std::string(buffer);
++
++    clearMsg = clearTime + " 1,2,200004108A6F02FFFF,,,";
++
++    // Log Record 1 - Clear Log event
++    /* Disable clear message, Tommy.
++    std::ofstream outFile(ipmiSelFile, std::ofstream::out);
++    if (!outFile.good())
++    {
++        return ipmi::responseUnspecifiedError();
++    }
++    outFile << clearMsg << std::endl;
++    outFile.close();
++    */
++
++    std::ofstream clrFile(ipmiClrSelFile, std::ofstream::out);
++    if (!clrFile.good())
+     {
+-        phosphor::logging::log<phosphor::logging::level::ERR>(e.what());
++        return ipmi::responseUnspecifiedError();
+     }
++    clrFile << clearMsg << std::endl;
++    clrFile.close();
++
++    // Signal for sel-logger to record index restart
++    snprintf(buffer, sizeof(buffer), "kill -HUP $(ps | grep 'sel-logger' | grep -v 'grep'| awk '{print $1}')");
++    fp = popen(buffer, "r");
+ 
++    if (fp == NULL)
++    {
++        return ipmi::responseUnspecifiedError();
++    }
++    pclose(fp);
+     return ipmi::responseSuccess(ipmi::sel::eraseComplete);
+ }
+ 
+-- 
+2.33.0
+

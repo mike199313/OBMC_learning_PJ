@@ -1,0 +1,429 @@
+From 911c4ae2fdb89a526b37f45d5124edbf401f52a3 Mon Sep 17 00:00:00 2001
+From: "pj.chen" <chen.pj@inventec.com>
+Date: Mon, 7 Mar 2022 09:14:55 +0000
+Subject: [PATCH 17/25] Bug623 - [SW][Transformers][OpenBMC][IPMI] Implement
+ get chassis status command
+
+Symptom/Reason :
+    - Implement the IPMI get chassis status command
+
+Root Cause:
+    - None
+
+Solution/Change:
+    [intel-ipmi-oem]
+        - support attribute
+            -- Current Power State
+                --- Power is on
+                --- Power overload
+                --- power fault
+                --- power control fault
+
+            -- Last Power event
+                --- Power down caused by Power overload
+                --- Power down caused by power fault
+                --- Power is on casued by ipmi command
+
+            -- Misc chassis State
+                --- Colling/fan detected
+                --- Chassis identify state
+                --- Chassis identify supported
+    [phosphor-dbus-interface]
+        - register attributes
+            -- LastPowerEvent
+            -- PowerControlReturnCode
+
+    [phosphor-ipmi-host]
+        - record the power control return code by ipmi command chassis control
+
+    [x86-power-control]
+        - register the LastPowerEvent and powerControlReturnCode to dbus system
+
+    [inventec-dcmi-power]
+        - monitor the power fault and power overload and do
+            chassis power off if power fault or power overload.
+
+Entry Test:
+    - ipmitool chassis status
+    - ipmitool raw 0x00 0x01
+        -- to get current chassis status
+---
+ src/chassiscommands.cpp | 335 ++++++++++++++++++++++++++++++++++++++--
+ 1 file changed, 323 insertions(+), 12 deletions(-)
+
+diff --git a/src/chassiscommands.cpp b/src/chassiscommands.cpp
+index 12cd5ad..6b94b9a 100644
+--- a/src/chassiscommands.cpp
++++ b/src/chassiscommands.cpp
+@@ -334,15 +334,18 @@ static std::optional<bool> getButtonEnabled(const std::string& buttonPath)
+ {
+     bool buttonDisabled = false;
+     std::shared_ptr<sdbusplus::asio::connection> busp = getSdBus();
++    std::string service;
+     try
+     {
+-        auto service = ipmi::getService(*getSdBus(), buttonIntf, buttonPath);
++        service = ipmi::getService(*getSdBus(), buttonIntf, buttonPath);
+         ipmi::Value disabled = ipmi::getDbusProperty(
+             *busp, service, buttonPath, buttonIntf, "ButtonMasked");
+         buttonDisabled = std::get<bool>(disabled);
+     }
+     catch (const sdbusplus::exception::exception& e)
+     {
++        fprintf(stderr, "%s service=%s objectPath=%s interface=%s Exception:%s\n",
++                            __func__, service.c_str(), buttonPath.c_str(), buttonIntf, e.what());
+         log<level::ERR>("Fail to get button disabled property",
+                         entry("PATH=%s", buttonPath.c_str()),
+                         entry("ERROR=%s", e.what()));
+@@ -414,6 +417,286 @@ static bool checkIPMIRestartCause(ipmi::Context::ptr& ctx,
+ //----------------------------------------------------------------------
+ // Get Chassis Status commands
+ //----------------------------------------------------------------------
++static std::optional<bool> isPSUInputPowerOK(sdbusplus::bus::bus& bus)
++{
++    bool isPSUInputPowerOK = true;
++
++    constexpr const char* PSUInputPowerObjectPath =
++        "/xyz/openbmc_project/sensors/power";
++    constexpr const char* PSUInputPowerIntf =
++        "xyz.openbmc_project.Sensor.Value";
++    constexpr const char* CritcalThresholdIntf = 
++        "xyz.openbmc_project.Sensor.Threshold.Critical";
++    ipmi::ObjectTree objectTree;
++
++    try{
++        objectTree =
++            ipmi::getAllDbusObjects(bus, PSUInputPowerObjectPath,
++                                    PSUInputPowerIntf, "Input_Power");
++    }catch(std::exception& e){
++        fprintf(stderr, "%s : Exception %s \n", __func__, e.what());
++        return std::nullopt;
++    }
++    
++    for (auto& treeItr : objectTree)
++    {
++        std::string objPath;
++
++        objPath = treeItr.first;
++        auto& serviceMap = treeItr.second;
++        for (auto& itr : serviceMap)
++        {
++            try
++            {
++                ipmi::Value v;
++                auto service = itr.first;
++                v = ipmi::getDbusProperty(bus, service, objPath,
++                                          PSUInputPowerIntf, "Value");
++                auto value = std::get<double>(v);
++
++                v = ipmi::getDbusProperty(bus, service, objPath,
++                                          CritcalThresholdIntf, "CriticalLow");
++                auto criticalLow = std::get<double>(v);
++
++                v = ipmi::getDbusProperty(bus, service, objPath,
++                                          CritcalThresholdIntf, "CriticalHigh");
++                auto criticalHigh = std::get<double>(v);
++
++                // in transformers platform, the RPM of fan is not measured
++                // well. So the value may be larger then maxValue The threshold
++                // value of the RPM will be defined by software.
++
++                fprintf(stderr,
++                        "%s objPath=%s value=%f criticalHigh=%f criticalLow=%f \n",
++                        __func__, objPath.c_str(), value, criticalHigh, criticalLow);
++                if (value <= criticalHigh && value >= criticalLow)
++                {
++                    isPSUInputPowerOK &= true;
++                }
++                else
++                {
++                    isPSUInputPowerOK &= false;
++                    fprintf(
++                        stderr,
++                        "isPSUInputPowerOK is false objPath=%s value=%f criticalHigh=%f "
++                        "criticalLow=%f \n",
++                        objPath.c_str(), value, criticalHigh, criticalLow);
++                }
++            }
++            catch (const std::exception& e)
++            {
++                fprintf(stderr, "%s objPath=%s Exception:%s \n", __func__,
++                        objPath.c_str(), e.what());
++                return std::nullopt;
++            }
++        }
++    }
++    return std::make_optional<bool>(isPSUInputPowerOK);
++}
++
++static std::optional<bool> isPSUOutputPowerOK(sdbusplus::bus::bus& bus)
++{
++    bool isPSUOutputPowerOK = true;
++
++    constexpr const char* PSUOutputPowerObjectPath =
++        "/xyz/openbmc_project/sensors/power";
++    constexpr const char* PSUOutputPowerIntf =
++        "xyz.openbmc_project.Sensor.Value";
++    constexpr const char* CritcalThresholdIntf = 
++        "xyz.openbmc_project.Sensor.Threshold.Critical";
++    ipmi::ObjectTree objectTree;
++
++    try
++    {
++        objectTree = ipmi::getAllDbusObjects(
++            bus, PSUOutputPowerObjectPath, PSUOutputPowerIntf, "Output_Power");
++    }
++    catch (std::exception& e)
++    {
++        fprintf(stderr, "%s : Exception %s \n", __func__, e.what());
++        return std::nullopt;
++    }
++
++    for (auto& treeItr : objectTree)
++    {
++        std::string objPath;
++
++        objPath = treeItr.first;
++        auto& serviceMap = treeItr.second;
++        for (auto& itr : serviceMap)
++        {
++            try
++            {
++                ipmi::Value v;
++                auto service = itr.first;
++                v = ipmi::getDbusProperty(bus, service, objPath,
++                                          PSUOutputPowerIntf, "Value");
++                auto value = std::get<double>(v);
++
++                v = ipmi::getDbusProperty(bus, service, objPath,
++                                          CritcalThresholdIntf, "CriticalLow");
++                auto criticalLow = std::get<double>(v);
++
++                v = ipmi::getDbusProperty(bus, service, objPath,
++                                          CritcalThresholdIntf, "CriticalHigh");
++                auto criticalHigh = std::get<double>(v);
++
++                // in transformers platform, the RPM of fan is not measured
++                // well. So the value may be larger then maxValue The threshold
++                // value of the RPM will be defined by software.
++
++                fprintf(stderr, "%s objPath=%s value=%f max=%f min=%f \n",
++                        __func__, objPath.c_str(), value, criticalHigh, criticalLow);
++                if (value <= criticalHigh && value >= criticalLow)
++                {
++                    isPSUOutputPowerOK &= true;
++                }
++                else
++                {
++                    isPSUOutputPowerOK &= false;
++                    fprintf(stderr,
++                            "isPSUOutputPowerOK is false objPath=%s value=%f "
++                            "criticalHigh=%f "
++                            "criticalLow=%f \n",
++                            objPath.c_str(), value, criticalHigh, criticalLow);
++                }
++            }
++            catch (const std::exception& e)
++            {
++                fprintf(stderr, "%s objPath=%s Exception:%s \n", __func__,
++                        objPath.c_str(), e.what());
++                return std::nullopt;
++            }
++        }
++    }
++    return std::make_optional<bool>(isPSUOutputPowerOK);
++}
++
++
++static std::optional<bool> isPSUPowerOK(sdbusplus::bus::bus& bus)
++{
++    auto psuInput = isPSUInputPowerOK(bus);
++    auto psuOutput = isPSUOutputPowerOK(bus);
++    if(psuInput && psuOutput){
++        return std::make_optional<bool>(*psuInput && *psuOutput);
++    }else{
++        return std::nullopt;
++    }
++
++}
++
++static std::optional<bool> isCoolingFanOK(sdbusplus::bus::bus& bus)
++{
++    bool coolFanOK = true;
++
++    const std::string objectServicePath = "/xyz/openbmc_project/sensors";
++    const std::string interface = "xyz.openbmc_project.Sensor.Value";
++    const std::string criticalInterface =
++        "xyz.openbmc_project.Sensor.Threshold.Critical";
++    ipmi::ObjectTree objectTree;
++    
++    try
++    {
++        objectTree = ipmi::getAllDbusObjects(bus, objectServicePath, interface,
++                                             "fan_tach");
++    }
++    catch (const std::exception& e)
++    {
++        fprintf(stderr, "%s : Exception %s \n", __func__, e.what());
++        return std::nullopt;
++    }
++
++    for (auto& treeItr : objectTree)
++    {
++        std::string objPath;
++
++        objPath = treeItr.first;
++        auto& serviceMap = treeItr.second;
++        for (auto& itr : serviceMap)
++        {
++            try
++            {
++                ipmi::Value v;
++                auto service = itr.first;
++                v = ipmi::getDbusProperty(bus, service, objPath, interface,
++                                          "Value");
++                auto value = std::get<double>(v);
++
++                v = ipmi::getDbusProperty(bus, service, objPath,
++                                          criticalInterface, "CriticalLow");
++                auto minValue = std::get<double>(v);
++
++                v = ipmi::getDbusProperty(bus, service, objPath,
++                                          criticalInterface, "CriticalHigh");
++                auto maxValue = std::get<double>(v);
++
++                // in transformers platform, the RPM of fan is not measured
++                // well. So the value may be larger then maxValue The threshold
++                // value of the RPM will be defined by software.
++                if (value <= maxValue && value >= minValue)
++                {
++                    coolFanOK &= true;
++                }
++                else
++                {
++                    coolFanOK &= false;
++                    fprintf(stderr,
++                            "coolingFanOK is false objPath=%s value=%f max=%f "
++                            "min=%f \n",
++                            objPath.c_str(), value, maxValue, minValue);
++                }
++            }
++            catch (const std::exception& e)
++            {
++                fprintf(stderr, "%s objPath=%s Exception:%s \n", __func__,
++                        objPath.c_str(), e.what());
++            }
++        }
++    }
++
++    return std::make_optional(coolFanOK);
++}
++
++static std::optional<uint32_t> getLastPowerEvent(sdbusplus::bus::bus& bus)
++{
++    ipmi::Value v;
++    uint32_t value;
++    try
++    {
++        const std::string objPath = "/xyz/openbmc_project/state/chassis0";
++        const std::string intf = "xyz.openbmc_project.State.Chassis";
++        auto service = ipmi::getService(bus, intf, objPath);
++        v = ipmi::getDbusProperty(bus, service, objPath, intf, "LastPowerEvent");
++        value = std::get<uint32_t>(v);
++    }
++    catch (sdbusplus::exception::SdBusError& e)
++    {
++        fprintf(stderr, "exception:%s \n", e.what());
++        return std::nullopt;
++    }
++    return std::make_optional<uint32_t>(value);
++}
++
++static std::optional<int> getPowerControlReturnCode(sdbusplus::bus::bus& bus)
++{
++    ipmi::Value v;
++    int value;
++    try
++    {
++        const std::string objPath = "/xyz/openbmc_project/state/chassis0";
++        const std::string intf = "xyz.openbmc_project.State.Chassis";
++        auto service = ipmi::getService(bus, intf, objPath);
++        v = ipmi::getDbusProperty(bus, service, objPath, intf, "PowerControlReturnCode");
++        value = std::get<int32_t>(v);
++    }
++    catch (sdbusplus::exception::SdBusError& e)
++    {
++        fprintf(stderr, "exception:%s \n", e.what());
++        return std::nullopt;
++    }
++    return std::make_optional<int32_t>(value);
++}
++
+ ipmi::RspType<bool,    // Power is on
+               bool,    // Power overload
+               bool,    // Interlock
+@@ -500,22 +783,50 @@ ipmi::RspType<bool,    // Power is on
+         return ipmi::responseUnspecifiedError();
+     }
+ 
+-    // This response has a lot of hard-coded, unsupported fields
+-    // They are set to false or 0
+-    constexpr bool powerOverload = false;
++    auto bus = getSdBus();
++
++    auto _isPSUPowerOK = isPSUPowerOK(*bus);
++    auto _isCoolingFanOK = isCoolingFanOK(*bus);
++    auto _powerpControlReturnCode = getPowerControlReturnCode(*bus);
++
++    auto _lastPowerEvent = getLastPowerEvent(*bus);
++    powerStatusIPMI = (_lastPowerEvent) ? ( (*_lastPowerEvent & (1 << 4))  > 0) : false;
++    // "system shutdown" because of power overload condition.
++    bool powerOverload =
++        (_lastPowerEvent) ? ( (*_lastPowerEvent & (1 << 1)) > 0) : false;
++
++    bool powerFault = !((_isPSUPowerOK) ? *_isPSUPowerOK : false);
++
++    // The power control result is called by ipmitool chassis power on/off
++    // command. The command is called by sd_bus_call_method 
++    // which return non-0 as successfully called.
++    // It just to do power state transitation.
++    // https://man7.org/linux/man-pages/man3/sd_bus_call_method.3.html
++    bool powerControlFault =
++        (_powerpControlReturnCode) ? (*_powerpControlReturnCode < 0) : false;
++
++    bool coolingFanFault = !((_isCoolingFanOK) ? *_isCoolingFanOK : false);
++
++    // chassisIdentifySupport set because this command is implemented
++    constexpr bool chassisIdentifySupport = true;
++    uint2_t chassisIdentifyState = chassisIDState;
++
++    // The power overload of cureent power state
++    // and the powerDownOverload of last event
++    // are the same thing
++    bool powerDownOverload = powerOverload;
++    bool powerDownPowerFault = (_lastPowerEvent) ? ((*_lastPowerEvent & (1 << 3)) > 0) : false;
++
++    // This response has a lot of hard-coded,
++    // unsupported fields They are set to false or 0
+     constexpr bool chassisInterlock = false;
+-    constexpr bool powerFault = false;
+-    constexpr bool powerControlFault = false;
+-    constexpr bool powerDownOverload = false;
++
+     constexpr bool powerDownInterlock = false;
+-    constexpr bool powerDownPowerFault = false;
++
+     constexpr bool chassisIntrusionActive = false;
+     constexpr bool frontPanelLockoutActive = false;
+     constexpr bool driveFault = false;
+-    constexpr bool coolingFanFault = false;
+-    // chassisIdentifySupport set because this command is implemented
+-    constexpr bool chassisIdentifySupport = true;
+-    uint2_t chassisIdentifyState = types::enum_cast<uint2_t>(chassisIDState);
++
+     constexpr bool sleepButtonDisabled = false;
+     constexpr bool sleepButtonDisableAllow = false;
+ 
+-- 
+2.33.0
+

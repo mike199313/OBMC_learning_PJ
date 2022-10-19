@@ -1,0 +1,141 @@
+From 641078e2f0931449603185809130964a11d3feb3 Mon Sep 17 00:00:00 2001
+From: Tommy Lin <lin.tommysc@inventec.com>
+Date: Thu, 3 Mar 2022 01:29:41 +0000
+Subject: [PATCH 2/3] Remove fru format checking rules
+
+Symptom/Reason:
+    1. According to ipmi spec, we don't check fru format when
+          read/write fru data
+
+Root Cause:
+    N/A
+
+Solution/Change:
+    1.Remove fru format checking rules in FruDevice.cpp
+
+Entry Test:
+sysadmin@transformers:~# busctl introspect xyz.openbmc_project.FruDevice /xyz/openbmc_project/FruDevice/TRANSFORMERS________
+NAME                                TYPE      SIGNATURE RESULT/VALUE                       FLAGS
+org.freedesktop.DBus.Introspectable interface -         -                                  -
+.Introspect                         method    -         s                                  -
+org.freedesktop.DBus.Peer           interface -         -                                  -
+.GetMachineId                       method    -         s                                  -
+.Ping                               method    -         -                                  -
+org.freedesktop.DBus.Properties     interface -         -                                  -
+.Get                                method    ss        v                                  -
+.GetAll                             method    s         a{sv}                              -
+.Set                                method    ssv       -                                  -
+.PropertiesChanged                  signal    sa{sv}as  -                                  -
+xyz.openbmc_project.FruDevice       interface -         -                                  -
+.ADDRESS                            property  u         80                                 emits-change
+.BOARD_FRU_VERSION_ID               property  s         "            "                     emits-change
+.BOARD_INFO_AM1                     property  s         " X02"                             emits-change
+.BOARD_LANGUAGE_CODE                property  s         "0"                                emits-change
+.BOARD_MANUFACTURER                 property  s         "Inventec            "             emits-change
+.BOARD_MANUFACTURE_DATE             property  s         "2021-01-13 - 09:51:00"            emits-change
+.BOARD_PART_NUMBER                  property  s         "1395A3194504        "             emits-change
+.BOARD_PRODUCT_NAME                 property  s         "TRANSFORMERS        "             emits-change
+.BOARD_SERIAL_NUMBER                property  s         "                    "             emits-change
+.BUS                                property  u         3                                  emits-change
+.CHASSIS_PART_NUMBER                property  s         "                        "         emits-change
+.CHASSIS_SERIAL_NUMBER              property  s         "                                " emits-change
+.CHASSIS_TYPE                       property  s         "23"                               emits-change
+.Common_Format_Version              property  s         "1"                                emits-change
+.PRODUCT_ASSET_TAG                  property  s         "                        "         emits-change writable
+.PRODUCT_FRU_VERSION_ID             property  s         "      "                           emits-change
+.PRODUCT_INFO_AM1                   property  s         "                        "         emits-change
+.PRODUCT_LANGUAGE_CODE              property  s         "0"                                emits-change
+.PRODUCT_MANUFACTURER               property  s         "Inventec        "                 emits-change
+.PRODUCT_PART_NUMBER                property  s         "                    "             emits-change
+.PRODUCT_PRODUCT_NAME               property  s         "TRANSFORMERS        "             emits-change
+.PRODUCT_SERIAL_NUMBER              property  s         "                        "         emits-change
+.PRODUCT_VERSION                    property  s         "        "                         emits-change
+
+Create Fru Device even though the EEPROM is empty
+
+Symptom/Reason:
+        Fru Device not be created if the EEPROM of Fru Device is empty
+or has garbage contents.
+
+Root Cause:
+        N/A
+
+Solution/Change:
+        [Entity Manager]
+                1. Create the Fru Device even though the EEPROM of the Fru Device is empty or has garbage contents.
+
+Entry Test:
+        cat empty_fru  > /sys/bus/i2c/devices/3-0050/eeprom
+        cat empty_fru  > /sys/bus/i2c/devices/8-0051/eeprom
+        cat empty_fru  > /sys/bus/i2c/devices/8-0053/eeprom
+        ipmitool fru print
+        ipmitool mc selftest
+        ipmitool raw 0x06 0x04
+---
+ src/FruDevice.cpp |  3 ++-
+ src/FruUtils.cpp  | 11 +++++++++--
+ 2 files changed, 11 insertions(+), 3 deletions(-)
+ mode change 100644 => 100755 src/FruUtils.cpp
+
+diff --git a/src/FruDevice.cpp b/src/FruDevice.cpp
+index ec42eca..fe1461b 100644
+--- a/src/FruDevice.cpp
++++ b/src/FruDevice.cpp
+@@ -59,7 +59,8 @@ extern "C"
+ 
+ namespace fs = std::filesystem;
+ static constexpr bool debug = false;
+-constexpr size_t maxFruSize = 512;
++/* Inventec - Remove fru format checking rules */
++constexpr size_t maxFruSize = 0x800;
+ constexpr size_t maxEepromPageIndex = 255;
+ constexpr size_t busTimeoutSeconds = 5;
+ 
+diff --git a/src/FruUtils.cpp b/src/FruUtils.cpp
+old mode 100644
+new mode 100755
+index 70f461c..bb7a9af
+--- a/src/FruUtils.cpp
++++ b/src/FruUtils.cpp
+@@ -263,8 +263,8 @@ resCodes
+     resCodes ret = resCodes::resOK;
+     if (fruBytes.size() <= fruBlockSize)
+     {
+-        std::cerr << "Error: trying to parse empty FRU \n";
+-        return resCodes::resErr;
++        //Modified by Matt, even though the FRU is empty, still create the FRU object.
++        return resCodes::resOK;
+     }
+     result["Common_Format_Version"] =
+         std::to_string(static_cast<int>(*fruBytes.begin()));
+@@ -310,6 +310,9 @@ resCodes
+             fruBytes.begin() + offset + fruAreaSize - 1;
+         ++fruBytesIter;
+ 
++        /* Inventec - Remove fru format checking rules*/
++        /*According to ipmi spec, we don't do any check when read/write fru data*/
++        #if 0
+         uint8_t fruComputedChecksum =
+             calculateChecksum(fruBytes.begin() + offset, fruBytesIterEndArea);
+         if (fruComputedChecksum != *fruBytesIterEndArea)
+@@ -324,6 +327,7 @@ resCodes
+             std::cerr << ss.str();
+             ret = resCodes::resWarn;
+         }
++        #endif
+ 
+         /* Set default language flag to true as Chassis Fru area are always
+          * encoded in English defined in Section 10 of Fru specification
+@@ -599,6 +603,9 @@ bool findFRUHeader(int flag, int file, uint16_t address,
+         return false;
+     }
+ 
++    //Don't care about the FRU data header. Create the FRU device anyway.
++    return true;
++
+     // check the header checksum
+     if (validateHeader(blockData))
+     {
+-- 
+2.33.0
+

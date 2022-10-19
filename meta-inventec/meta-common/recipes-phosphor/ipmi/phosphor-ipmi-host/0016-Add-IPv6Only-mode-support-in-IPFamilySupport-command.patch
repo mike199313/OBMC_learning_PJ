@@ -1,0 +1,45 @@
+From a978210caab3034f39b2f3e0b3493eddf974c26a Mon Sep 17 00:00:00 2001
+From: "Lin.TommySC" <lin.tommysc@inventec.com>
+Date: Tue, 13 Jul 2021 09:37:53 +0000
+Subject: [PATCH 16/31] Add IPv6Only mode support in IPFamilySupport command
+
+Symptom/Reason :
+    - Command not working when IP address source is static
+
+Root Cause:
+    - Static IP address was not abandoned when switched to another IP addressing family
+
+Solution/Change:
+    [phosphor-ipmi-host]
+        - Add IPv6Only mode support in IPFamilySupport command
+    [phosphor-network]
+        - Abandon static IP address when switched to another IP addressing family
+
+Entry Test:
+    - Set static IP address
+        ipmitool lan set 1 ipsrc static
+        ipmitool lan set 1 ipaddr 10.6.0.177
+    - Set to IPv6 only mode
+        ipmitool raw 0x0c 0x01 0x01 0x33 0x01
+    - Check lan config
+        ipmitool lan print
+---
+ transporthandler.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/transporthandler.cpp b/transporthandler.cpp
+index e5eb7ba..0232e0b 100644
+--- a/transporthandler.cpp
++++ b/transporthandler.cpp
+@@ -1839,7 +1839,7 @@ RspType<message::Payload> getLan(Context::ptr ctx, uint4_t channelBits,
+         case LanParam::IPFamilySupport:
+         {
+             std::bitset<8> support;
+-            support[IPFamilySupportFlag::IPv6Only] = 0;
++            support[IPFamilySupportFlag::IPv6Only] = 1;
+             support[IPFamilySupportFlag::DualStack] = 1;
+             support[IPFamilySupportFlag::IPv6Alerts] = 1;
+             ret.pack(support);
+-- 
+2.33.0
+

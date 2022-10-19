@@ -1,0 +1,133 @@
+From ffb4b175b86f87a3e465bda32df78a8aa9d68943 Mon Sep 17 00:00:00 2001
+From: "Lin.TommySC" <lin.tommysc@inventec.com>
+Date: Wed, 28 Apr 2021 08:27:27 +0000
+Subject: [PATCH] Implement LAN Config Community String
+
+Symptom/Reason :
+    - Implement LAN Config Community String
+
+Root Cause:
+    - N/A
+
+Solution/Change:
+    [phospher-ipmi-config]
+        - Create lan_config.json to store lan config parameters
+        - Add community_str config name with default value "public"
+    [phospher-ipmi-host]
+        - Add entry for command handler and read/write fonfig value from/to lan_config.json
+    [phospher-snmp]
+        - Reads community_str value from lan_config.json before sending trap
+
+Entry Test:
+    - Get Community String
+        ipmitool raw 0x0c 0x02 0x01 0x10 0x00 0x00
+    - Set Community String
+        ipmitool raw 0x0c 0x01 0x01 0x10 0x50 0x74 0x74 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
+---
+ snmp_notification.cpp |  9 +++++++++
+ snmp_util.hpp         | 39 +++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 48 insertions(+)
+
+diff --git a/snmp_notification.cpp b/snmp_notification.cpp
+index 2037765..181b713 100644
+--- a/snmp_notification.cpp
++++ b/snmp_notification.cpp
+@@ -59,16 +59,25 @@ bool Notification::addPDUVar(netsnmp_pdu& pdu, const OID& objID,
+ 
+ void Notification::sendTrap()
+ {
++    /* By Tommy. For community string configuration.
+     constexpr auto comm = "public";
++    */
++    std::string comm = "public";
++    loadConfigValue<std::string>(LAN_CONFIG_COMM_STR, comm);
+     netsnmp_session session{};
++
+     snmp_sess_init(&session);
+ 
+     init_snmp("snmpapp");
+ 
+     // TODO: https://github.com/openbmc/openbmc/issues/3145
+     session.version = SNMP_VERSION_2c;
++    /* By Tommy. For community string configuration.
+     session.community = (u_char*)comm;
+     session.community_len = strlen(comm);
++    */
++    session.community = (u_char*)comm.c_str();
++    session.community_len = comm.length();
+     session.callback = nullptr;
+     session.callback_magic = nullptr;
+ 
+diff --git a/snmp_util.hpp b/snmp_util.hpp
+index 2ee7dac..c208ad3 100644
+--- a/snmp_util.hpp
++++ b/snmp_util.hpp
+@@ -10,6 +10,11 @@
+ #include <map>
+ #include <string>
+ 
++#include <sdbusplus/server.hpp>
++#include <fstream>
++#include <nlohmann/json.hpp>
++#include <phosphor-logging/log.hpp>
++
+ namespace phosphor
+ {
+ 
+@@ -51,6 +56,11 @@ ObjectValueTree getManagedObjects(sdbusplus::bus::bus& bus,
+ namespace network
+ {
+ 
++// Config file for LAN Config Parameters
++constexpr auto LAN_CFG_FILE = "/usr/share/ipmi-providers/lan_config.json";
++// Config name for LAN Config Parameters
++constexpr auto LAN_CONFIG_COMM_STR = "community_str";
++
+ /** @brief Resolves the given address to IP address.
+  *         Given address could be hostname or IP address.
+  *         if given address is not valid then it throws an exception.
+@@ -62,12 +72,41 @@ std::string resolveAddress(const std::string& address);
+ namespace snmp
+ {
+ 
++using namespace phosphor::logging;
++
+ /** @brief Gets all the snmp manager info.
+  *  @return the list of manager info in the format
+  *          of ipaddress:port
+  */
+ std::vector<std::string> getManagers();
+ 
++/** @brief get config value from LAN configuration file.
++ *  @param[in] name - config name.
++ *  @param[in] val - value of the given config name.
++ */
++template <typename T> void loadConfigValue(const std::string& name, T& val)
++{
++    std::ifstream configFile(LAN_CFG_FILE);
++    if (!configFile.is_open())
++    {
++        log<level::ERR>("loadConfigValue : Cannot open config path");
++        return;
++    }
++
++    auto data = nlohmann::json::parse(configFile, nullptr);
++
++    if (data.is_discarded())
++    {
++        log<level::ERR>("loadConfigValue JSON parser failure");
++        return;
++    }
++
++    if (data.contains(name))
++    {
++        val = data[name];
++    }
++}
++
+ } // namespace snmp
+ } // namespace network
+ 
+-- 
+2.33.0
+

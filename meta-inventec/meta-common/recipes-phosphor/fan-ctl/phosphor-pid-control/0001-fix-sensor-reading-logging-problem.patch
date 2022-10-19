@@ -1,0 +1,24 @@
+From 020a02b9758b216d042d7b59dee333e11abf19ad Mon Sep 17 00:00:00 2001
+From: "Alang.Huang" <Huang.Alang@inventec.com>
+Date: Thu, 20 May 2021 07:12:36 +0800
+Subject: [PATCH 1/5] fix sensor reading logging problem
+
+---
+ pid/zone.cpp | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/pid/zone.cpp b/pid/zone.cpp
+index af40a2b..f42b05e 100644
+--- a/pid/zone.cpp
++++ b/pid/zone.cpp
+@@ -358,6 +358,7 @@ void DbusPidZone::updateFanTelemetry(void)
+         {
+             _log << "," << _cachedValuesByName[t];
+         }
++        _log << std::endl;
+     }
+ 
+     return;
+-- 
+2.33.0
+

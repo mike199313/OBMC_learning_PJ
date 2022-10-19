@@ -1,0 +1,63 @@
+From bfc8d14a4664d54d1a6e463ac51c5f2e7941c72e Mon Sep 17 00:00:00 2001
+From: Tommy Lin <lin.tommysc@inventec.com>
+Date: Fri, 27 May 2022 07:39:43 +0000
+Subject: [PATCH 19/20] Implement PEF features
+
+Symptom/Reason:
+- Implement PEF features
+
+Root Cause:
+- N/A
+
+Solution/Change:
+- [phosphor-dbus-interfaces]
+  - Add SignalEvent signal in IPMI interface
+- [phosphor-sel-logger]
+  - Add signal trigger code
+- [intel-ipmi-oem]
+  - Implement PEF manager
+  - Implement PEF IPMI command handler
+
+Entry Test:
+- Get PEF capabilities
+  - ipmitool raw 0x04 0x10
+
+Test Result:
+~~
+sysadmin@transformers:~# ipmitool raw 0x04 0x10
+ 51 81 00
+~~
+---
+ .../Logging/IPMI.interface.yaml                | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+diff --git a/yaml/xyz/openbmc_project/Logging/IPMI.interface.yaml b/yaml/xyz/openbmc_project/Logging/IPMI.interface.yaml
+index 517a346..5d5f295 100644
+--- a/yaml/xyz/openbmc_project/Logging/IPMI.interface.yaml
++++ b/yaml/xyz/openbmc_project/Logging/IPMI.interface.yaml
+@@ -121,3 +121,21 @@ methods:
+     - name: Clear
+       description: >
+           Clear the SEL entries from their storage location.
++
++signals:
++    - name: SignalEvent
++      description: >
++        Signal indicating that an event happended for PEF processing
++      properties:
++        - name: RecordId
++          type: uint16
++          description: Event log record ID
++        - name: SensorPath
++          type: string
++          description: Full sensor path
++        - name: EventData
++          type: array[byte]
++          description: Event data bytes
++        - name: Message
++          type: string
++          description: Event message
+\ No newline at end of file
+-- 
+2.33.0
+

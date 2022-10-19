@@ -1,0 +1,154 @@
+From 2f22afdf8f1069c48234f72273ba8587e28cae49 Mon Sep 17 00:00:00 2001
+From: "Lin.TommySC" <lin.tommysc@inventec.com>
+Date: Mon, 12 Jul 2021 06:12:28 +0000
+Subject: [PATCH 15/31] Add MAC address support for destination address
+
+Symptom/Reason :
+    - Can not get the MAC address in Destination Addresses via raw command
+
+Root Cause:
+    - Feature not implemented because MAC address information is not useful for OpenBMC
+
+Solution/Change:
+    [phosphor-dbus-interfaces]
+        - Add MACAddress property in Client interface
+    [phosphor-ipmi-host]
+        - Get/Set MACAddress property from/to Client d-bus interface
+    [phosphor-snmp]
+        - Implementation of get/set MACAddress property
+
+Entry Test:
+    - Set destination address
+        ipmitool raw 0x0c 0x01 0x01 0x13 0x00 0x00 0x00 0x0a 0x6 0x8d 0x21 0x7c 0xd3 0x0a 0xc4 0x90 0xe4
+    - Get destination address
+        ipmitool raw 0x0c 0x02 0x01 0x13 0x00 0x00
+---
+ transporthandler.cpp | 44 ++++++++++++++++++++++++--------------------
+ 1 file changed, 24 insertions(+), 20 deletions(-)
+
+diff --git a/transporthandler.cpp b/transporthandler.cpp
+index f171f91..e5eb7ba 100644
+--- a/transporthandler.cpp
++++ b/transporthandler.cpp
+@@ -1003,7 +1003,7 @@ void asyncRestartService(const std::string& unit, bool reload)
+  *  @param[in] idx   - Client id
+  *  @param[in] address   - IP address
+  */
+-void configureDestAddress(uint8_t idx, std::string& address)
++void configureDestAddress(uint8_t idx, std::string& address, std::string& mac)
+ {
+     try
+     {
+@@ -1011,7 +1011,7 @@ void configureDestAddress(uint8_t idx, std::string& address)
+         std::string objPath = std::string(SNMP_ROOT) + "/" + std::to_string(idx);
+         deleteObjectIfExists(bus, SNMP_BUS, objPath);
+         auto req = bus.new_method_call(SNMP_BUS, SNMP_ROOT, INTF_CLIENT_CREATE, "Client");
+-        req.append(address, static_cast<uint16_t>(0), idx);
++        req.append(address, static_cast<uint16_t>(0), idx, mac);
+         auto reply = bus.call(req);
+         sdbusplus::message::object_path newPath;
+         reply.read(newPath);
+@@ -1031,7 +1031,7 @@ void configureDestAddress(uint8_t idx, std::string& address)
+  *  @param[in] idx   - Client id
+  *  @param[out] address   - IP address
+  */
+-void getDestAddress(uint8_t idx, std::string& address)
++void getDestAddress(uint8_t idx, std::string& address, std::string& mac)
+ {
+     try
+     {
+@@ -1039,6 +1039,8 @@ void getDestAddress(uint8_t idx, std::string& address)
+         std::string path = std::string(SNMP_ROOT) + "/" + std::to_string(idx);
+         address = std::get<std::string>(getDbusProperty(
+         bus, SNMP_BUS, path, INTF_CLIENT, "Address"));
++        mac = std::get<std::string>(getDbusProperty(
++        bus, SNMP_BUS, path, INTF_CLIENT, "MACAddress"));
+     }
+     catch (InternalFailure& e)
+     {
+@@ -1292,6 +1294,7 @@ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
+             uint8_t client_idx = selector & 0x0f;
+             int ip_format = (int)((format >> 4) & 0x0f);
+             std::string address;
++            std::string macAddress;
+             if (ip_format == 0) //IPv4 address with MAC
+             {
+                 in_addr ip;
+@@ -1305,6 +1308,7 @@ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
+                 copyInto(ip, ipbytes);
+                 copyInto(mac, macbytes);
+                 address = addrToString<AF_INET>(ip);
++                macAddress = ether_ntoa(&mac);
+             }
+             else if (ip_format == 1) //IPv6 address
+             {
+@@ -1316,13 +1320,14 @@ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
+                 }
+                 copyInto(ip, ipv6_bytes);
+                 address = addrToString<AF_INET6>(ip);
++                macAddress = "00:00:00:00:00:00";
+             }
+             else
+             {
+                 return responseInvalidFieldRequest();
+             }
+             std::cout << "[DestinationAddresses] idx " << (int)client_idx << ", addr " << address << std::endl;
+-            configureDestAddress(client_idx, address);
++            configureDestAddress(client_idx, address, macAddress);
+             return responseSuccess();
+         }
+         case LanParam::VLANId:
+@@ -1737,9 +1742,10 @@ RspType<message::Payload> getLan(Context::ptr ctx, uint4_t channelBits,
+             uint8_t format;
+             uint8_t client_idx;
+             std::string ip = "";
++            std::string macAddr = "";
+             client_idx = set & 0x0f;
+-            getDestAddress(client_idx, ip);
+-            std::cout << "[DestinationAddresses] get addr " << ip << std::endl;
++            getDestAddress(client_idx, ip, macAddr);
++            std::cout << "[DestinationAddresses] get addr " << ip << ", mac " << macAddr << std::endl;
+             if (ip.length() == 0)
+             {
+                 return responseRetBytesUnavailable();
+@@ -1761,25 +1767,23 @@ RspType<message::Payload> getLan(Context::ptr ctx, uint4_t channelBits,
+             addr = nullptr;
+             if (family == AF_INET) //IPv4
+             {
+-                auto ip_addr = maybeStringToAddr<AF_INET>(ip.c_str());
+-                if (ip_addr)
++                auto ip_addr = stringToAddr<AF_INET>(ip.c_str());
++                format = 0; //IPv4 with MAC
++                uint8_t gw_selector = 0; //default gateway
++                ether_addr mac{};
++                if (macAddr.length() > 0)
+                 {
+-                    format = 0; //IPv4 with MAC
+-                    uint8_t gw_selector = 0; //default gateway
+-                    ether_addr mac {};
+-                    ret.pack(format, gw_selector, dataRef(ip_addr), dataRef(mac));
+-                    return responseSuccess(std::move(ret));
++                    mac = stringToMAC(macAddr.c_str());
+                 }
++                ret.pack(client_idx, format, gw_selector, dataRef(ip_addr), dataRef(mac));
++                return responseSuccess(std::move(ret));
+             }
+             else if (family == AF_INET6) //IPv6
+             {
+-                auto ip6_addr = maybeStringToAddr<AF_INET6>(ip.c_str());
+-                if (ip6_addr)
+-                {
+-                    format = 0x10; //IPv6
+-                    ret.pack(format, dataRef(ip6_addr));
+-                    return responseSuccess(std::move(ret));
+-                }
++                auto ip6_addr = stringToAddr<AF_INET6>(ip.c_str());
++                format = 0x10; //IPv6
++                ret.pack(client_idx, format, dataRef(ip6_addr));
++                return responseSuccess(std::move(ret));
+             }
+             return responseRetBytesUnavailable();
+         }
+-- 
+2.33.0
+

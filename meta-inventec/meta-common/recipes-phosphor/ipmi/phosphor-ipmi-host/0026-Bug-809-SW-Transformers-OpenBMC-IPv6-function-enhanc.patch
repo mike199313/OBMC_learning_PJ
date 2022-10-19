@@ -1,0 +1,357 @@
+From c91fbfcde3837cb1a5ca5fe45fea179a35a5346e Mon Sep 17 00:00:00 2001
+From: "pj.chen" <chen.pj@inventec.com>
+Date: Fri, 4 Mar 2022 10:32:17 +0000
+Subject: [PATCH 26/31] Bug 809 - [SW][Transformers][OpenBMC] IPv6 function
+ enhancement
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Symptom/Reason :
+    - IPv6 function enhancement
+
+Root Cause:
+    - None
+
+Solution/Change:
+    [phosphor-ipmi-host]
+        - config ipv4/ipv6/dual statck mode
+        - config ipv6 address by dhcp/static
+        - config ipv6 static router1 value/prefix
+
+    [phosphor-dbus-interfaces]
+        - support ipv6 router1 value/prefix attributes
+
+    [phosphor-network]
+        - manage systemd-networkd configuration of IPv6
+
+Entry Test:
+.Config ipv4/ipv6/dual statck mode
+    . ipv4
+        - run
+            ipmitool raw 0x0c 0x01 0x01 0x33 0x00
+        - check
+            -- ipmitool raw 0x0c 0x02 0x01 0x33 0x00 0x00
+                11 00
+            -- cat /usr/share/ipmi-providers/lan_config.json
+                "ip_family": "v4"
+    . ipv6
+        - run
+            ipmitool raw 0x0c 0x01 0x01 0x33 0x01
+        - check
+            -- ipmitool raw 0x0c 0x02 0x01 0x33 0x00 0x00
+                11 01
+            -- cat /usr/share/ipmi-providers/lan_config.json
+                "ip_family": "v6"
+
+    . dual stack
+        - run
+             ipmitool raw 0x0c 0x01 0x01 0x33 0x02
+        - check
+            -- ipmitool raw 0x0c 0x02 0x01 0x33 0x00 0x00
+                11 02
+            -- cat /usr/share/ipmi-providers/lan_config.json
+                "ip_family": "both"
+
+.Get IPv6 address by DHCP
+    STEP 1 config dhcp addressing mode
+    - run
+        -- ipmitool lan set 0x01 ipsrc dhcp
+    - check
+        -- ipmi lan print
+            IP Address Source       : DHCP Addres
+        -- cat /etc/systemd/network/00-bmc-eth0.network
+            IPv6AcceptRA=true
+            DHCP=yes
+
+    STEP 2 Confirm IPv6 address
+    - run
+        -- ipmitool lan6 print
+            IPv6 Dynamic Address 0:
+            Source/Type:    DHCPv6
+            Address:        2001:b011:700c:10d9:ba27:ebff:fe05:70db/64
+            Status:         active
+
+.Get IPv6 address by Static
+    STEP 1 : config the static addressing mode
+    - run
+        ipmitool lan set 0x01 ipsrc static
+    - check
+        -- ipmitool lan print
+            IP Address Source       : Static Address
+        -- cat /etc/systemd/network/00-bmc-eth0.network
+            IPv6AcceptRA=false
+            DHCP=no
+
+    STEP 2 : config static ipv6 address
+    - run
+        -- ipmitool lan6 set 0x01 static_addr 0 enable 2001:b011:700c:1699:3a68:ddff:fe3e:99ec 64
+            --- set 0x00 => set channel 0x00
+            --- static_addr 0x00 => 0x00 slot
+            --- enable => activate the ipv6 address
+            --- 2001:b011:700c:1924:ba27:ebff:fe05:70db => The static ipv6 address。
+            --- 64 network => prefix length bit.
+    - check
+        -- ipmitool lan6 print
+            IPv6 Static Address 0:
+            Enabled:        yes
+            Address:        2001:b011:700c:10d9:ba27:ebff:fe05:1234/64
+            Status:         active
+
+    STEP 3 : config static router
+    - run
+        -- ipmitool lan6 set 0x01 static_rtr 0x01 fe80::c6e9:aff:fef9:7806 A0:AB:1B:87:10:9F ::1 0
+            --- set 0x01 => set static router 1
+            --- fe80::a2ab:1bff:fe87:109c => the static router 1 address
+            --- A0:AB:1B:87:10:9F the mac address of the static router 1
+            --- ::1 the static router1 prefix value
+            --- 0 the static router1 prefix length
+                ---- the static router 1 prefix value and length will be updated by openbmc from the system routing table regularly.
+
+    STEP 3 : remove static ipv6 address
+    - run
+        -- ipmitool lan6 set 0x01 static_addr 0 disable ::0 0
+    - check
+        -- ipmitool lan6 print
+            IPv6 Static Address 0:
+            Enabled:        no
+            Address:        ::/64
+            Status:         disabled
+
+Test static hop limit (default value of hop limit is 64)
+    STEP 1 : Config hop limit to 32
+    - run
+        -- ipmitool raw 0x0c 0x01 0x01 0x35 0x20
+    - check
+        -- cat /etc/systemd/network/00-bmc-eth0.network
+           IPv6HopLimit=32
+---
+ transporthandler.cpp | 50 ++++++++++++++++++------
+ transporthandler.hpp | 90 +++++++++++++++++++++++++++++++++++++++++++-
+ 2 files changed, 127 insertions(+), 13 deletions(-)
+
+diff --git a/transporthandler.cpp b/transporthandler.cpp
+index 862f860..4e29ebd 100644
+--- a/transporthandler.cpp
++++ b/transporthandler.cpp
+@@ -1191,6 +1191,8 @@ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
+                     // subcommand.
+                     channelCall<setDHCPv4Property>(
+                         channel, EthernetInterface::DHCPConf::v4);
++                    channelCall<setDHCPv6Property>(
++                        channel, EthernetInterface::DHCPConf::both, false);
+                     return responseSuccess();
+                 }
+                 case IPSrc::Unspecified:
+@@ -1198,6 +1200,8 @@ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
+                 {
+                     channelCall<setDHCPv4Property>(
+                         channel, EthernetInterface::DHCPConf::none);
++                    channelCall<setDHCPv6Property>(
++                        channel, EthernetInterface::DHCPConf::none, false);
+                     return responseSuccess();
+                 }
+                 case IPSrc::BIOS:
+@@ -1560,25 +1564,28 @@ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
+         }
+         case LanParam::IPv6StaticRouter1PrefixLength:
+         {
+-            uint8_t prefix;
+-            if (req.unpack(prefix) != 0 || !req.fullyUnpacked())
++            uint8_t prefixLength;
++            if (req.unpack(prefixLength) != 0 || !req.fullyUnpacked())
+             {
+                 return responseReqDataLenInvalid();
+             }
+-            if (prefix != 0)
++            if (prefixLength >= 128)
+             {
+-                return responseInvalidFieldRequest();
++                return responseParmOutOfRange();
+             }
++            channelCall<reconfigureGatewayPrefixLength<AF_INET6>>(channel, prefixLength);
+             return responseSuccess();
+         }
+         case LanParam::IPv6StaticRouter1PrefixValue:
+         {
++            in6_addr prefixValue;
+             std::array<uint8_t, sizeof(in6_addr)> bytes;
+             if (req.unpack(bytes) != 0 || !req.fullyUnpacked())
+             {
+                 return responseReqDataLenInvalid();
+             }
+-            // Accept any prefix value since our prefix length has to be 0
++            copyInto(prefixValue, bytes);
++            channelCall<reconfigureGatewayPrefixValue<AF_INET6>>(channel, prefixValue);
+             return responseSuccess();
+         }
+         case LanParam::cipherSuitePrivilegeLevels:
+@@ -1973,23 +1980,42 @@ RspType<message::Payload> getLan(Context::ptr ctx, uint4_t channelBits,
+         case LanParam::IPv6StaticRouter1MAC:
+         {
+             ether_addr mac{};
+-            auto neighbor = channelCall<getGatewayNeighbor<AF_INET6>>(channel);
+-            if (neighbor)
+-            {
+-                mac = neighbor->mac;
++            EthernetInterface::DHCPConf dhcp =
++                channelCall<getDHCPProperty>(channel);
++            if ((dhcp == EthernetInterface::DHCPConf::v4) ||
++                 (dhcp == EthernetInterface::DHCPConf::none))
++             {
++                auto neighbor = channelCall<getGatewayNeighbor<AF_INET6>>(channel);
++                if (neighbor)
++                {
++                    mac = neighbor->mac;
++                }
+             }
+             ret.pack(dataRef(mac));
+             return responseSuccess(std::move(ret));
+         }
+         case LanParam::IPv6StaticRouter1PrefixLength:
+         {
+-            ret.pack(UINT8_C(0));
++            uint8_t prefixLength = 0;
++            EthernetInterface::DHCPConf dhcp = channelCall<getDHCPProperty>(channel);
++            if ((dhcp == EthernetInterface::DHCPConf::v4) ||
++                 (dhcp == EthernetInterface::DHCPConf::none))
++            {
++                prefixLength = channelCall<getGatewayPrefixLength<AF_INET6>>(channel);
++            }
++            ret.pack(prefixLength);
+             return responseSuccess(std::move(ret));
+         }
+         case LanParam::IPv6StaticRouter1PrefixValue:
+         {
+-            in6_addr prefix{};
+-            ret.pack(dataRef(prefix));
++            in6_addr prefixValue{};
++            EthernetInterface::DHCPConf dhcp = channelCall<getDHCPProperty>(channel);
++            if ((dhcp == EthernetInterface::DHCPConf::v4) ||
++                (dhcp == EthernetInterface::DHCPConf::none))
++            {
++                prefixValue = channelCall<getGatewayPrefixValue<AF_INET6>>(channel).value_or(in6_addr{});
++            }
++            ret.pack(dataRef(prefixValue));
+             return responseSuccess(std::move(ret));
+         }
+         case LanParam::cipherSuitePrivilegeLevels:
+diff --git a/transporthandler.hpp b/transporthandler.hpp
+index f0d297d..0f0afb3 100644
+--- a/transporthandler.hpp
++++ b/transporthandler.hpp
+@@ -64,6 +64,7 @@ constexpr auto INTF_CLIENT = "xyz.openbmc_project.Network.Client";
+ constexpr auto INTF_CLIENT_CREATE = "xyz.openbmc_project.Network.Client.Create";
+ 
+ using namespace phosphor::logging;
++using sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure;
+ 
+ /** @brief IPMI LAN Parameters */
+ enum class LanParam : uint8_t
+@@ -327,8 +328,10 @@ struct AddrFamily<AF_INET6>
+     static constexpr auto protocol =
+         sdbusplus::xyz::openbmc_project::Network::server::IP::Protocol::IPv6;
+     static constexpr size_t maxStrLen = INET6_ADDRSTRLEN;
+-    static constexpr uint8_t defaultPrefix = 128;
++    static constexpr uint8_t defaultPrefix = 64;
+     static constexpr char propertyGateway[] = "DefaultGateway6";
++    static constexpr char propertyPrefixLength[] = "gateway6PrefixLength";
++    static constexpr char propertyPrefixValue[] = "gateway6PrefixValue";
+ };
+ 
+ /** @brief Interface Neighbor configuration parameters */
+@@ -731,6 +734,91 @@ void setGatewayProperty(sdbusplus::bus::bus& bus, const ChannelParams& params,
+     }
+ }
+ 
++/** @brief Retrieves the current router1 prefix value
++ *         NOTE: The gateway is currently system wide and not per channel
++ *
++ *  @param[in] bus    - The bus object used for lookups
++ *  @param[in] params - The parameters for the channel
++ *  @return A Prefix Value of the static router1
++ */
++template <int family>
++std::optional<typename AddrFamily<family>::addr>
++    getGatewayPrefixValue(sdbusplus::bus::bus& bus, const ChannelParams& params)
++{
++    auto objPath = "/xyz/openbmc_project/network/" + params.ifname;
++    auto prefixValue = std::get<std::string>(getDbusProperty(
++        bus, params.service, objPath, INTF_ETHERNET,
++        AddrFamily<family>::propertyPrefixValue));
++    if (prefixValue.empty())
++    {
++        return std::nullopt;
++    }
++    return stringToAddr<family>(prefixValue.c_str());
++}
++
++/** @brief Retrieves the current router1 prefix length
++ *         NOTE: The gateway is currently system wide and not per channel
++ *
++ *  @param[in] bus    - The bus object used for lookups
++ *  @param[in] params - The parameters for the channel
++ *  @return A Prefix Length of the static router1
++ */
++template <int family>
++uint8_t getGatewayPrefixLength(sdbusplus::bus::bus& bus,
++                               const ChannelParams& params)
++{
++    auto objPath = "/xyz/openbmc_project/network/" + params.ifname;
++    auto prefixLength = std::get<uint8_t>(getDbusProperty(
++        bus, params.service, objPath, INTF_ETHERNET,
++        AddrFamily<family>::propertyPrefixLength));
++    return prefixLength;
++}
++
++/** @brief Reconfigure the static router1 prefix length
++ *
++ *  @param[in] bus     - The bus object used for lookups
++ *  @param[in] params  - The parameters for the channel
++ *  @param[in] prefixLength - The  prefixLength to apply
++ */
++template <int family>
++void reconfigureGatewayPrefixLength(sdbusplus::bus::bus& bus,
++                                    const ChannelParams& params,
++                                    const uint8_t prefixLength)
++{
++    auto gateway = getGatewayProperty<family>(bus, params);
++    if (!gateway)
++    {
++        log<level::ERR>("Tried to set Gateway MAC without Gateway");
++        elog<InternalFailure>();
++    }
++    auto objPath = "/xyz/openbmc_project/network/" + params.ifname;
++    setDbusProperty(bus, params.service, objPath, INTF_ETHERNET,
++                    AddrFamily<family>::propertyPrefixLength, prefixLength);
++}
++
++/** @brief Reconfigure the static router1 prefix length
++ *
++ *  @param[in] bus     - The bus object used for lookups
++ *  @param[in] params  - The parameters for the channel
++ *  @param[in] prefixValue - The  prefixValue to apply
++ */
++template <int family>
++void reconfigureGatewayPrefixValue(
++    sdbusplus::bus::bus& bus, const ChannelParams& params,
++    const typename AddrFamily<family>::addr& prefixValue)
++{
++    auto gateway = getGatewayProperty<family>(bus, params);
++    if (!gateway)
++    {
++        log<level::ERR>("Tried to set Gateway MAC without Gateway");
++        elog<InternalFailure>();
++    }
++    auto objPath = "/xyz/openbmc_project/network/" + params.ifname;
++    setDbusProperty(bus, params.service, objPath, INTF_ETHERNET,
++                    AddrFamily<family>::propertyPrefixValue,
++                    addrToString<family>(prefixValue));
++}
++
+ /** @enum SolConfParam
+  *
+  *  using for Set/Get SOL configuration parameters command.
+-- 
+2.33.0
+

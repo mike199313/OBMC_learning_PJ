@@ -1,0 +1,237 @@
+From ade1e1ac966aebb0302890cb0778a51ec9a50af6 Mon Sep 17 00:00:00 2001
+From: bonnie <Liu.Bonnie@inventec.com>
+Date: Fri, 24 Jun 2022 14:35:04 +0800
+Subject: [PATCH 25/27] =get sensor enable after setting
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Bug 1079 - [Transformers][OpenBMC][IPMI] Set Sensor Event Enable dose not work
+Symptom/Reason：
+        After setting sensor event by ipmi command,getting event status didn't match.
+Root Cause：
+	Get Sensor Event Enable function have not been modified to get the value after setting.
+Solution/Change：
+        1.Caculate the event enable status after sending ipmi command.
+	2.Set the status value to dbus property.
+	3.Get sensor event enable value from dbus.
+	(Extra fixed)Seperate the scanning and event message generation function.
+Entry Test：
+        #ipmitool raw 0x04 0x29 0x68	->default
+ 	 c0 ff 0f ff 0f
+	#ipmitool raw 0x04 0x28 0x68 0x20 0x01 0x00 0x00 0x00	-> disable message,disable scanning,disable warning low
+	#ipmitool raw 0x04 0x29 0x68	->disable warnig low,other events still enable
+ 	 c0 fe 0f ff 0f
+	#ipmitool sensor thresh THERMAL_U6 lower '' 45 50	->set threshold to trigger
+	#ipmitool sensor get THERMAL_U6		->no scan,no change, no sel,status still ok
+	Locating sensor record...
+	Sensor ID              : THERMAL_U6 (0x68)
+	Entity ID             : 7.0
+	Sensor Type (Threshold)  : Temperature
+	Sensor Reading        : 37 (+/- 0) degrees C
+	Status                : ok
+	Lower Non-Recoverable : na
+	Lower Critical        : 45.000
+	Lower Non-Critical    : 50.000
+	Upper Non-Critical    : 37.000
+	Upper Critical        : 37.000
+	Upper Non-Recoverable : na
+	Positive Hysteresis   : Unspecified
+	Negative Hysteresis   : Unspecified
+	Assertion Events      :
+	Event Enable          : Event Messages Disabled
+	Assertions Enabled    : lnc+ lcr- lcr+ lnr- lnr+ unc- unc+ ucr- ucr+ unr- unr+
+	Deassertions Enabled  : lnc- lnc+ lcr- lcr+ lnr- lnr+ unc- unc+ ucr- ucr+ unr- unr+
+	#ipmitool raw 0x04 0x28 0x68 0xc0 0x00 0x00 0x00 0x00 ->enable message,enable scanning
+	#ipmitool sel elist
+	1 | 06/23/22 | 09:46:41 UTC | Temperature THERMAL_U6 | Lower Non-critical going low  | Asserted | Reading 36 < Threshold 45 degrees C
+	2 | 06/23/22 | 09:46:42 UTC | Temperature THERMAL_U6 | Lower Critical going low  | Asserted | Reading 36 < Threshold 50 degrees C
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+---
+ include/sensor.hpp | 23 ++++++++++++-----------
+ src/Thresholds.cpp | 38 +++++++++++++++++++++++++++++++++-----
+ 2 files changed, 45 insertions(+), 16 deletions(-)
+
+diff --git a/include/sensor.hpp b/include/sensor.hpp
+index b29cfc1..230973f 100755
+--- a/include/sensor.hpp
++++ b/include/sensor.hpp
+@@ -12,6 +12,8 @@
+ #include <string>
+ #include <vector>
+ 
++#define disableScanning 6
++
+ constexpr size_t sensorFailedPollTimeMs = 5000;
+ 
+ // Enable useful logging with sensor instrumentation
+@@ -88,8 +90,8 @@ struct Sensor
+     std::shared_ptr<sdbusplus::asio::connection> dbusConnection;
+     PowerState readState;
+     size_t errCount;
+-    bool sensorEventEnable = true;
+-    uint32_t sensorEventStatus = 0xffffffff;
++    uint8_t sensorEventEnable = 0xc0;
++    uint32_t sensorEventStatus = 0xff0fff0f;
+     std::unique_ptr<SensorInstrumentation> instrumentation;
+ 
+ 
+@@ -227,7 +229,7 @@ struct Sensor
+             overriddenState = true;
+             // check thresholds for external set
+             value = newValue;
+-            if (sensorEventEnable==true)
++            if (sensorEventEnable & (1 << disableScanning))
+             {
+                 checkThresholds();
+             }
+@@ -255,20 +257,19 @@ struct Sensor
+ 
+         createAssociation(association, configurationPath);
+         sensorInterface->register_property(
+-            "SensorEventEnable",sensorEventEnable,[this](const bool newSwitch, bool& oldSwitch){
+-               if( newSwitch == oldSwitch )
++            "SensorEventEnable",sensorEventEnable,[this](const uint8_t newEnable, uint8_t& oldEnable){
++               if( newEnable == oldEnable )
+                {    
+                    return 1;
+                }
+-               oldSwitch = newSwitch;
++               oldEnable = newEnable;
+                updateValue(std::numeric_limits<double>::quiet_NaN());
+-               sensorEventEnable=newSwitch;
+-               if (sensorEventEnable==true)
++               sensorEventEnable=newEnable;
++               if (sensorEventEnable & (1 << disableScanning))
+                {
+                    checkThresholds();
+                }
+                return 1;
+-               //return setThresholdDetect(newSwitch, oldSwitch);
+             });
+         sensorInterface->register_property(
+             "SensorEventStatus",sensorEventStatus,[this](const uint32_t newStatus, uint32_t& oldStatus){
+@@ -288,7 +289,7 @@ struct Sensor
+             "Value", value, [&](const double& newValue, double& oldValue) {
+                 return setSensorValue(newValue, oldValue);
+             });
+-        //sensorInterface->register_property("ThresholdDetect", thresholdSwitch);
++        
+         for (auto& threshold : thresholds)
+         {
+             if (std::isnan(threshold.hysteresis))
+@@ -535,7 +536,7 @@ struct Sensor
+         // which is called by checkThresholds() below,
+         // in all current implementations of sensors that have thresholds.
+         
+-        if (sensorEventEnable==true)
++        if (sensorEventEnable & (1 << disableScanning))
+         {
+             checkThresholds();
+         }
+diff --git a/src/Thresholds.cpp b/src/Thresholds.cpp
+index 8b88449..37185ed 100755
+--- a/src/Thresholds.cpp
++++ b/src/Thresholds.cpp
+@@ -18,6 +18,7 @@
+ 
+ enum class IPMISensorEventEnableThresholds : uint8_t
+ {
++    enableEventMessage = (1 << 7),
+     nonRecoverableThreshold = (1 << 6),
+     criticalThreshold = (1 << 5),
+     nonCriticalThreshold = (1 << 4),
+@@ -261,6 +262,12 @@ struct ChangeParam
+ };
+ static std::vector<ChangeParam> checkThresholds(Sensor* sensor, double value)
+ {
++    bool messageEnable = true;
++    if (!(sensor->sensorEventEnable & 
++             static_cast<uint8_t>(IPMISensorEventEnableThresholds::enableEventMessage)))
++    {
++        messageEnable = false;
++    }
+     uint8_t assertionEnabledLsb = (sensor->sensorEventStatus & 0xFF000000) >> 24;
+     uint8_t assertionEnabledMsb = (sensor->sensorEventStatus & 0xFF0000) >> 16;
+     uint8_t deassertionEnabledLsb = (sensor->sensorEventStatus & 0XFF00) >>8;
+@@ -291,9 +298,12 @@ static std::vector<ChangeParam> checkThresholds(Sensor* sensor, double value)
+                 thresholdChanges.emplace_back(threshold, true, value);
+                 if (++cHiTrue < assertLogCount)
+                 {
+-                    std::cerr << "Sensor " << sensor->name << " high threshold "
++                    if (messageEnable == true)
++                    {   
++                        std::cerr << "Sensor " << sensor->name << " high threshold "
+                             << threshold.value << " assert: value " << value
+                             << " raw data " << sensor->rawValue << "\n";
++                    }
+                 }
+             }
+             else if (value < (threshold.value - threshold.hysteresis))
+@@ -318,10 +328,13 @@ static std::vector<ChangeParam> checkThresholds(Sensor* sensor, double value)
+                 thresholdChanges.emplace_back(threshold, true, value);
+                 if (++cLoTrue < assertLogCount)
+                 {
+-                    std::cerr << "Sensor " << sensor->name << " low threshold "
++                    if (messageEnable == true)
++                    {
++                        std::cerr << "Sensor " << sensor->name << " low threshold "
+                             << threshold.value << " assert: value "
+                             << sensor->value << " raw data "
+                             << sensor->rawValue << "\n";
++                    }
+                 }
+             }
+             else if (value > (threshold.value + threshold.hysteresis))
+@@ -346,9 +359,12 @@ static std::vector<ChangeParam> checkThresholds(Sensor* sensor, double value)
+                 thresholdChanges.emplace_back(threshold, true, value);
+                 if (++cHiTrue < assertLogCount)
+                 {
+-                    std::cerr << "Sensor " << sensor->name << " high threshold "
++                    if (messageEnable == true)
++                    {
++                        std::cerr << "Sensor " << sensor->name << " high threshold "
+                             << threshold.value << " assert: value " << value
+                             << " raw data " << sensor->rawValue << "\n";
++                    }
+                 }
+             }
+             else if (value < (threshold.value - threshold.hysteresis))
+@@ -373,10 +389,13 @@ static std::vector<ChangeParam> checkThresholds(Sensor* sensor, double value)
+                 thresholdChanges.emplace_back(threshold, true, value);
+                 if (++cLoTrue < assertLogCount)
+                 {
+-                    std::cerr << "Sensor " << sensor->name << " low threshold "
++                    if (messageEnable == true)
++                    {
++                        std::cerr << "Sensor " << sensor->name << " low threshold "
+                             << threshold.value << " assert: value "
+                             << sensor->value << " raw data "
+                             << sensor->rawValue << "\n";
++                    }
+                 }
+             }
+             else if (value > (threshold.value + threshold.hysteresis))
+@@ -547,7 +566,16 @@ void assertThresholds(Sensor* sensor, double assertValue,
+ 
+             msg.append(sensor->name, interface->get_interface_name(), property,
+                        assert, assertValue);
+-            msg.signal_send();
++            //event message enable
++            if ((sensor->sensorEventEnable & 
++                     static_cast<uint8_t>(IPMISensorEventEnableThresholds::enableEventMessage)))
++            {
++                msg.signal_send();
++            }
++            else
++            {
++                std::cerr << "Event message is disabled\n";
++            }
+         }
+         catch (const sdbusplus::exception::exception& e)
+         {
+-- 
+2.33.0
+

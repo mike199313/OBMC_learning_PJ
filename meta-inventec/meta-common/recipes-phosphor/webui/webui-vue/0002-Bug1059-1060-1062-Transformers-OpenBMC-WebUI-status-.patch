@@ -1,0 +1,71 @@
+From f445cd7a764d48006ba18c7472db4bbb4646099b Mon Sep 17 00:00:00 2001
+From: Jason Lin <lin.jasonyy@inventec.com>
+Date: Mon, 20 Jun 2022 10:03:40 +0800
+Subject: [PATCH] Bug1059,1060,1062-[Transformers][OpenBMC][WebUI] status
+ display issue Bug 1059 - [Transformers][OpenBMC][WebUI]Doesn't display
+ "Health rollup" status of Memory summary on Inventory and LEDs of WebUI Bug
+ 1060 - [Transformers][OpenBMC][WebUI]Doesn't display "Manufacturer" of BMC
+ manager on Inventory and LEDs of WebUI.
+
+---
+ src/store/modules/HardwareStatus/BmcStore.js                 | 2 +-
+ src/store/modules/HardwareStatus/SystemStore.js              | 2 +-
+ src/views/HardwareStatus/Inventory/InventoryTableChassis.vue | 2 +-
+ src/views/HardwareStatus/Inventory/InventoryTableSystem.vue  | 2 +-
+ 4 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/src/store/modules/HardwareStatus/BmcStore.js b/src/store/modules/HardwareStatus/BmcStore.js
+index c042a83..8476193 100644
+--- a/src/store/modules/HardwareStatus/BmcStore.js
++++ b/src/store/modules/HardwareStatus/BmcStore.js
+@@ -26,7 +26,7 @@ const BmcStore = {
+       bmc.lastResetTime = new Date(data.LastResetTime);
+       bmc.identifyLed = data.LocationIndicatorActive;
+       bmc.locationNumber = data.Location?.PartLocation?.ServiceLabel;
+-      bmc.manufacturer = data.manufacturer;
++      bmc.manufacturer = data.Manufacturer;
+       bmc.managerType = data.ManagerType;
+       bmc.model = data.Model;
+       bmc.name = data.Name;
+diff --git a/src/store/modules/HardwareStatus/SystemStore.js b/src/store/modules/HardwareStatus/SystemStore.js
+index a1394f1..499941e 100644
+--- a/src/store/modules/HardwareStatus/SystemStore.js
++++ b/src/store/modules/HardwareStatus/SystemStore.js
+@@ -30,7 +30,7 @@ const SystemStore = {
+       system.processorSummaryCount = data.ProcessorSummary?.Count;
+       system.processorSummaryCoreCount = data.ProcessorSummary?.CoreCount;
+       system.processorSummaryHealth = data.ProcessorSummary?.Status?.Health;
+-      system.processorSummaryHealthRoll =
++      system.processorSummaryHealthRollup =
+         data.ProcessorSummary?.Status.HealthRollup;
+       system.processorSummaryState = data.ProcessorSummary?.Status?.State;
+       system.powerState = data.PowerState;
+diff --git a/src/views/HardwareStatus/Inventory/InventoryTableChassis.vue b/src/views/HardwareStatus/Inventory/InventoryTableChassis.vue
+index b49cec7..d075031 100644
+--- a/src/views/HardwareStatus/Inventory/InventoryTableChassis.vue
++++ b/src/views/HardwareStatus/Inventory/InventoryTableChassis.vue
+@@ -77,7 +77,7 @@
+                 <dd>{{ dataFormatter(item.statusState) }}</dd>
+                 <!-- Power state -->
+                 <dt>{{ $t('pageInventory.table.power') }}:</dt>
+-                <dd>{{ dataFormatter(item.power) }}</dd>
++                <dd>{{ dataFormatter(item.powerState) }}</dd>
+                 <!-- Health rollup -->
+                 <dt>{{ $t('pageInventory.table.healthRollup') }}:</dt>
+                 <dd>{{ dataFormatter(item.healthRollup) }}</dd>
+diff --git a/src/views/HardwareStatus/Inventory/InventoryTableSystem.vue b/src/views/HardwareStatus/Inventory/InventoryTableSystem.vue
+index cf2cf02..c64d118 100644
+--- a/src/views/HardwareStatus/Inventory/InventoryTableSystem.vue
++++ b/src/views/HardwareStatus/Inventory/InventoryTableSystem.vue
+@@ -130,7 +130,7 @@
+                 <dd>{{ dataFormatter(item.processorSummaryHealth) }}</dd>
+                 <!-- Health Rollup -->
+                 <dt>{{ $t('pageInventory.table.healthRollup') }}:</dt>
+-                <dd>{{ dataFormatter(item.processorSummaryHealthRoll) }}</dd>
++                <dd>{{ dataFormatter(item.processorSummaryHealthRollup) }}</dd>
+                 <!-- Count -->
+                 <dt>{{ $t('pageInventory.table.count') }}:</dt>
+                 <dd>{{ dataFormatter(item.processorSummaryCount) }}</dd>
+-- 
+2.33.0
+

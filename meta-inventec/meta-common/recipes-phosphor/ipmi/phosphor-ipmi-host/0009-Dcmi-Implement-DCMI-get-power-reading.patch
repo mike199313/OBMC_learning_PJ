@@ -1,0 +1,337 @@
+From 9c3a515f292b5957279f09e36c2e52faf79484d6 Mon Sep 17 00:00:00 2001
+From: "pj.chen" <chen.pj@inventec.com>
+Date: Thu, 3 Mar 2022 10:43:41 +0000
+Subject: [PATCH 09/31] Dcmi - Implement DCMI get power reading
+
+Symptom/Reason:
+    Enhance DCMI get power reading command
+
+Root Cause:
+    N/A
+
+Solution/Change:
+    [dcmihandler]
+        Get essential prooerties from dbus service xyz.openbmc_project.DCMI.
+        Including TotalPower, MaxValue, MinValue, AverageValue, LastSampleTime, AverageCount
+        And also need the extention of the phosphor-dbus-interface for SamplingPeriod, ExceptionAction, CorrectionTime
+
+Entry Test:
+
+sysadmin@transformers:~# ipmitool dcmi power reading
+
+    Instantaneous power reading:                    12 Watts
+    Minimum during sampling period:                 12 Watts
+    Maximum during sampling period:                 12 Watts
+    Average power reading over sample period:       12 Watts
+    IPMI timestamp:                           05/13/21 02:15:40 UTC    Sampling period:                          00000000 Seconds.
+    Power reading state is:                   deactivated
+
+sysadmin@transformers:~# ipmitool raw 0x2c 0x02 0xdc 0x02 0x0a 0x00
+ dc 09 00 08 00 0c 00 0a 00 37 89 41 00 0a 00 00
+ 00 00
+
+sysadmin@transformers:~# ipmitool dcmi power reading
+
+    Instantaneous power reading:                     9 Watts
+    Minimum during sampling period:                  9 Watts
+    Maximum during sampling period:                 12 Watts
+    Average power reading over sample period:       11 Watts
+    IPMI timestamp:                           05/13/21 02:18:00 UTC    Sampling period:                          00000010 Seconds.
+    Power reading state is:                   deactivated
+---
+ dcmihandler.cpp | 221 +++++++++++++++++++++++++++++++++++++++++++++---
+ dcmihandler.hpp |   6 ++
+ 2 files changed, 214 insertions(+), 13 deletions(-)
+
+diff --git a/dcmihandler.cpp b/dcmihandler.cpp
+index a7a3bf1..b95cf94 100644
+--- a/dcmihandler.cpp
++++ b/dcmihandler.cpp
+@@ -7,6 +7,7 @@
+ #include <bitset>
+ #include <cmath>
+ #include <fstream>
++#include <time.h>
+ #include <ipmid/api.hpp>
+ #include <ipmid/utils.hpp>
+ #include <nlohmann/json.hpp>
+@@ -22,11 +23,28 @@ using InternalFailure =
+ 
+ void register_netfn_dcmi_functions() __attribute__((constructor));
+ 
++/* Bug 307 - [SW][Common][Power]Implement inventec-dcmi-power */
++constexpr auto DCMI_SERVICE = "xyz.openbmc_project.DCMI";
++constexpr auto DCMI_PATH = "/xyz/openbmc_project/DCMI/Power";
++constexpr auto DCMI_INTERFACE = "xyz.openbmc_project.DCMI.Value";
++constexpr auto DCMI_TOTAL_POWER = "TotalPower";
++constexpr auto DCMI_MAX_POWER = "MaxValue";
++constexpr auto DCMI_MIN_POWER = "MinValue";
++constexpr auto DCMI_AVERAGE_POWER = "AverageValue";
++constexpr auto DCMI_LAST_SAMPLE_TIME = "LastSampleTime";
++constexpr auto DCMI_AVERAGE_COUNT = "AverageCount";
++
++
+ constexpr auto PCAP_PATH = "/xyz/openbmc_project/control/host0/power_cap";
+ constexpr auto PCAP_INTERFACE = "xyz.openbmc_project.Control.Power.Cap";
+ 
+ constexpr auto POWER_CAP_PROP = "PowerCap";
+ constexpr auto POWER_CAP_ENABLE_PROP = "PowerCapEnable";
++/* Bug 307 - [SW][Common][Power]Implement inventec-dcmi-power */
++constexpr auto SAMPLINGPERIOD_PROP = "SamplingPeriod";
++constexpr auto EXCEPTIONACTION_PROP = "ExceptionAction";
++constexpr auto CORRECTIONTIME_PROP = "CorrectionTime";
++
+ 
+ constexpr auto DCMI_PARAMETER_REVISION = 2;
+ constexpr auto DCMI_SPEC_MAJOR_VERSION = 1;
+@@ -149,6 +167,86 @@ void setPcapEnable(sdbusplus::bus::bus& bus, bool enabled)
+     }
+ }
+ 
++/* Bug 307 - [SW][Common][Power]Implement inventec-dcmi-power */
++uint32_t getSamplingPeriod(sdbusplus::bus::bus& bus)
++{
++    auto settingService = ipmi::getService(bus, PCAP_INTERFACE, PCAP_PATH);
++
++    auto method = bus.new_method_call(settingService.c_str(), PCAP_PATH,
++                                      "org.freedesktop.DBus.Properties", "Get");
++
++    method.append(PCAP_INTERFACE, SAMPLINGPERIOD_PROP);
++    auto reply = bus.call(method);
++
++    if (reply.is_method_error())
++    {
++        log<level::ERR>("Error in getPcapEnabled prop");
++        elog<InternalFailure>();
++    }
++    std::variant<uint32_t> samplingPeriod;
++    reply.read(samplingPeriod);
++
++    return std::get<uint32_t>(samplingPeriod);
++}
++
++
++void setSamplingPeriod(sdbusplus::bus::bus& bus, uint32_t samplingPeriod)
++{
++    auto service = ipmi::getService(bus, PCAP_INTERFACE, PCAP_PATH);
++
++    auto method = bus.new_method_call(service.c_str(), PCAP_PATH,
++                                      "org.freedesktop.DBus.Properties", "Set");
++
++    method.append(PCAP_INTERFACE, SAMPLINGPERIOD_PROP);
++    method.append(std::variant<uint32_t>(samplingPeriod));
++
++    auto reply = bus.call(method);
++
++    if (reply.is_method_error())
++    {
++        log<level::ERR>("Error in setSamplingPeriod property");
++        elog<InternalFailure>();
++    }
++}
++
++void setExceptionAction(sdbusplus::bus::bus& bus, std::string exceptionAction)
++{
++    auto service = ipmi::getService(bus, PCAP_INTERFACE, PCAP_PATH);
++
++    auto method = bus.new_method_call(service.c_str(), PCAP_PATH,
++                                      "org.freedesktop.DBus.Properties", "Set");
++
++    method.append(PCAP_INTERFACE, EXCEPTIONACTION_PROP);
++    method.append(std::variant<std::string>(exceptionAction));
++
++    auto reply = bus.call(method);
++
++    if (reply.is_method_error())
++    {
++        log<level::ERR>("Error in setExceptionAction property");
++        elog<InternalFailure>();
++    }
++}
++
++void setCorrectionTime(sdbusplus::bus::bus& bus, uint32_t correctionTime)
++{
++    auto service = ipmi::getService(bus, PCAP_INTERFACE, PCAP_PATH);
++
++    auto method = bus.new_method_call(service.c_str(), PCAP_PATH,
++                                      "org.freedesktop.DBus.Properties", "Set");
++
++    method.append(PCAP_INTERFACE, CORRECTIONTIME_PROP);
++    method.append(std::variant<uint32_t>(correctionTime));
++
++    auto reply = bus.call(method);
++
++    if (reply.is_method_error())
++    {
++        log<level::ERR>("Error in setCorrectionTime property");
++        elog<InternalFailure>();
++    }
++}
++
+ void readAssetTagObjectTree(dcmi::assettag::ObjectTree& objectTree)
+ {
+     static constexpr auto mapperBusName = "xyz.openbmc_project.ObjectMapper";
+@@ -1175,33 +1273,130 @@ ipmi_ret_t getPowerReading(ipmi_netfn_t netfn, ipmi_cmd_t cmd,
+         return IPMI_CC_INVALID;
+     }
+ 
++    /* Bug 307 - [SW][Common][Power]Implement inventec-dcmi-power */
++    uint32_t samplePeriod;
++    auto requestData =
++        reinterpret_cast<const dcmi::GetPowerReadingRequest*>(request);
++
++    sdbusplus::bus::bus sdbus{ipmid_get_sd_bus_connection()};
++
++    if(requestData->mode == (uint8_t)dcmi::DCMIPowerReadingMode::PowerReadingModeEnhancedStatistics)
++    {
++        switch((requestData->modeAttribute &0xc0)>>6)
++        {
++        case 0:
++            /* seconds*/
++            samplePeriod = (requestData->modeAttribute & 0x3F);
++            break;
++        case 1:
++            /* minutes*/
++            samplePeriod = (requestData->modeAttribute & 0x3F)*60;
++            break;
++        case 2:
++            /* Hours*/
++            samplePeriod = (requestData->modeAttribute & 0x3F)*3600;
++            break;
++        case 3:
++            /* Days*/
++            samplePeriod = (requestData->modeAttribute & 0x3F)*86400;
++            break;
++        }
++
++        try
++        {
++            dcmi::setSamplingPeriod(sdbus, samplePeriod);
++        }
++        catch (InternalFailure& e)
++        {
++            *data_len = 0;
++            return IPMI_CC_UNSPECIFIED_ERROR;
++        }
++    }
++
+     ipmi_ret_t rc = IPMI_CC_OK;
+     auto responseData =
+         reinterpret_cast<dcmi::GetPowerReadingResponse*>(response);
+ 
+-    sdbusplus::bus::bus bus{ipmid_get_sd_bus_connection()};
+-    int64_t power = 0;
++    /* Bug 307 - [SW][Common][Power]Implement inventec-dcmi-power */
++    uint32_t timestamp;
++    uint32_t averageCount;
+     try
+     {
+-        power = getPowerReading(bus);
++        // Read the vlaue from DCMI dbus interface
++        auto properties = ipmi::getAllDbusProperties(sdbus, DCMI_SERVICE, DCMI_PATH,
++                                                     DCMI_INTERFACE);
++
++        responseData->currentPower = std::get<double>(properties[DCMI_TOTAL_POWER]);
++        responseData->minimumPower = std::get<double>(properties[DCMI_MIN_POWER]);
++        responseData->maximumPower = std::get<double>(properties[DCMI_MAX_POWER]);
++        responseData->averagePower = std::get<double>(properties[DCMI_AVERAGE_POWER]);
++
++        /* For different last sample time and average count is for enhance statistics*/
++        timestamp = std::get<uint32_t>(properties[DCMI_LAST_SAMPLE_TIME]);
++        averageCount = std::get<uint32_t>(properties[DCMI_AVERAGE_COUNT]);
+     }
+     catch (const InternalFailure& e)
+     {
+-        log<level::ERR>("Error in reading power sensor value",
++        log<level::ERR>("Error in reading DCMI properties",
+                         entry("INTERFACE=%s", SENSOR_VALUE_INTF),
+                         entry("PROPERTY=%s", SENSOR_VALUE_PROP));
+         return IPMI_CC_UNSPECIFIED_ERROR;
+     }
+ 
+-    // TODO: openbmc/openbmc#2819
+-    // Minimum, Maximum, Average power, TimeFrame, TimeStamp,
+-    // PowerReadingState readings need to be populated
+-    // after Telemetry changes.
+-    uint16_t totalPower = static_cast<uint16_t>(power);
+-    responseData->currentPower = totalPower;
+-    responseData->minimumPower = totalPower;
+-    responseData->maximumPower = totalPower;
+-    responseData->averagePower = totalPower;
++    if(requestData->mode == (uint8_t)dcmi::DCMIPowerReadingMode::PowerReadingModeEnhancedStatistics)
++    {
++        /*
++            Refer to Spec, for enhanced statistics,
++            timestamp is the lastest value in sampling period.
++            timeframe is the sampling number in the sampling period.
++        */
++        responseData->timeStamp = timestamp;
++        responseData->timeFrame = averageCount;
++    }
++    else
++    {
++        /*
++            Refer to Spec, for statistics,
++            timestamp is just timestamp.
++            timeframe is the sampling period in milisecond.
++        */
++        time_t current_time;
++
++        time(&current_time);
++        responseData->timeStamp = current_time;
++        try
++        {
++            samplePeriod = dcmi::getSamplingPeriod(sdbus);
++        }
++        catch(InternalFailure& e)
++        {
++            log<level::ERR>("Error in getting SamplePeriod",
++                        entry("INTERFACE=%s", PCAP_INTERFACE),
++                        entry("PROPERTY=%s", SAMPLINGPERIOD_PROP));
++            return IPMI_CC_UNSPECIFIED_ERROR;
++        }
++        responseData->timeFrame = samplePeriod*1000; /*milisecond*/
++    }
++
++    /* Get power limit activation state*/
++    try
++    {
++        if(dcmi::getPcapEnabled(sdbus))
++        {
++            responseData->powerReadingState = 0x40; /*bit6: Power Measurement active*/
++        }
++        else
++        {
++            responseData->powerReadingState = 0;
++        }
++    }
++    catch (InternalFailure& e)
++    {
++        log<level::ERR>("Error in getting PcapEnable",
++                        entry("INTERFACE=%s", PCAP_INTERFACE),
++                        entry("PROPERTY=%s", POWER_CAP_ENABLE_PROP));
++        return IPMI_CC_UNSPECIFIED_ERROR;
++    }
+ 
+     *data_len = sizeof(*responseData);
+     return rc;
+diff --git a/dcmihandler.hpp b/dcmihandler.hpp
+index 4f35bc6..41d3171 100644
+--- a/dcmihandler.hpp
++++ b/dcmihandler.hpp
+@@ -487,6 +487,12 @@ struct GetPowerReadingRequest
+     uint8_t modeAttribute; //!< Mode Attributes
+ } __attribute__((packed));
+ 
++enum class DCMIPowerReadingMode : uint8_t
++{
++    PowerReadingModeStatistics=1,
++    PowerReadingModeEnhancedStatistics=2
++};
++
+ /** @struct GetPowerReadingResponse
+  *
+  *  DCMI Get Power Reading command response.
+-- 
+2.33.0
+

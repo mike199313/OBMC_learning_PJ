@@ -1,0 +1,636 @@
+From 963d5355123facc3a2839566a95dc18265183abd Mon Sep 17 00:00:00 2001
+From: cwsun <sun.cwsun@inventec.com>
+Date: Mon, 6 Sep 2021 14:19:06 +0800
+Subject: [PATCH 21/31] Bug 378 [Transformers][OpenBMC][IPMI]Authentication
+ type is empty and can not enable
+
+    Symptom/Reason :
+        - The ipmitool by using Get Lan Configuration to get the parameters named
+          AuthTypeSupport and AuthTypeEnabled will be failed.
+
+        - The ipmitool by using Set Lan Configuration to set the parameters named
+          AuthTypeSupport and AuthTypeEnabled will be failed.
+
+    Root Cause:
+        - The implementation of Get/Set Lan Configuration do not implement these two
+          parameters AuthTypeSupport and AuthTypeEnabled.
+
+    Solution/Change:
+        [phosphor-ipmi-host]
+            - modify the transporthandler.cpp to support set/get AuthTypeEnabled and AuthTypeSupport
+            - The values of AuthTypeEnabled and AuthTypeSupport will be saved in the channel_config.json.
+            - The default value of AuthTypeEnabled
+                -- callback : PASSWORD, MD5
+                -- user     : PASSWORD, MD5
+                -- operator : PASSWORD, MD5
+                -- administrator : PASSWORD, MD5
+                -- oem      : PASSWORD, MD5
+
+            - The default value of AuthTypeSupport is PASSWORD and MD5
+    Entry Test:
+        - Test Read AuthTypeSupport (Read only) and AuthTyepEnable
+            -- ipmitool lan print
+                Auth Type Support       : MD5 PASSWORD
+                Auth Type Enable        : Callback : MD5 PASSWORD
+                                        : User     : MD5 PASSWORD
+                                        : Operator : MD5 PASSWORD
+                                        : Admin    : MD5 PASSWORD
+                                        : OEM      : MD5 PASSWORD
+
+        - Test modify the AuthTypeEnable to support MD5 only
+            -- ipmitool raw 0x0c 0x01 0x01 0x02 0x04 0x04 0x04 0x04 0x04
+            -- ipmitool lan print
+            Auth Type Enable        : Callback : MD5
+                        : User     : MD5
+                        : Operator : MD5
+                        : Admin    : MD5
+                        : OEM      : MD5
+
+            -- check the content of channe_config.json
+            "1": {
+                "active_sessions": 0,
+                "auth_type_enabled": {
+                    "administrator": 4,
+                    "callback": 4,
+                    "oem": 4,
+                    "operator": 4,
+                    "user": 4
+                },
+                "channel_info": {
+                    "auth_type_supported": 5,
+                    "is_ipmi": true,
+                    "medium_type": "lan-802.3",
+                    "protocol_type": "ipmb-1.0",
+                    "session_supported": "multi-session"
+                },
+                "is_valid": true,
+                "name": "eth0"
+            }
+---
+ transporthandler.cpp           |  71 ++++++++++--
+ transporthandler.hpp           |   2 +-
+ user_channel/channel_layer.cpp |  24 ++++-
+ user_channel/channel_layer.hpp |  30 ++++++
+ user_channel/channel_mgmt.cpp  | 190 ++++++++++++++++++++++++++++++++-
+ user_channel/channel_mgmt.hpp  |  38 +++++++
+ 6 files changed, 338 insertions(+), 17 deletions(-)
+
+diff --git a/transporthandler.cpp b/transporthandler.cpp
+index 76c5182..862f860 100644
+--- a/transporthandler.cpp
++++ b/transporthandler.cpp
+@@ -1,4 +1,5 @@
+ #include "transporthandler.hpp"
++#include "user_channel/channel_mgmt.hpp"
+ 
+ using phosphor::logging::commit;
+ using phosphor::logging::elog;
+@@ -1105,16 +1106,50 @@ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
+             }
+             return response(ccParamNotSupported);
+         }
++
+         case LanParam::AuthSupport:
+         {
+             req.trailingOk = true;
+             return response(ccParamReadOnly);
+         }
++
+         case LanParam::AuthEnables:
+         {
+-            req.trailingOk = true;
+-            return response(ccParamReadOnly);
++            std::array<uint8_t, 5> authTypeArray;
++            if (req.unpack(authTypeArray) != 0 || !req.fullyUnpacked())
++            {
++                return responseReqDataLenInvalid();
++            }
++
++            for(int i=0; i<5; i++)
++            {
++                // Check if the authType are supported
++                uint8_t authType = (authTypeArray[i]);
++                if ((authType & static_cast<uint8_t>(EAuthType::md2)) ||
++                    (authType & static_cast<uint8_t>(EAuthType::oem)) ){
++                        return responseParmOutOfRange();
++                    }
++            }
++
++            for(int i=0; i<5; i++)
++            {
++                EAuthType authType = static_cast<EAuthType>(authTypeArray[i]);
++                Cc cc = setChannelEnabledAuthType(channel, i+1, authType);
++                if (cc)
++                {
++                    return responseUnspecifiedError();
++                }
++            }
++
++            int rc = writeChannelEnabledAuthTypeData(channel);
++            if(rc)
++            {
++                return responseUnspecifiedError();   
++            }
++            
++            return responseSuccess();
+         }
++
+         case LanParam::IP:
+         {
+             EthernetInterface::DHCPConf dhcp =
+@@ -1652,20 +1687,34 @@ RspType<message::Payload> getLan(Context::ptr ctx, uint4_t channelBits,
+         }
+         case LanParam::AuthSupport:
+         {
+-            std::bitset<6> support;
+-            ret.pack(support, uint2_t{});
+-            return responseSuccess(std::move(ret));
++            uint8_t support;
++            Cc cc = getChannelAuthTypeSupported(channel, support);
++            if (cc == ccSuccess)
++            {
++                ret.pack(support);
++                return responseSuccess(std::move(ret));
++            }else
++            {
++                return responseResponseError();
++            }
+         }
++
+         case LanParam::AuthEnables:
+         {
+-            std::bitset<6> enables;
+-            ret.pack(enables, uint2_t{}); // Callback
+-            ret.pack(enables, uint2_t{}); // User
+-            ret.pack(enables, uint2_t{}); // Operator
+-            ret.pack(enables, uint2_t{}); // Admin
+-            ret.pack(enables, uint2_t{}); // OEM
++            EAuthType authType;
++            int i;
++            for(i=1; i<6; i++)
++            {
++                Cc cc = getChannelEnabledAuthType(channel, i, authType);
++                if (cc == ccSuccess){
++                    ret.pack(static_cast<uint8_t>(authType));
++                }else{
++                    return responseResponseError();
++                }
++            }
+             return responseSuccess(std::move(ret));
+         }
++        
+         case LanParam::IP:
+         {
+             auto ifaddr = channelCall<getIfAddr4>(channel);
+diff --git a/transporthandler.hpp b/transporthandler.hpp
+index 3737cce..f0d297d 100644
+--- a/transporthandler.hpp
++++ b/transporthandler.hpp
+@@ -4,6 +4,7 @@
+ #include "user_channel/cipher_mgmt.hpp"
+ #include "storagehandler.hpp"
+ 
++
+ #include <arpa/inet.h>
+ #include <netinet/ether.h>
+ 
+@@ -62,7 +63,6 @@ constexpr auto SNMP_BUS = "xyz.openbmc_project.Network.SNMP";
+ constexpr auto INTF_CLIENT = "xyz.openbmc_project.Network.Client";
+ constexpr auto INTF_CLIENT_CREATE = "xyz.openbmc_project.Network.Client.Create";
+ 
+-
+ using namespace phosphor::logging;
+ 
+ /** @brief IPMI LAN Parameters */
+diff --git a/user_channel/channel_layer.cpp b/user_channel/channel_layer.cpp
+index 03b1729..f461671 100644
+--- a/user_channel/channel_layer.cpp
++++ b/user_channel/channel_layer.cpp
+@@ -46,7 +46,10 @@ bool isValidPrivLimit(const uint8_t privLimit)
+ {
+     // Callback privilege is deprecated in OpenBMC
+     // At present, "OEM Privilege" is not used in OpenBMC
+-    return ((privLimit > PRIVILEGE_CALLBACK) && (privLimit < PRIVILEGE_OEM));
++    
++    //cwsun : since openbmc not use CALLBACK AND OEM. 
++    //But IPMIv2.0 still define CALLBACK and OEM
++    return ((privLimit >= PRIVILEGE_CALLBACK) && (privLimit <= PRIVILEGE_OEM));
+ }
+ 
+ bool isValidAccessMode(const uint8_t accessMode)
+@@ -119,6 +122,12 @@ Cc setChannelAccessPersistData(const uint8_t chNum,
+         chNum, chAccessData, setFlag);
+ }
+ 
++Cc setChannelAuthTypeSupported(const uint8_t chNum, uint8_t& authTypeSupported)
++{
++    return getChannelConfigObject().setChannelAuthTypeSupported(
++        chNum, authTypeSupported);
++}
++
+ Cc getChannelAuthTypeSupported(const uint8_t chNum, uint8_t& authTypeSupported)
+ {
+     return getChannelConfigObject().getChannelAuthTypeSupported(
+@@ -132,6 +141,19 @@ Cc getChannelEnabledAuthType(const uint8_t chNum, const uint8_t priv,
+                                                               authType);
+ }
+ 
++
++int writeChannelEnabledAuthTypeData(uint8_t chNum)
++{
++    return getChannelConfigObject().writeChannelEnabledAuthTypeData(chNum);
++}
++
++Cc setChannelEnabledAuthType(const uint8_t chNum, const uint8_t priv,
++                             EAuthType& authType)
++{
++    return getChannelConfigObject().setChannelEnabledAuthType(chNum, priv,
++                                                              authType);
++}
++
+ std::string getChannelName(const uint8_t chNum)
+ {
+     return getChannelConfigObject().getChannelName(chNum);
+diff --git a/user_channel/channel_layer.hpp b/user_channel/channel_layer.hpp
+index 42e5b5e..8d4b648 100644
+--- a/user_channel/channel_layer.hpp
++++ b/user_channel/channel_layer.hpp
+@@ -109,6 +109,7 @@ enum class EAuthType : uint8_t
+     reserved = (1 << 0x3),
+     straightPasswd = (1 << 0x4),
+     oem = (1 << 0x5),
++    defaulttype = ((1 << 0x2) | (1 << 0x4)),
+ };
+ 
+ // TODO: Remove duplicate 'PayloadType' definition from netipmid's message.hpp
+@@ -335,6 +336,16 @@ Cc setChannelAccessPersistData(const uint8_t chNum,
+  */
+ Cc getChannelAuthTypeSupported(const uint8_t chNum, uint8_t& authTypeSupported);
+ 
++/** @brief set supported authentication type for the channel
++ *
++ *  @param[in] chNum - channel number
++ *  @param[out] authTypeSupported - supported authentication type
++ *
++ *  @return ccSuccess for success, others for failure.
++ */
++Cc setChannelAuthTypeSupported(const uint8_t chNum, uint8_t& authTypeSupported);
++
++
+ /** @brief provides enabled authentication type for the channel
+  *
+  *  @param[in] chNum - channel number
+@@ -346,6 +357,25 @@ Cc getChannelAuthTypeSupported(const uint8_t chNum, uint8_t& authTypeSupported);
+ Cc getChannelEnabledAuthType(const uint8_t chNum, const uint8_t priv,
+                              EAuthType& authType);
+ 
++/** @brief set enabled authentication type for the channel
++ *
++ *  @param[in] chNum - channel number
++ *  @param[in] priv - privilege
++ *  @param[out] authType - enabled authentication type
++ *
++ *  @return ccSuccess for success, others for failure.
++ */
++Cc setChannelEnabledAuthType(const uint8_t chNum, const uint8_t priv,
++                             EAuthType& authType);
++
++/** @brief write enabled authentication type for the channel to channel config file
++ *
++ *  @param[in] chNum - channel number
++ *  @return ccSuccess for success, others for failure.
++ */
++int writeChannelEnabledAuthTypeData(uint8_t chNum);
++
++
+ /** @brief Retrieves the LAN channel name from the IPMI channel number
+  *
+  *  @param[in] chNum - IPMI channel number
+diff --git a/user_channel/channel_mgmt.cpp b/user_channel/channel_mgmt.cpp
+index 8224223..1499485 100644
+--- a/user_channel/channel_mgmt.cpp
++++ b/user_channel/channel_mgmt.cpp
+@@ -81,6 +81,13 @@ static constexpr const char* alertingDisabledString = "alerting_disabled";
+ static constexpr const char* privLimitString = "priv_limit";
+ static constexpr const char* authTypeEnabledString = "auth_type_enabled";
+ 
++static constexpr const char* authTypeEnabledCallbackString = "callback";
++static constexpr const char* authTypeEnabledUserString = "user";
++static constexpr const char* authTypeEnabledOperatorString = "operator";
++static constexpr const char* authTypeEnabledAdministratorString = "administrator";
++static constexpr const char* authTypeEnabledOemString = "oem";
++
++
+ // Default values
+ static constexpr const char* defaultChannelName = "RESERVED";
+ static constexpr const uint8_t defaultMediumType =
+@@ -685,6 +692,20 @@ Cc ChannelConfig::getChannelAuthTypeSupported(const uint8_t chNum,
+     return ccSuccess;
+ }
+ 
++
++Cc ChannelConfig::setChannelAuthTypeSupported(const uint8_t chNum,
++                                              uint8_t& authTypeSupported)
++{
++    if (!isValidChannel(chNum))
++    {
++        log<level::DEBUG>("Invalid channel");
++        return ccInvalidFieldRequest;
++    }
++
++    channelData[chNum].chInfo.authTypeSupported = authTypeSupported;
++    return ccSuccess;
++}
++
+ Cc ChannelConfig::getChannelEnabledAuthType(const uint8_t chNum,
+                                             const uint8_t priv,
+                                             EAuthType& authType)
+@@ -692,27 +713,163 @@ Cc ChannelConfig::getChannelEnabledAuthType(const uint8_t chNum,
+     if (!isValidChannel(chNum))
+     {
+         log<level::DEBUG>("Invalid channel");
++        authType = EAuthType::none;
++        return ccInvalidFieldRequest;
++    }
++
++    if (getChannelSessionSupport(chNum) == EChannelSessSupported::none)
++    {
++        log<level::DEBUG>("Sessionless channel doesn't have access data.");
++        authType = EAuthType::none;
++        return ccInvalidFieldRequest;
++    }
++
++    if (!isValidPrivLimit(priv))
++    {
++        log<level::DEBUG>("Invalid privilege specified.");
++        authType = EAuthType::none;
++        return ccInvalidFieldRequest;
++    }
++
++    switch(priv)
++    {
++        case PRIVILEGE_CALLBACK:{
++            authType = channelData[chNum].authTypeEnable._callback;
++        }break;
++
++        case PRIVILEGE_USER:{
++            authType = channelData[chNum].authTypeEnable._user;
++        }break;
++        
++        case PRIVILEGE_OPERATOR:{
++            authType = channelData[chNum].authTypeEnable._operator;
++        }break;
++        
++        case PRIVILEGE_ADMIN:{
++            authType = channelData[chNum].authTypeEnable._administrator;
++        }break;
++        
++        case PRIVILEGE_OEM:{
++            authType = channelData[chNum].authTypeEnable._oem;
++        }break;
++        
++        default:
++            authType = EAuthType::none;
++
++    }
++    fprintf(stderr, "Get priv=%d authType=%d \n", priv, static_cast<uint8_t>(authType));
++    return ccSuccess;
++}
++
++Cc ChannelConfig::setChannelEnabledAuthType(const uint8_t chNum,
++                                            const uint8_t priv,
++                                            EAuthType& authType)
++{
++    if (!isValidChannel(chNum))
++    {
++        log<level::DEBUG>("Invalid channel");
++        authType = EAuthType::none;
+         return ccInvalidFieldRequest;
+     }
+ 
+     if (getChannelSessionSupport(chNum) == EChannelSessSupported::none)
+     {
+         log<level::DEBUG>("Sessionless channel doesn't have access data.");
++        authType = EAuthType::none;
+         return ccInvalidFieldRequest;
+     }
+ 
+     if (!isValidPrivLimit(priv))
+     {
+         log<level::DEBUG>("Invalid privilege specified.");
++        authType = EAuthType::none;
+         return ccInvalidFieldRequest;
+     }
+ 
+-    // TODO: Hardcoded for now. Need to implement.
+-    authType = EAuthType::none;
++    switch (priv)
++    {
++        case PRIVILEGE_CALLBACK:
++        {
++            channelData[chNum].authTypeEnable._callback = authType;
++        }
++        break;
+ 
++        case PRIVILEGE_USER:
++        {
++            channelData[chNum].authTypeEnable._user = authType;
++        }
++        break;
++
++        case PRIVILEGE_OPERATOR:
++        {
++            channelData[chNum].authTypeEnable._operator = authType;
++        }
++        break;
++
++        case PRIVILEGE_ADMIN:
++        {
++            
++                channelData[chNum].authTypeEnable._administrator = authType;
++        }
++        break;
++
++        case PRIVILEGE_OEM:
++        {
++            channelData[chNum].authTypeEnable._oem = authType;
++        }
++    }
++    fprintf(stderr, "Set priv=%d authType=%d \n", priv,
++            static_cast<uint8_t>(authType));
+     return ccSuccess;
+ }
+ 
++int ChannelConfig::writeChannelEnabledAuthTypeData(uint8_t chNum)
++{
++    boost::interprocess::scoped_lock<boost::interprocess::named_recursive_mutex>
++        channelLock{*channelMutex};
++
++    Json outData = readJsonFile(channelConfigDefaultFilename);
++    if (outData.empty())
++    {
++        log<level::DEBUG>("Error in opening IPMI Channel data file");
++        return -EIO;
++
++    }
++
++    try
++    {
++        Json jAuthTypeEnable;
++        std::string chKey = std::to_string(chNum);
++        ChannelProperties& chData = channelData[chNum];
++        
++        jAuthTypeEnable[authTypeEnabledString][authTypeEnabledCallbackString] = chData.authTypeEnable._callback;
++        jAuthTypeEnable[authTypeEnabledString][authTypeEnabledUserString] = chData.authTypeEnable._user;
++        jAuthTypeEnable[authTypeEnabledString][authTypeEnabledOperatorString] = chData.authTypeEnable._operator;
++        jAuthTypeEnable[authTypeEnabledString][authTypeEnabledAdministratorString] = chData.authTypeEnable._administrator;
++        jAuthTypeEnable[authTypeEnabledString][authTypeEnabledOemString] = chData.authTypeEnable._oem;
++
++        outData[chKey].update(jAuthTypeEnable);
++    }
++    catch (const Json::exception& e)
++    {
++        log<level::DEBUG>("Json Exception caught.", entry("MSG=%s", e.what()));
++        return -EBADMSG;
++    }
++    catch (const std::invalid_argument& e)
++    {
++        log<level::ERR>("Corrupted config.", entry("MSG=%s", e.what()));
++        return -EINVAL;
++    }
++
++    if (writeJsonFile(channelConfigDefaultFilename, outData) != 0)
++    {
++        log<level::DEBUG>("Error in write JSON data to file");
++        return -EIO;
++    }
++
++    return 0;
++}
++
+ std::time_t ChannelConfig::getUpdatedFileTime(const std::string& fileName)
+ {
+     struct stat fileStat;
+@@ -858,7 +1015,7 @@ int ChannelConfig::writeJsonFile(const std::string& configFile,
+                         entry("FILE_NAME = %s", tmpFile.c_str()));
+         return -EIO;
+     }
+-    const auto& writeData = jsonData.dump();
++    const auto& writeData = jsonData.dump(4);
+     if (write(fd, writeData.c_str(), writeData.size()) !=
+         static_cast<ssize_t>(writeData.size()))
+     {
+@@ -1012,7 +1169,32 @@ int ChannelConfig::loadChannelConfig()
+             chData.chInfo.sessionSupported =
+                 static_cast<uint8_t>(convertToSessionSupportIndex(sessStr));
+             chData.chInfo.isIpmi = jsonChInfo[isIpmiString].get<bool>();
+-            chData.chInfo.authTypeSupported = defaultAuthType;
++
++            Json jsupport = 
++                jsonChInfo[authTypeSupportedString].get<Json>();
++            if(jsupport.is_null())
++            {
++                chData.chInfo.authTypeSupported = static_cast<uint8_t>(EAuthType::defaulttype);
++            }else{
++                chData.chInfo.authTypeSupported =
++                    jsonChInfo[authTypeSupportedString].get<uint8_t>();
++            }
++
++            Json jsonAuthTypeEnable = jsonChData[authTypeEnabledString].get<Json>();
++            if (jsonAuthTypeEnable.is_null())
++            {
++                chData.authTypeEnable._callback = EAuthType::defaulttype;
++                chData.authTypeEnable._user =  EAuthType::defaulttype;
++                chData.authTypeEnable._operator =  EAuthType::defaulttype;
++                chData.authTypeEnable._administrator =  EAuthType::defaulttype;
++                chData.authTypeEnable._oem =  EAuthType::defaulttype;
++            }else{
++                chData.authTypeEnable._callback = jsonAuthTypeEnable[authTypeEnabledCallbackString].get<EAuthType>();
++                chData.authTypeEnable._user = jsonAuthTypeEnable[authTypeEnabledUserString].get<EAuthType>();
++                chData.authTypeEnable._operator = jsonAuthTypeEnable[authTypeEnabledOperatorString].get<EAuthType>();
++                chData.authTypeEnable._administrator = jsonAuthTypeEnable[authTypeEnabledAdministratorString].get<EAuthType>();
++                chData.authTypeEnable._oem = jsonAuthTypeEnable[authTypeEnabledOemString].get<EAuthType>();
++            }
+         }
+         catch (const Json::exception& e)
+         {
+diff --git a/user_channel/channel_mgmt.hpp b/user_channel/channel_mgmt.hpp
+index 0f35816..3cd1a34 100644
+--- a/user_channel/channel_mgmt.hpp
++++ b/user_channel/channel_mgmt.hpp
+@@ -50,6 +50,15 @@ struct ChannelAccessData
+     ChannelAccess chVolatileData;
+ };
+ 
++struct AuthTypeEnable
++{
++    EAuthType _callback;
++    EAuthType _user;
++    EAuthType _operator;
++    EAuthType _administrator;
++    EAuthType _oem;
++};
++
+ /** @struct ChannelProperties
+  *
+  *  Structure for channel information - base structure to get all information
+@@ -65,6 +74,7 @@ struct ChannelProperties
+     ChannelAccessData chAccess;
+     size_t maxTransferSize;
+     bool isManagementNIC;
++    AuthTypeEnable authTypeEnable;
+ };
+ 
+ class ChannelConfig;
+@@ -205,6 +215,16 @@ class ChannelConfig
+     Cc getChannelAuthTypeSupported(const uint8_t chNum,
+                                    uint8_t& authTypeSupported);
+ 
++    /** @brief provides supported authentication type for the channel
++     *
++     *  @param[in] chNum - channel number
++     *  @param[out] authTypeSupported - supported authentication type
++     *
++     *  @return ccSuccess for success, others for failure.
++     */
++    Cc setChannelAuthTypeSupported(const uint8_t chNum,
++                                   uint8_t& authTypeSupported);
++
+     /** @brief provides enabled authentication type for the channel
+      *
+      *  @param[in] chNum - channel number
+@@ -216,6 +236,17 @@ class ChannelConfig
+     Cc getChannelEnabledAuthType(const uint8_t chNum, const uint8_t priv,
+                                  EAuthType& authType);
+ 
++    /** @brief set enabled authentication type for the channel
++     *
++     *  @param[in] chNum - channel number
++     *  @param[in] priv - privilege
++     *  @param[out] authType - enabled authentication type
++     *
++     *  @return ccSuccess for success, others for failure.
++     */
++    Cc setChannelEnabledAuthType(const uint8_t chNum, const uint8_t priv,
++                                 EAuthType& authType);
++
+     /** @brief conver to channel privilege from system privilege
+      *
+      *  @param[in] value - privilege value
+@@ -236,6 +267,13 @@ class ChannelConfig
+      */
+     int writeChannelVolatileData();
+ 
++    /** @brief function to write channel Authentication type enabled configuration to config file
++     *  
++     *  @param[in] chNum the Authentication type enabled of channel number that need to be serialize to config file
++     *  @return 0 for success, -errno for failure.
++     */
++    int writeChannelEnabledAuthTypeData(uint8_t  chNum);
++
+     /** @brief Returns the IPMI channel ID authorized to push IPMI privilege
+      * changes to phosphor-user-manager. Any channel access changes made on
+      * any other channel are ignored.
+-- 
+2.33.0
+

@@ -1,0 +1,38 @@
+From 541184371d77f1a7e2b5032ff8d42b859e6c60f3 Mon Sep 17 00:00:00 2001
+From: Tommy Lin <lin.tommysc@inventec.com>
+Date: Wed, 2 Mar 2022 10:38:09 +0000
+Subject: [PATCH 2/2] Add option for setting interface to wait on
+
+Symptom/Reason:
+    - rsyslog service was started very late pending on systemd-networkd-wait-online.service
+
+Root Cause:
+    - systemd-networkd-wait-online.service waits for all link ready which takes too long
+
+Solution/Change:
+    [systemd]
+      - Add interface option for systemd-networkd-wait-online.service to wait on
+
+Entry Test:
+    - N/A
+---
+ units/systemd-networkd-wait-online.service.in | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/units/systemd-networkd-wait-online.service.in b/units/systemd-networkd-wait-online.service.in
+index 10d8b08c8e..9b4117af82 100644
+--- a/units/systemd-networkd-wait-online.service.in
++++ b/units/systemd-networkd-wait-online.service.in
+@@ -18,7 +18,8 @@ Before=network-online.target shutdown.target
+ 
+ [Service]
+ Type=oneshot
+-ExecStart={{ROOTLIBEXECDIR}}/systemd-networkd-wait-online
++EnvironmentFile=/etc/systemd/wait_interface.conf
++ExecStart={{ROOTLIBEXECDIR}}/systemd-networkd-wait-online -i ${interface}
+ RemainAfterExit=yes
+ 
+ [Install]
+-- 
+2.33.0
+

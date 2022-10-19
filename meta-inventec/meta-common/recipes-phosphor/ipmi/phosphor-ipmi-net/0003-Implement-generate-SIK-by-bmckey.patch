@@ -1,0 +1,205 @@
+From 007cd39520b0db2c4cf258dd76f91ebfaef48b95 Mon Sep 17 00:00:00 2001
+From: Tommy Lin <lin.tommysc@inventec.com>
+Date: Thu, 10 Mar 2022 06:04:37 +0000
+Subject: [PATCH 4/5] Bug 726 - [Transformers][OpenBMC][IPMI]KG status is
+ incorrect of Get Channel Authentication Capabilities command after set KG
+ key.
+
+Symptom/Reason :
+    - The kg key status report from get channel authentication capabilities always return false (all-zeros)
+
+Root Cause:
+    - The get channel authentication capabilities does not support kg status checking.
+
+Solution/Change:
+    [phosphor-ipmi-host]
+        - Checking bmc key(kg key) status.
+
+    [phosphor-ipmi-net]
+        - Using kgkey to establish RMCP+ session when kgkey length is not zero.
+        - support KGStatus attribute of channel authentication capabilities when query from network.
+
+Entry Test:
+    - set kg key but not lock, the kg status should return false ( all zeros)
+        -- ipmitool raw 0x06 0x56 0x01 0x01 0x01 0x68 0x65 0x6c 0x6c 0x6f 0x77 0x6f 0x72 0x6c 0x64
+
+    - the RMCP+ now need using kgkey to generate SIK. The kgstatus should return true (non-zero)
+        -- ipmitool raw 0x06 0x56 0x01 0x02 0x01
+        -- ipmitool channel authcap 1 4
+            Channel number             : 1
+            IPMI v1.5  auth types      : MD5 PASSWORD
+            KG status                  : non-zero
+
+Bug 634 - [SW][Transformers][OpenBMC][IPMI]Implement generating SIK by BMC Key
+
+Symptom/Reason :
+    - implement the SIK generation with kgkey
+
+Root Cause:
+    - None
+
+Solution/Change:
+    [phosphor-ipmi-net]
+        - add function of SIK generation with kgkey
+            -- the kgkey is enabled when kgkey size is not zero and kgkey state is locked
+
+Entry Test:
+    - set kg key as "helloworld"
+        ipmitool raw 0x06 0x56 0x01 0x01 0x01 0x68 0x65 0x6c 0x6c 0x6f 0x77 0x6f 0x72 0x6c 0x64
+    - lock kg key
+        ipmitool raw 0x06 0x56 0x01 0x02 0x01
+    - After set kg key and lock kgkey, build RMCP+ session with kgkey
+        ipmitool -C17 -I lanplus -H 172.17.0.2 -p 2623 -U root -P 0penBmc -k helloworld shell
+---
+ auth_algo.cpp            | 32 ++++++++++++++++++++++++++++++++
+ auth_algo.hpp            | 10 ++++++++++
+ command/channel_auth.cpp | 13 ++++++++++++-
+ command/rakp34.cpp       | 16 +++++++++++++++-
+ 4 files changed, 69 insertions(+), 2 deletions(-)
+
+diff --git a/auth_algo.cpp b/auth_algo.cpp
+index 4572831..0219b30 100644
+--- a/auth_algo.cpp
++++ b/auth_algo.cpp
+@@ -49,6 +49,22 @@ std::vector<uint8_t>
+     return output;
+ }
+ 
++std::vector<uint8_t>
++    AlgoSHA1::generateSIK(const std::vector<uint8_t>& input) const
++{
++    std::vector<uint8_t> output(SHA_DIGEST_LENGTH);
++    unsigned int mdLen = 0;
++
++    if (HMAC(EVP_sha1(), kgKey.data(), kgKey.size(), input.data(),
++             input.size(), output.data(), &mdLen) == NULL)
++    {
++        log<level::ERR>("Generate SIK failed");
++        output.resize(0);
++    }
++
++    return output;
++}
++
+ std::vector<uint8_t>
+     AlgoSHA256::generateHMAC(const std::vector<uint8_t>& input) const
+ {
+@@ -84,6 +100,22 @@ std::vector<uint8_t>
+     return output;
+ }
+ 
++std::vector<uint8_t>
++    AlgoSHA256::generateSIK(const std::vector<uint8_t>& input) const
++{
++    std::vector<uint8_t> output(SHA256_DIGEST_LENGTH);
++    unsigned int mdLen = 0;
++
++    if (HMAC(EVP_sha256(), kgKey.data(), kgKey.size(), input.data(),
++             input.size(), output.data(), &mdLen) == NULL)
++    {
++        log<level::ERR>("Generate HMAC_SHA256 failed");
++        output.resize(0);
++    }
++
++    return output;
++}
++
+ } // namespace rakp_auth
+ 
+ } // namespace cipher
+diff --git a/auth_algo.hpp b/auth_algo.hpp
+index 894a853..c883690 100644
+--- a/auth_algo.hpp
++++ b/auth_algo.hpp
+@@ -97,6 +97,9 @@ class Interface
+     std::vector<uint8_t> virtual generateICV(
+         const std::vector<uint8_t>& input) const = 0;
+ 
++    std::vector<uint8_t> virtual generateSIK(
++        const std::vector<uint8_t>& input) const = 0;
++
+     /**
+      * @brief Check if the Authentication algorithm is supported
+      *
+@@ -120,6 +123,7 @@ class Interface
+     // User Key is hardcoded to PASSW0RD till the IPMI User account
+     // management is in place.
+     std::array<uint8_t, USER_KEY_MAX_LENGTH> userKey = {"0penBmc"};
++    std::array<uint8_t, USER_KEY_MAX_LENGTH> kgKey = {"0123456789"};
+ 
+     // Managed System Random Number
+     std::array<uint8_t, BMC_RANDOM_NUMBER_LEN> bmcRandomNum;
+@@ -182,6 +186,9 @@ class AlgoSHA1 : public Interface
+ 
+     std::vector<uint8_t>
+         generateICV(const std::vector<uint8_t>& input) const override;
++
++    std::vector<uint8_t>
++        generateSIK(const std::vector<uint8_t>& input) const override;
+ };
+ 
+ /**
+@@ -217,6 +224,9 @@ class AlgoSHA256 : public Interface
+ 
+     std::vector<uint8_t>
+         generateICV(const std::vector<uint8_t>& input) const override;
++
++    std::vector<uint8_t>
++        generateSIK(const std::vector<uint8_t>& input) const override;
+ };
+ 
+ } // namespace rakp_auth
+diff --git a/command/channel_auth.cpp b/command/channel_auth.cpp
+index 168dd99..8b26ca6 100644
+--- a/command/channel_auth.cpp
++++ b/command/channel_auth.cpp
+@@ -64,7 +64,18 @@ std::vector<uint8_t>
+     response->none = 0;
+ 
+     response->reserved3 = 0;
+-    response->KGStatus = 0;       // KG is set to default
++    response->KGStatus = 0;
++    std::string ks;
++    std::string kv;
++    ipmi::Cc cc = ipmi::getBMCKey(chNum, ks, kv);
++
++    if ( (cc == ipmi::ccSuccess) && (kv.size() > 0) )
++    {
++        // KGKey does not support locked state
++        // only check if the length is larger then 0, treated as kgkey enabled
++        response->KGStatus = 1;
++    }
++
+     response->perMessageAuth = 0; // Per-message Authentication is enabled
+     response->userAuth = 0;       // User Level Authentication is enabled
+     uint8_t maxChUsers = 0;
+diff --git a/command/rakp34.cpp b/command/rakp34.cpp
+index cfa2363..deed708 100644
+--- a/command/rakp34.cpp
++++ b/command/rakp34.cpp
+@@ -214,7 +214,21 @@ std::vector<uint8_t> RAKP34(const std::vector<uint8_t>& inPayload,
+     std::copy_n(session->userName.data(), userLength, iter);
+ 
+     // Generate Session Integrity Key
+-    auto sikOutput = authAlgo->generateHMAC(input);
++    // if enable the BMC Key of the channel
++    // bug688.2 kgkey does support locked state
++    // generate the SIK with kgkey
++    std::string ks;
++    std::string kv;
++    std::vector<uint8_t> sikOutput;
++    ipmi::Cc cc = ipmi::getBMCKey(session->channelNum(), ks, kv);
++    if ((cc == ipmi::ccSuccess) && (kv.size() > 0))
++    {
++        std::copy_n(kv.c_str(), kv.size(), authAlgo->kgKey.data());
++        sikOutput = authAlgo->generateSIK(input);
++    } else {
++        // not enable the kgkey, using default way to generate SIK
++        sikOutput = authAlgo->generateHMAC(input);
++    }
+ 
+     // Update the SIK in the Authentication Algo Interface
+     authAlgo->sessionIntegrityKey.insert(authAlgo->sessionIntegrityKey.begin(),
+-- 
+2.33.0
+

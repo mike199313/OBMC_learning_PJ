@@ -1,0 +1,171 @@
+From 838a53b8db9b2cea005d675033da98dd3a4d8e23 Mon Sep 17 00:00:00 2001
+From: "Lin.TommySC" <lin.tommysc@inventec.com>
+Date: Thu, 6 May 2021 03:19:59 +0000
+Subject: [PATCH 08/31] - Implement LAN Config Primary RMCP Port
+
+Symptom/Reason :
+    - Implement LAN Config Primary RMCP Port
+
+Root Cause:
+    - N/A
+
+Solution/Change:
+    [phospher-ipmi-config]
+        - Add primary_rmcp_port config name with default value 623
+    [phospher-ipmi-host]
+        - Add entry for command handler and read/write fonfig value from/to lan_config.json
+        - Restart netipmid systemd service after RMCP port change
+    [phospher-ipmi-net]
+        - Reads primary_rmcp_port value from lan_config.json at Init
+        - Add getRmcpPort function to get RMCP port
+
+Entry Test:
+    - Get RMCP port
+        ipmitool raw 0x0c 0x02 0x01 0x08 0x00 0x00
+    - Set RMCP port
+        ipmitool raw 0x0c 0x01 0x01 0x08 0x50 0x02
+---
+ transporthandler.cpp | 61 ++++++++++++++++++++++++++++++++++++++++++++
+ transporthandler.hpp |  8 +++++-
+ 2 files changed, 68 insertions(+), 1 deletion(-)
+
+diff --git a/transporthandler.cpp b/transporthandler.cpp
+index 7002df5..b1748ba 100644
+--- a/transporthandler.cpp
++++ b/transporthandler.cpp
+@@ -873,6 +873,42 @@ bool isValidMACAddress(const ether_addr& mac)
+     return true;
+ }
+ 
++/**
++ * @brief Update phosphor-ipmi-net@.socket file
++ *
++ * Update ListenDatagram field value in phosphor-ipmi-net@.socket file with given interface name
++ *
++ * @param[in] interface - Interface name
++ * @param[in] port - Port number
++ **/
++void updateRMCPPortConfig(const std::string& interface, uint16_t port)
++{
++    const std::string NET_IPMID_CFG_FILE = "/etc/systemd/system/sockets.target.wants/phosphor-ipmi-net@" + interface + ".socket";
++    std::ofstream configStream(NET_IPMID_CFG_FILE);
++    configStream << "[Socket]" << std::endl;
++    configStream << "ListenDatagram=" << port << std::endl;
++    configStream << "BindToDevice=sys-subsystem-net-devices-%i.device" << std::endl;
++    configStream << "" << std::endl;
++    configStream << "[Install]" << std::endl;
++    configStream << "WantedBy=sockets.target" << std::endl;
++}
++
++void restartService(const std::string& unit, bool reload)
++{
++    if (reload)
++    {
++        boost::process::child reload("/bin/systemctl", "daemon-reload");
++        reload.wait();
++    }
++    boost::process::spawn("/bin/systemctl", "restart", unit);
++}
++
++void asyncRestartService(const std::string& unit, bool reload)
++{
++    std::thread t_restart(restartService, unit, reload);
++    t_restart.detach();
++}
++
+ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
+                  uint8_t parameter, message::Payload& req)
+ {
+@@ -1035,6 +1071,24 @@ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
+             channelCall<reconfigureIfAddr4>(channel, std::nullopt, prefix);
+             return responseSuccess();
+         }
++        case LanParam::PrimaryRMCPPort:
++        {
++            uint16_t port;
++            std::array<uint8_t, sizeof(port)> bytes;
++            if (req.unpack(bytes) != 0 || !req.fullyUnpacked())
++            {
++                return responseReqDataLenInvalid();
++            }
++            copyInto(port, bytes);
++            if (updateConfigValue<uint16_t>(LAN_CONFIG_PRI_RMCP_PORT, port))
++            {
++                return responseResponseError();
++            }
++            std::string interface = getChannelName(channel);
++            updateRMCPPortConfig(interface, port);
++            asyncRestartService(NETIPMID_SERVICE + interface, true);
++            return responseSuccess();
++        }
+         case LanParam::Gateway1:
+         {
+             EthernetInterface::DHCPConf dhcp =
+@@ -1426,6 +1480,13 @@ RspType<message::Payload> getLan(Context::ptr ctx, uint4_t channelBits,
+             ret.pack(dataRef(netmask));
+             return responseSuccess(std::move(ret));
+         }
++        case LanParam::PrimaryRMCPPort:
++        {
++            uint16_t port = 623;
++            loadConfigValue<uint16_t>(LAN_CONFIG_PRI_RMCP_PORT, port);
++            ret.pack(dataRef(port));
++            return responseSuccess(std::move(ret));
++        }
+         case LanParam::Gateway1:
+         {
+             auto gateway =
+diff --git a/transporthandler.hpp b/transporthandler.hpp
+index e19b54e..c645f24 100644
+--- a/transporthandler.hpp
++++ b/transporthandler.hpp
+@@ -2,6 +2,7 @@
+ 
+ #include "app/channel.hpp"
+ #include "user_channel/cipher_mgmt.hpp"
++#include "storagehandler.hpp"
+ 
+ #include <arpa/inet.h>
+ #include <netinet/ether.h>
+@@ -33,6 +34,7 @@
+ #include <user_channel/channel_layer.hpp>
+ #include <utility>
+ #include <vector>
++#include <boost/process.hpp>
+ #include <xyz/openbmc_project/Common/error.hpp>
+ #include <xyz/openbmc_project/Network/EthernetInterface/server.hpp>
+ #include <xyz/openbmc_project/Network/IP/server.hpp>
+@@ -70,6 +72,7 @@ enum class LanParam : uint8_t
+     IPSrc = 4,
+     MAC = 5,
+     SubnetMask = 6,
++    PrimaryRMCPPort = 8,
+     Gateway1 = 12,
+     Gateway1MAC = 13,
+     CommunityStr = 16,
+@@ -171,10 +174,13 @@ constexpr uint8_t MAX_IPV4_PREFIX_LENGTH = 32;
+ constexpr uint8_t MIN_IPV6_PREFIX_LENGTH = 1;
+ constexpr uint8_t MAX_IPV6_PREFIX_LENGTH = 128;
+ 
++// Systemd service for netipmid
++constexpr auto NETIPMID_SERVICE = "phosphor-ipmi-net@";
+ // Config file for LAN Config Parameters
+ constexpr auto LAN_CFG_FILE = "/usr/share/ipmi-providers/lan_config.json";
+ // Config name for LAN Config Parameters
+ constexpr auto LAN_CONFIG_COMM_STR = "community_str";
++constexpr auto LAN_CONFIG_PRI_RMCP_PORT = "primary_rmcp_port";
+ 
+ /** @brief get config value from LAN configuration file.
+  *  @param[in] name - config name.
+@@ -199,7 +205,7 @@ template <typename T> int loadConfigValue(const std::string& name, T& val)
+ 
+     if (data.contains(name))
+     {
+-        val = data[name];
++        val = (T)data[name];
+         return 0;
+     }
+ 
+-- 
+2.33.0
+

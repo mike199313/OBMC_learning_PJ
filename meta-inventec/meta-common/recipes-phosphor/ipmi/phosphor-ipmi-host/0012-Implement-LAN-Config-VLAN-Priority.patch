@@ -1,0 +1,145 @@
+From dba37f3a537ade4aa7a2917c78e5ee213f52a35d Mon Sep 17 00:00:00 2001
+From: "Lin.TommySC" <lin.tommysc@inventec.com>
+Date: Tue, 25 May 2021 05:58:05 +0000
+Subject: [PATCH 12/31] Implement LAN Config VLAN Priority
+
+Symptom/Reason :
+    - Implement LAN Config VLAN Priority
+
+Root Cause:
+    - N/A
+
+Solution/Change:
+    [phospher-dbus-interfaces]
+        - Add Priority property in xyz.openbmc_project.Network.VLAN interface
+    [phospher-ipmi-config]
+        - Add vlan_priority field in lan_config.json
+    [phospher-ipmi-host]
+        - Use xyz.openbmc_project.Network.VLAN interface to get/set VLAN Priority
+    [phospher-network]
+        - Use vconfig command to set VLAN priority
+        - Read/Write vlan_priority value from/to lan_config.json
+
+Entry Test:
+    - Set VLAN id
+        ipmitool raw 0x0c 0x01 0x01 0x14 0x64 0x80
+    - Set VLAN priority
+        ipmitool raw 0x0c 0x01 0x01 0x15 0x5
+    - Get VLAN priority
+        ipmitool raw 0x0c 0x02 0x01 0x15 0x00 0x00
+---
+ transporthandler.cpp | 63 ++++++++++++++++++++++++++++++++++++++++++++
+ transporthandler.hpp |  2 ++
+ 2 files changed, 65 insertions(+)
+
+diff --git a/transporthandler.cpp b/transporthandler.cpp
+index 04b7a2a..9c551eb 100644
+--- a/transporthandler.cpp
++++ b/transporthandler.cpp
+@@ -587,6 +587,43 @@ uint16_t getVLANProperty(sdbusplus::bus::bus& bus, const ChannelParams& params)
+     return vlan;
+ }
+ 
++/** @brief Gets the vlan priority configured on the interface
++ *
++ *  @param[in] bus    - The bus object used for lookups
++ *  @param[in] params - The parameters for the channel
++ *  @return VLAN priority or the standard 0 for no VLAN
++ */
++uint8_t getVLANPriority(sdbusplus::bus::bus& bus, const ChannelParams& params)
++{
++    // VLAN devices will always have a separate logical object
++    if (params.ifPath == params.logicalPath)
++    {
++        return 0;
++    }
++
++    auto priority = std::get<uint8_t>(getDbusProperty(
++        bus, params.service, params.logicalPath, INTF_VLAN, "Priority"));
++    return priority;
++}
++
++/** @brief Gets the vlan priority configured on the interface
++ *
++ *  @param[in] bus    - The bus object used for lookups
++ *  @param[in] params - The parameters for the channel
++ *  @return VLAN priority or the standard 0 for no VLAN
++ */
++void setVLANPriority(sdbusplus::bus::bus& bus, const ChannelParams& params, uint8_t priority)
++{
++    // VLAN devices will always have a separate logical object
++    if (params.ifPath == params.logicalPath)
++    {
++        return;
++    }
++
++    setDbusProperty(bus, params.service, params.logicalPath, INTF_VLAN,
++                    "Priority", priority);
++}
++
+ /** @brief Deletes all of the possible configuration parameters for a channel
+  *
+  *  @param[in] bus    - The bus object used for lookups
+@@ -1268,6 +1305,25 @@ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
+             channelCall<reconfigureVLAN>(channel, vlan);
+             return responseSuccess();
+         }
++        case LanParam::VLANPriority:
++        {
++            uint3_t priority = 0;
++            uint5_t reserved = 0;
++
++            if (req.unpack(priority) || req.unpack(reserved) ||
++                !req.fullyUnpacked())
++            {
++                return responseReqDataLenInvalid();
++            }
++
++            if (reserved)
++            {
++                return responseInvalidFieldRequest();
++            }
++
++            channelCall<setVLANPriority>(channel, (uint8_t)priority);
++            return responseSuccess();
++        }
+         case LanParam::CiphersuiteSupport:
+         case LanParam::CiphersuiteEntries:
+         case LanParam::IPFamilySupport:
+@@ -1686,6 +1742,13 @@ RspType<message::Payload> getLan(Context::ptr ctx, uint4_t channelBits,
+             ret.pack(vlan);
+             return responseSuccess(std::move(ret));
+         }
++        case LanParam::VLANPriority:
++        {
++            uint8_t priority = channelCall<getVLANPriority>(channel);
++            priority &= VLAN_PRIORITY_MASK;
++            ret.pack(priority);
++            return responseSuccess(std::move(ret));
++        }
+         case LanParam::CiphersuiteSupport:
+         {
+             if (getChannelSessionSupport(channel) ==
+diff --git a/transporthandler.hpp b/transporthandler.hpp
+index 3df9a97..add4d11 100644
+--- a/transporthandler.hpp
++++ b/transporthandler.hpp
+@@ -86,6 +86,7 @@ enum class LanParam : uint8_t
+     DestinationNum = 17,
+     DestinationAddresses = 19,
+     VLANId = 20,
++    VLANPriority = 21,
+     CiphersuiteSupport = 22,
+     CiphersuiteEntries = 23,
+     cipherSuitePrivilegeLevels = 24,
+@@ -172,6 +173,7 @@ constexpr Cc ccParamReadOnly = 0x82;
+ // VLANs are a 12-bit value
+ constexpr uint16_t VLAN_VALUE_MASK = 0x0fff;
+ constexpr uint16_t VLAN_ENABLE_FLAG = 0x8000;
++constexpr uint8_t VLAN_PRIORITY_MASK = 0x07;
+ 
+ // Arbitrary v6 Address Limits to prevent too much output in ipmitool
+ constexpr uint8_t MAX_IPV6_STATIC_ADDRESSES = 15;
+-- 
+2.33.0
+

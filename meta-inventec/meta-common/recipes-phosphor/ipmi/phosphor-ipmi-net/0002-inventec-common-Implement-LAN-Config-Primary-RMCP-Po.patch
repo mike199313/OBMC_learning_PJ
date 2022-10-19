@@ -1,0 +1,148 @@
+From 6cd0986995a6d86c7112477f5fd4e880cc8c7ba8 Mon Sep 17 00:00:00 2001
+From: Tommy Lin <lin.tommysc@inventec.com>
+Date: Wed, 9 Mar 2022 09:50:32 +0000
+Subject: [PATCH 2/5] Implement LAN Config Primary RMCP Port
+
+Symptom/Reason :
+    - Implement LAN Config Primary RMCP Port
+
+Root Cause:
+    - N/A
+
+Solution/Change:
+    [phospher-ipmi-config]
+        - Add primary_rmcp_port config name with default value 623
+    [phospher-ipmi-host]
+        - Add entry for command handler and read/write fonfig value from/to lan_config.json
+        - Restart netipmid systemd service after RMCP port change
+    [phospher-ipmi-net]
+        - Reads primary_rmcp_port value from lan_config.json at Init
+        - Add getRmcpPort function to get RMCP port
+
+Entry Test:
+    - Get RMCP port
+        ipmitool raw 0x0c 0x02 0x01 0x08 0x00 0x00
+    - Set RMCP port
+        ipmitool raw 0x0c 0x01 0x01 0x08 0x50 0x02
+
+[command for 2.12 upgrade]
+remvoe modifiication in getConfParams in original patch
+for it is removed in official code
+---
+ command/payload_cmds.cpp |  2 +-
+ main.cpp                 | 11 +++++++++-
+ main.hpp                 | 43 ++++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 54 insertions(+), 2 deletions(-)
+
+diff --git a/command/payload_cmds.cpp b/command/payload_cmds.cpp
+index 01e1117..bfcb755 100644
+--- a/command/payload_cmds.cpp
++++ b/command/payload_cmds.cpp
+@@ -101,7 +101,7 @@ std::vector<uint8_t> activatePayload(const std::vector<uint8_t>& inPayload,
+ 
+     response->inPayloadSize = endian::to_ipmi<uint16_t>(MAX_PAYLOAD_SIZE);
+     response->outPayloadSize = endian::to_ipmi<uint16_t>(MAX_PAYLOAD_SIZE);
+-    response->portNum = endian::to_ipmi<uint16_t>(IPMI_STD_PORT);
++    response->portNum = endian::to_ipmi<uint16_t>(getRmcpPort());
+ 
+     // VLAN addressing is not used
+     response->vlanNum = 0xFFFF;
+diff --git a/main.cpp b/main.cpp
+index 17fecfa..b92d6cf 100644
+--- a/main.cpp
++++ b/main.cpp
+@@ -26,6 +26,7 @@
+ 
+ using namespace phosphor::logging;
+ 
++static uint16_t rmcp_port = IPMI_STD_PORT;
+ static auto io = std::make_shared<boost::asio::io_context>();
+ std::shared_ptr<boost::asio::io_context> getIo()
+ {
+@@ -72,6 +73,11 @@ EInterfaceIndex getInterfaceIndex(void)
+     return currentInterfaceIndex;
+ }
+ 
++uint16_t getRmcpPort(void)
++{
++    return rmcp_port;
++}
++
+ int main(int argc, char* argv[])
+ {
+     CLI::App app("KCS RMCP+ bridge");
+@@ -114,7 +120,10 @@ int main(int argc, char* argv[])
+     sol::command::registerCommands();
+ 
+     auto& loop = eventloop::EventLoop::get();
+-    if (loop.setupSocket(sdbusp, channel))
++    // Tommy. Add support for primary RMCP Port Number configuration
++    rmcp_port = IPMI_STD_PORT;
++    loadConfigValue<uint16_t>(LAN_CONFIG_PRI_RMCP_PORT, rmcp_port);
++    if (loop.setupSocket(sdbusp, channel, rmcp_port))
+     {
+         return EXIT_FAILURE;
+     }
+diff --git a/main.hpp b/main.hpp
+index fa7584b..2e87521 100644
+--- a/main.hpp
++++ b/main.hpp
+@@ -4,12 +4,55 @@
+ #include <cstddef>
+ #include <memory>
+ #include <sdbusplus/asio/connection.hpp>
++#include <fstream>
++#include <nlohmann/json.hpp>
++#include <phosphor-logging/log.hpp>
+ 
+ // Select call timeout is set arbitrarily set to 30 sec
+ static constexpr size_t SELECT_CALL_TIMEOUT = 30;
+ static const auto IPMI_STD_PORT = 623;
+ 
++// Config file for LAN Config Parameters
++constexpr auto LAN_CFG_FILE = "/usr/share/ipmi-providers/lan_config.json";
++// Config name for LAN Config Parameters
++constexpr auto LAN_CONFIG_PRI_RMCP_PORT = "primary_rmcp_port";
++
+ extern sd_bus* bus;
+ 
+ std::shared_ptr<sdbusplus::asio::connection> getSdBus();
+ std::shared_ptr<boost::asio::io_context> getIo();
++
++using namespace phosphor::logging;
++
++/** @brief get config value from LAN configuration file.
++ *  @param[in] name - config name.
++ *  @param[in] val - value of the given config name.
++ */
++template <typename T> void loadConfigValue(const std::string& name, T& val)
++{
++    std::ifstream configFile(LAN_CFG_FILE);
++    if (!configFile.is_open())
++    {
++        log<level::ERR>("loadConfigValue : Cannot open config path");
++        return;
++    }
++
++    auto data = nlohmann::json::parse(configFile, nullptr);
++
++    if (data.is_discarded())
++    {
++        log<level::ERR>("loadConfigValue JSON parser failure");
++        return;
++    }
++
++    if (data.contains(name))
++    {
++        val = (T)data[name];
++    }
++}
++
++/** @brief get RMCP port number
++ *
++ *  @return Response data for the command
++ */
++uint16_t getRmcpPort(void);
+-- 
+2.33.0
+

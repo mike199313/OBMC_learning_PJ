@@ -1,0 +1,112 @@
+From cd6b2ba0367fee0d1dcedcdbabca6f6f73423634 Mon Sep 17 00:00:00 2001
+From: Tommy Lin <lin.tommysc@inventec.com>
+Date: Tue, 11 Jan 2022 07:01:22 +0000
+Subject: [PATCH] Redfish add power matrics support
+
+Symptom/Reason:
+    - "PowerMetrics" is missing in Power URI.
+
+Root Cause:
+    - Feature not implemented
+
+Solution/Change:
+    [bmcweb]
+      - Read data from xyz.openbmc_project.DCMI dbus interface and feed them into PowerMetrics
+
+Entry Test:
+    - Set sampling perion
+    ipmitool dcmi power set_limit sample 2000
+    - Get power status from Redfish
+    curl -X GET https://${bmc_ip}/redfish/v1/Chassis/{chassis_id}/Power
+---
+ redfish-core/lib/power.hpp | 74 ++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 74 insertions(+)
+
+diff --git a/redfish-core/lib/power.hpp b/redfish-core/lib/power.hpp
+index cecaeab4..1a2ca764 100644
+--- a/redfish-core/lib/power.hpp
++++ b/redfish-core/lib/power.hpp
+@@ -286,6 +286,80 @@ inline void requestRoutesPower(App& app)
+                     // be null if the limit is not enabled.
+                     value = powerCap * std::pow(10, scale);
+                 }
++
++                auto powerMetricHandler =
++                    [sensorAsyncResp](
++                        const boost::system::error_code error,
++                        const std::vector<std::pair<std::string, dbus::utility::DbusVariantType>>&
++                                    property_list) {
++                        if (error)
++                        {
++                            messages::internalError(
++                                sensorAsyncResp->asyncResp->res);
++                            BMCWEB_LOG_ERROR
++                                << "Power Metric GetAll handler: Dbus error " << error;
++                            return;
++                        }
++
++                        nlohmann::json& TempArray =
++                            sensorAsyncResp->asyncResp->res.jsonValue["PowerControl"];
++                                nlohmann::json& metricJson = TempArray.back();
++
++                        for (const std::pair<std::string, dbus::utility::DbusVariantType>& property :
++                            property_list)
++                        {
++                            if (!property.first.compare("AverageCount"))
++                            {
++                                const uint32_t* u = std::get_if<uint32_t>(&property.second);
++
++                                if (u)
++                                {
++                                    nlohmann::json& power_value =
++                                        metricJson["PowerMetrics"]["IntervalInMin"];
++                                    power_value = (*u) / 60;
++                                }
++                            }
++                            else if (!property.first.compare("AverageValue"))
++                            {
++                                const double* d = std::get_if<double>(&property.second);
++
++                                if (d)
++                                {
++                                    nlohmann::json& power_value =
++                                        metricJson["PowerMetrics"]["AverageConsumedWatts"];
++                                    power_value = *d;
++                                }
++                            }
++                            else if (!property.first.compare("MaxValue"))
++                            {
++                                const double* d = std::get_if<double>(&property.second);
++
++                                if (d)
++                                {
++                                    nlohmann::json& power_value =
++                                        metricJson["PowerMetrics"]["MaxConsumedWatts"];
++                                    power_value = *d;
++                                }
++                            }
++                            else if (!property.first.compare("MinValue"))
++                            {
++                                const double* d = std::get_if<double>(&property.second);
++
++                                if (d)
++                                {
++                                    nlohmann::json& power_value =
++                                        metricJson["PowerMetrics"]["MinConsumedWatts"];
++                                    power_value = *d;
++                                }
++                            }
++                        }
++                    };
++
++                crow::connections::systemBus->async_method_call(
++                    std::move(powerMetricHandler), "xyz.openbmc_project.DCMI",
++                    "/xyz/openbmc_project/DCMI/Power",
++                    "org.freedesktop.DBus.Properties", "GetAll",
++                    "xyz.openbmc_project.DCMI.Value");
+             };
+ 
+             crow::connections::systemBus->async_method_call(
+-- 
+2.33.0
+

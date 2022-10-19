@@ -1,0 +1,476 @@
+From 39e1414272ed8b5224eb9828ffe437e73a6ec238 Mon Sep 17 00:00:00 2001
+From: Jason Lin <lin.jasonyy@inventec.com>
+Date: Thu, 25 Aug 2022 15:07:23 +0800
+Subject: [PATCH] Bug 1231 - [Common][OpenBmc][Redfish] Enable FRU to set
+ product properties by PATCH
+
+Symptom/Reason:
+	Get and set the fru product properties by PATCH.
+
+Root Cause:
+        Did not support in redfish.
+
+Solution/Change:
+        By PATCH, redfish call dbus methods to get & set fru properties.
+
+Entry Test:
+
+        curl -basic -u root:0penBmc - GET https://{ip}:/redfish/v1/Chassis/{system_name}/FRU/MainBoard -k -i
+
+        curl -basic -u root:0penBmc -X PATCH https://{ip}/redfish/v1/Chassis/{system_name}/FRU/MainBoard -d '{"{product_property_name}": "{product_property_value}"}' -k -i
+
+[comment for 2.12 upgrade]
+1. Remove several format change in previous patch after merge
+2. Code in requestRoutesChassis() is changed, move some code to new function
+   handleChassisGet() accordingly
+3. patch function under requestRoutesChassis is implemented in official code,
+   remove the related parts in this patch
+---
+ redfish-core/lib/chassis.hpp | 393 +++++++++++++++++++++++++++++++++++
+ 1 file changed, 393 insertions(+)
+
+diff --git a/redfish-core/lib/chassis.hpp b/redfish-core/lib/chassis.hpp
+index f1de38c8..36664b69 100644
+--- a/redfish-core/lib/chassis.hpp
++++ b/redfish-core/lib/chassis.hpp
+@@ -19,6 +19,8 @@
+ #include "led.hpp"
+ #include "utils/json_utils.hpp"
+ 
++#include <stdlib.h>
++
+ #include <app.hpp>
+ #include <dbus_utility.hpp>
+ #include <query.hpp>
+@@ -26,9 +28,151 @@
+ #include <sdbusplus/asio/property.hpp>
+ #include <utils/collection.hpp>
+ 
++#include <algorithm>
++#include <string>
++#include <variant>
++
+ namespace redfish
+ {
+ 
++inline std::string replaceBlankWithSub(const std::string& string)
++{
++    std::string replacedString = string;
++    std::replace(replacedString.begin(), replacedString.end(), ' ', '_');
++    std::cerr << replacedString << std::endl;
++    fprintf(stderr, "<%s,%d>\n", __FILE__, __LINE__);
++    return replacedString;
++}
++
++/**
++ * DBus types primitives for several generic DBus interfaces
++ * TODO(Pawel) consider move this to separate file into boost::dbus
++ */
++// Note, this is not a very useful Variant, but because it isn't used to get
++// values, it should be as simple as possible
++// TODO(ed) invent a nullvariant type
++using VariantType = std::variant<bool, std::string, uint64_t, uint32_t>;
++using ManagedObjectsType = std::vector<std::pair<
++    sdbusplus::message::object_path,
++    std::vector<std::pair<std::string,
++                          std::vector<std::pair<std::string, VariantType>>>>>>;
++
++using PropertiesType = boost::container::flat_map<std::string, VariantType>;
++
++/**
++ * @brief Retrieves fru properties over dbus
++ *
++ * @param[in] aResp - Shared pointer for completing asynchronous calls.
++ *
++ * @return None.
++ */
++inline void getFruProperties(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
++                             const std::string& path)
++{
++    crow::connections::systemBus->async_method_call(
++        [aResp](const boost::system::error_code ec,
++                const std::vector<std::pair<std::string, VariantType>>&
++                    propertiesList) {
++            if (ec)
++            {
++                aResp->res.jsonValue["Status"]["Health"] = "Critical";
++                aResp->res.jsonValue["Status"]["HealthRollup"] = "Warning";
++                aResp->res.jsonValue["Data"] = "N/A";
++                BMCWEB_LOG_DEBUG << "DBUS response error " << ec;
++                return;
++            }
++            std::string addressValue;
++            std::string busValue;
++            std::string fruPathName;
++            for (const std::pair<std::string, VariantType>& property :
++                 propertiesList)
++            {
++                const std::string& propertyName = property.first;
++                if ((propertyName == "Address") || (propertyName == "Bus"))
++                {
++                    const uint64_t* value =
++                        std::get_if<uint64_t>(&property.second);
++                    if ((propertyName == "Bus") && (value != nullptr))
++                    {
++                        busValue = std::to_string(*value);
++                    }
++                    else if ((propertyName == "Address") && (value != nullptr))
++                    {
++                        addressValue = std::to_string(*value);
++                    }
++                }
++            }
++            // combination of unwritable dbus properties: {bus}_{address}
++            fruPathName = busValue + "_" + addressValue;
++
++            crow::connections::systemBus->async_method_call(
++                [aResp](const boost::system::error_code error,
++                        const std::vector<std::pair<std::string, VariantType>>&
++                            properties_List) {
++                    if (error)
++                    {
++                        aResp->res.jsonValue["Status"]["Health"] = "Critical";
++                        aResp->res.jsonValue["Status"]["HealthRollup"] =
++                            "Warning";
++                        aResp->res.jsonValue["Data"] = "N/A";
++                        BMCWEB_LOG_DEBUG << "DBUS response error " << error;
++                        return;
++                    }
++                    for (const std::pair<std::string, VariantType>& property :
++                         properties_List)
++                    {
++                        const std::string& propertyName = property.first;
++                        if ((propertyName == "PRODUCT_SERIAL_NUMBER") ||
++                            (propertyName == "PRODUCT_PART_NUMBER") ||
++                            (propertyName == "PRODUCT_MANUFACTURER") ||
++                            (propertyName == "PRODUCT_PRODUCT_NAME") ||
++                            (propertyName == "PRODUCT_ASSET_TAG"))
++                        {
++                            aResp->res.jsonValue["Status"]["State"] = "Enabled";
++                            const std::string* value =
++                                std::get_if<std::string>(&property.second);
++                            if ((propertyName == "PRODUCT_SERIAL_NUMBER") &&
++                                (value != nullptr))
++                            {
++                                aResp->res.jsonValue["Data"]["SerialNumber"] =
++                                    *value;
++                            }
++                            else if ((propertyName == "PRODUCT_PART_NUMBER") &&
++                                     (value != nullptr))
++                            {
++                                aResp->res.jsonValue["Data"]["PartNumber"] =
++                                    *value;
++                            }
++                            else if ((propertyName == "PRODUCT_MANUFACTURER") &&
++                                     (value != nullptr))
++                            {
++                                aResp->res.jsonValue["Data"]["Manufacturer"] =
++                                    *value;
++                            }
++                            else if ((propertyName == "PRODUCT_PRODUCT_NAME") &&
++                                     (value != nullptr))
++                            {
++                                aResp->res.jsonValue["Data"]["Model"] = *value;
++                            }
++                            else if ((propertyName == "PRODUCT_ASSET_TAG") &&
++                                     (value != nullptr))
++                            {
++                                aResp->res.jsonValue["Data"]["AssetTag"] =
++                                    *value;
++                            }
++                        }
++                    }
++                },
++                "xyz.openbmc_project.FruDevice",
++                "/xyz/openbmc_project/FruDevice/" + fruPathName,
++                "org.freedesktop.DBus.Properties", "GetAll",
++                "xyz.openbmc_project.FruDevice");
++        },
++        "xyz.openbmc_project.EntityManager", path,
++        "org.freedesktop.DBus.Properties", "GetAll",
++        "xyz.openbmc_project.Inventory.Decorator.FruDevice");
++}
++
+ /**
+  * @brief Retrieves chassis state properties over dbus
+  *
+@@ -270,6 +414,9 @@ inline void
+             asyncResp->res.jsonValue["@odata.id"] =
+                 "/redfish/v1/Chassis/" + chassisId;
+             asyncResp->res.jsonValue["Name"] = "Chassis Collection";
++            asyncResp->res.jsonValue["FRU"] = {
++                            {"@odata.id", "/redfish/v1/Chassis/" + chassisId +
++                                              "/FRU/MainBoard/"}};
+             asyncResp->res.jsonValue["ChassisType"] = "RackMount";
+             asyncResp->res.jsonValue["Actions"]["#Chassis.Reset"]["target"] =
+                 "/redfish/v1/Chassis/" + chassisId + "/Actions/Chassis.Reset";
+@@ -375,6 +522,7 @@ inline void
+                         asyncResp->res.jsonValue[propertyName] = *value;
+                     }
+                 }
++
+                 asyncResp->res.jsonValue["Name"] = chassisId;
+                 asyncResp->res.jsonValue["Id"] = chassisId;
+ #ifdef BMCWEB_ALLOW_DEPRECATED_POWER_THERMAL
+@@ -440,6 +588,66 @@ inline void
+     getPhysicalSecurityData(asyncResp);
+ }
+ 
++// set fru product properties by dbus method: set
++inline void handleFruPatch(const std::string& path,
++                           const std::string& fruPropertyValue,
++                           const std::string& fruProductPropertyName,
++                           const std::shared_ptr<bmcweb::AsyncResp>& asyncResp)
++{
++    crow::connections::systemBus->async_method_call(
++        [asyncResp, fruPropertyValue, fruProductPropertyName](
++            const boost::system::error_code ec,
++            const std::vector<std::pair<std::string, VariantType>>&
++                propertiesList) {
++            if (ec)
++            {
++                messages::internalError(asyncResp->res);
++                return;
++            }
++            std::string addressValue;
++            std::string busValue;
++            std::string fruPathName;
++            for (const std::pair<std::string, VariantType>& property :
++                 propertiesList)
++            {
++                const std::string& propertyName = property.first;
++                if ((propertyName == "Address") || (propertyName == "Bus"))
++                {
++                    const uint64_t* value =
++                        std::get_if<uint64_t>(&property.second);
++                    if ((propertyName == "Bus") && (value != nullptr))
++                    {
++                        busValue = std::to_string(*value);
++                    }
++                    else if ((propertyName == "Address") && (value != nullptr))
++                    {
++                        addressValue = std::to_string(*value);
++                    }
++                }
++            }
++            // combination of unwritable dbus properties: {bus}_{address}
++            fruPathName = busValue + "_" + addressValue;
++
++            crow::connections::systemBus->async_method_call(
++                [asyncResp, fruPropertyValue,
++                 fruProductPropertyName](const boost::system::error_code error) {
++                    if (error)
++                    {
++                        messages::internalError(asyncResp->res);
++                        return;
++                    }
++                },
++                "xyz.openbmc_project.FruDevice",
++                "/xyz/openbmc_project/FruDevice/" + fruPathName,
++                "org.freedesktop.DBus.Properties", "Set",
++                "xyz.openbmc_project.FruDevice", fruProductPropertyName,
++                std::variant<std::string>(fruPropertyValue));
++        },
++        "xyz.openbmc_project.EntityManager", path,
++        "org.freedesktop.DBus.Properties", "GetAll",
++        "xyz.openbmc_project.Inventory.Decorator.FruDevice");
++}
++
+ inline void
+     handleChassisPatch(App& app, const crow::Request& req,
+                        const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
+@@ -581,6 +789,191 @@ inline void requestRoutesChassis(App& app)
+         .privileges(redfish::privileges::patchChassis)
+         .methods(boost::beast::http::verb::patch)(
+             std::bind_front(handleChassisPatch, std::ref(app)));
++    BMCWEB_ROUTE(app, "/redfish/v1/Chassis/<str>/FRU/MainBoard/")
++        .privileges(redfish::privileges::getChassisCollection)
++        .methods(boost::beast::http::verb::get)(
++            [&app](const crow::Request& req,
++                   const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
++                   const std::string& chassisId) {
++                if (chassisId.empty())
++                {
++                    return;
++                }
++                if (!redfish::setUpRedfishRoute(app, req, asyncResp))
++                {
++                    return;
++                }  
++                asyncResp->res.jsonValue["@odata.type"] = "##FRU.v1_0_0.FRU";
++                asyncResp->res.jsonValue["Id"] = "FRU";
++                asyncResp->res.jsonValue["@odata.id"] =
++                    "/redfish/v1/Chassis/" + chassisId + "/FRU/MainBoard";
++                asyncResp->res.jsonValue["Name"] = "System-related FRU data";
++                asyncResp->res.jsonValue["Data"]["@odata.id"] =
++                    "/redfish/v1/Chassis/" + chassisId + "/FRU/MainBoard/Data";
++                asyncResp->res.jsonValue["Status"]["State"] = "Absent";
++
++                const std::array<const char*, 2> interfaces = {
++                    "xyz.openbmc_project.Inventory.Item.Board",
++                    "xyz.openbmc_project.Inventory.Item.Chassis"};
++
++                // set Status.Health & HealthRollup in health.hpp
++                crow::connections::systemBus->async_method_call(
++                    [asyncResp, chassisId(std::string(chassisId))](
++                        const boost::system::error_code ec,
++                        const dbus::utility::MapperGetSubTreeResponse& subtree) {
++                        if (ec)
++                        {
++                            messages::internalError(asyncResp->res);
++                            return;
++                        }
++                        // Iterate over all retrieved ObjectPaths.
++                        for (const std::pair<
++                                 std::string,
++                                 std::vector<std::pair<
++                                     std::string, std::vector<std::string>>>>&
++                                 object : subtree)
++                        {
++                            const std::string& path = object.first;
++                            sdbusplus::message::object_path objPath(path);
++                            if (objPath.filename() != chassisId)
++                            {
++                                continue;
++                            }
++                            auto health =
++                                std::make_shared<HealthPopulate>(asyncResp);
++
++                            crow::connections::systemBus->async_method_call(
++                                [health](const boost::system::error_code ec2,
++                                         std::variant<std::vector<std::string>>&
++                                             resp) {
++                                    if (ec2)
++                                    {
++                                        return; // no sensors = no failures
++                                    }
++                                    std::vector<std::string>* data =
++                                        std::get_if<std::vector<std::string>>(
++                                            &resp);
++                                    if (data == nullptr)
++                                    {
++                                        return;
++                                    }
++                                    health->inventory = std::move(*data);
++                                },
++                                "xyz.openbmc_project.ObjectMapper",
++                                path + "/all_sensors",
++                                "org.freedesktop.DBus.Properties", "Get",
++                                "xyz.openbmc_project.Association", "endpoints");
++
++                            health->populate();
++                            getFruProperties(asyncResp, path);
++                            return;
++                        }
++                    },
++                    "xyz.openbmc_project.ObjectMapper",
++                    "/xyz/openbmc_project/object_mapper",
++                    "xyz.openbmc_project.ObjectMapper", "GetSubTree",
++                    "/xyz/openbmc_project/inventory", 0, interfaces);
++            });
++
++    BMCWEB_ROUTE(app, "/redfish/v1/Chassis/<str>/FRU/MainBoard/")
++        .privileges(redfish::privileges::patchChassis)
++        .methods(boost::beast::http::verb::patch)(
++            [&app](const crow::Request& req,
++               const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
++               const std::string& param) {
++                std::optional<std::string> SerialNumber;
++                std::optional<std::string> PartNumber;
++                std::optional<std::string> Manufacturer;
++                std::optional<std::string> Model;
++                std::optional<std::string> AssetTag;
++                nlohmann::json request;
++
++                if (!redfish::setUpRedfishRoute(app, req, asyncResp))
++                {
++                    return;
++                }                
++                if (param.empty())
++                {
++                    return;
++                }
++
++                if (!json_util::readJson(request, asyncResp->res, "SerialNumber",
++                                         SerialNumber, "PartNumber", PartNumber,
++                                         "Manufacturer", Manufacturer, "Model",
++                                         Model, "AssetTag", AssetTag))
++                {
++                    return;
++                }
++                if (!SerialNumber && !PartNumber && !Manufacturer && !Model &&
++                    !AssetTag)
++                {
++                    return;
++                }
++                const std::array<const char*, 2> interfaces = {
++                    "xyz.openbmc_project.Inventory.Item.Board",
++                    "xyz.openbmc_project.Inventory.Item.Chassis"};
++                const std::string& chassisId = param;
++
++                crow::connections::systemBus->async_method_call(
++                    [asyncResp, chassisId, SerialNumber, PartNumber,
++                     Manufacturer, Model, AssetTag](
++                        const boost::system::error_code ec,
++                        const dbus::utility::MapperGetSubTreeResponse& subtree) {
++                        if (ec)
++                        {
++                            messages::internalError(asyncResp->res);
++                            return;
++                        }
++                        // Iterate over all retrieved ObjectPaths.
++                        for (const std::pair<
++                                 std::string,
++                                 std::vector<std::pair<
++                                     std::string, std::vector<std::string>>>>&
++                                 object : subtree)
++                        {
++                            const std::string& path = object.first;
++                            sdbusplus::message::object_path objPath(path);
++                            if (objPath.filename() != chassisId)
++                            {
++                                continue;
++                            }
++                            if (SerialNumber)
++                            {
++                                handleFruPatch(path, *SerialNumber,
++                                               "PRODUCT_SERIAL_NUMBER",
++                                               asyncResp);
++                            }
++                            if (PartNumber)
++                            {
++                                handleFruPatch(path, *PartNumber,
++                                               "PRODUCT_PART_NUMBER",
++                                               asyncResp);
++                            }
++                            if (Manufacturer)
++                            {
++                                handleFruPatch(path, *Manufacturer,
++                                               "PRODUCT_MANUFACTURER",
++                                               asyncResp);
++                            }
++                            if (Model)
++                            {
++                                handleFruPatch(path, *Model,
++                                               "PRODUCT_PRODUCT_NAME",
++                                               asyncResp);
++                            }
++                            if (AssetTag)
++                            {
++                                handleFruPatch(path, *AssetTag,
++                                               "PRODUCT_ASSET_TAG", asyncResp);
++                            }
++                        }
++                    },
++                    "xyz.openbmc_project.ObjectMapper",
++                    "/xyz/openbmc_project/object_mapper",
++                    "xyz.openbmc_project.ObjectMapper", "GetSubTree",
++                    "/xyz/openbmc_project/inventory", 0, interfaces);
++            });
++
+ }
+ 
+ inline void
+-- 
+2.33.0
+

@@ -1,0 +1,228 @@
+From aee8fa55c7b87bb79108759bfd0372c8ca5b471d Mon Sep 17 00:00:00 2001
+From: cwsun <sun.cwsun@inventec.com>
+Date: Tue, 24 Aug 2021 17:03:27 +0800
+Subject: [PATCH 19/31] Support IPMI v1.5 Session Management
+
+    Symptom/Reason :
+        - The OpenBMC does not support IPMI v1.5 RMCP type Session Management
+
+    Root Cause:
+        - The OpenBMC does not support IPMI v1.5 RMCP type Session Management
+
+    Solution/Change:
+        [phosphor-dbus-interfaces]
+            - add rmcpType into SessionInfo.interface.yaml
+              -- the rmcpType will indicate if the session is RMCP or RMCP+ type.
+
+        [phosphor-ipmi-host]
+            - support RMCP type session of "Get Session Info" command
+              -- ipmiAppGetSessionInfo()
+              -- getSessionDetails()
+              -- remove garbage code
+              -- fix the wrong userID caused by wrong data struct definition
+
+        [phosphor-ipmi-net]
+            - When user assign into the system via netipmid and register a session.
+              The registered session will be record its type of RMCP or RMCP+ and be kept
+              in the dbus system.
+
+    Entry Test:
+        - Open RMCP(-Ilan) and RMCP+(-Ilanplus) sessions with IPMI shell
+          -- ipmitool -I lan -H myqemu -U root -P 0penBmc -p 2623 shell
+          -- ipmitool -I lanplus -H myqemu -U root -P 0penBmc -p 2623 -C17 shell
+          -- ipmitool -I lanplus -H myqemu -U root -P 0penBmc -p 2623 -C17 shell
+          -- ipmitool -I lan -H myqemu -U root -P 0penBmc -p 2623
+
+        - then view the session info
+          session info all
+          >
+            session handle                : 13
+            slot count                    : 15
+            active sessions               : 4
+            user id                       : 2
+            privilege level               : ADMINISTRATOR
+            session type                  : IPMIv1.5
+            channel number                : 0x01
+
+            session handle                : 3
+            slot count                    : 15
+            active sessions               : 4
+            user id                       : 2
+            privilege level               : ADMINISTRATOR
+            session type                  : IPMIv1.5
+            channel number                : 0x01
+
+            session handle                : 1
+            slot count                    : 15
+            active sessions               : 4
+            user id                       : 2
+            privilege level               : ADMINISTRATOR
+            session type                  : IPMIv2/RMCP+
+            channel number                : 0x01
+
+            session handle                : 14
+            slot count                    : 15
+            active sessions               : 4
+            user id                       : 2
+            privilege level               : ADMINISTRATOR
+            session type                  : IPMIv2/RMCP+
+            channel number                : 0x01
+---
+ apphandler.cpp                            | 25 ++++++++++++++++++-----
+ test/dbus-sdr/sensorcommands_unittest.cpp |  2 --
+ transporthandler.cpp                      |  4 +---
+ user_channel/usercommands.cpp             |  9 ++++++--
+ 4 files changed, 28 insertions(+), 12 deletions(-)
+
+diff --git a/apphandler.cpp b/apphandler.cpp
+index fc960c9..43c6429 100644
+--- a/apphandler.cpp
++++ b/apphandler.cpp
+@@ -1080,7 +1080,7 @@ static constexpr uint8_t macAddrLen = 6;
+  *  @param port - uint16_t remote port
+  */
+ using SessionDetails =
+-    std::tuple<uint2_t, uint6_t, uint4_t, uint4_t, uint4_t, uint4_t, uint32_t,
++    std::tuple<uint6_t, uint2_t, uint4_t, uint4_t, uint4_t, uint4_t, uint32_t,
+                std::array<uint8_t, macAddrLen>, uint16_t>;
+ 
+ /** @brief get session details for a given session
+@@ -1126,7 +1126,10 @@ ipmi::Cc getSessionDetails(ipmi::Context::ptr ctx, const std::string& service,
+         // std::get<3>(details) = 0; // (default constructed to 0)
+         std::get<4>(details) =
+             ipmi::mappedVariant<uint8_t>(sessionProps, "ChannelNum", 0xff);
+-        constexpr uint4_t rmcpPlusProtocol = 1;
++        
++        uint4_t rmcpPlusProtocol = 
++                    static_cast<uint4_t>(ipmi::mappedVariant<uint8_t>(sessionProps, "rmcpType", 0xFF));
++        
+         std::get<5>(details) = rmcpPlusProtocol;
+         std::get<6>(details) =
+             ipmi::mappedVariant<uint32_t>(sessionProps, "RemoteIPAddr", 0);
+@@ -1170,7 +1173,16 @@ ipmi::RspType<uint8_t, // session handle,
+ 
+     uint8_t totalSessionCount = getTotalSessionCount();
+     uint8_t activeSessionCount = 0;
++    /**
++     * cwsun : The sessionHandle variable will be wrong when multiple session in system.
++     * The sessionHandle will be fill into error value when the 
++     * if (...
++     * reqSessionHandle != sessionHandle) {...}
++     * The sessionHandle will get wrong value and return with the wrong value.
++     * fixed by using keepCorrectSessionHandle
++    */
+     uint8_t sessionHandle = session::defaultSessionHandle;
++    uint8_t iamCorrectSessionHandle = 0;
+     std::optional<SessionDetails> maybeDetails;
+     uint8_t index = 0;
+     for (auto& objectTreeItr : objectTree)
+@@ -1178,8 +1190,7 @@ ipmi::RspType<uint8_t, // session handle,
+         uint32_t sessionId = 0;
+         std::string objectPath = objectTreeItr.first;
+ 
+-        if (!parseCloseSessionInputPayload(objectPath, sessionId,
+-                                           sessionHandle))
++        if (!parseCloseSessionInputPayload(objectPath, sessionId, sessionHandle))
+         {
+             continue;
+         }
+@@ -1221,12 +1232,16 @@ ipmi::RspType<uint8_t, // session handle,
+             return ipmi::response(completionCode);
+         }
+         maybeDetails = std::move(details);
++        
++        //Due to get activeSessionCount, 
++        //the loop can not break even if found the correct sessionHandle
++        iamCorrectSessionHandle = sessionHandle;
+     }
+ 
+     if (state == static_cast<uint8_t>(session::State::active) ||
+         state == static_cast<uint8_t>(session::State::tearDownInProgress))
+     {
+-        return ipmi::responseSuccess(sessionHandle, totalSessionCount,
++        return ipmi::responseSuccess(iamCorrectSessionHandle, totalSessionCount,
+                                      activeSessionCount, maybeDetails);
+     }
+ 
+diff --git a/test/dbus-sdr/sensorcommands_unittest.cpp b/test/dbus-sdr/sensorcommands_unittest.cpp
+index 83918c5..7576350 100644
+--- a/test/dbus-sdr/sensorcommands_unittest.cpp
++++ b/test/dbus-sdr/sensorcommands_unittest.cpp
+@@ -98,7 +98,6 @@ void testValue(int x, double y, int16_t M, int8_t rExp, int16_t B, int8_t bExp,
+             "| M %5d | rExp %3d "
+             "| B %5d | bExp %3d | bSigned %1d | y %18.3f | yRoundtrip %18.3f\n",
+             x, result, M, (int)rExp, B, (int)bExp, (int)bSigned, y, yRoundtrip);
+-    std::cout << szFormat;
+ }
+ 
+ void testBounds(double yMin, double yMax, bool bExpectedOutcome = true)
+@@ -124,7 +123,6 @@ void testBounds(double yMin, double yMax, bool bExpectedOutcome = true)
+             "Bounds | yMin %18.3f | yMax %18.3f | M %5d"
+             " | rExp %3d | B %5d | bExp %3d | bSigned %1d\n",
+             yMin, yMax, mValue, (int)rExp, bValue, (int)bExp, (int)bSigned);
+-    std::cout << szFormat;
+ 
+     double y50p = (yMin + yMax) / 2.0;
+ 
+diff --git a/transporthandler.cpp b/transporthandler.cpp
+index 21abbbe..76c5182 100644
+--- a/transporthandler.cpp
++++ b/transporthandler.cpp
+@@ -1326,7 +1326,6 @@ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
+             {
+                 return responseInvalidFieldRequest();
+             }
+-            std::cout << "[DestinationAddresses] idx " << (int)client_idx << ", addr " << address << std::endl;
+             configureDestAddress(client_idx, address, macAddress);
+             return responseSuccess();
+         }
+@@ -1604,10 +1603,10 @@ RspType<message::Payload> getLan(Context::ptr ctx, uint4_t channelBits,
+                                  uint3_t reserved, bool revOnly,
+                                  uint8_t parameter, uint8_t set, uint8_t block)
+ {
++    
+     message::Payload ret;
+     constexpr uint8_t current_revision = 0x11;
+     ret.pack(current_revision);
+-
+     if (revOnly)
+     {
+         return responseSuccess(std::move(ret));
+@@ -1758,7 +1757,6 @@ RspType<message::Payload> getLan(Context::ptr ctx, uint4_t channelBits,
+             std::string macAddr = "";
+             client_idx = set & 0x0f;
+             getDestAddress(client_idx, ip, macAddr);
+-            std::cout << "[DestinationAddresses] get addr " << ip << ", mac " << macAddr << std::endl;
+             if (ip.length() == 0)
+             {
+                 return responseRetBytesUnavailable();
+diff --git a/user_channel/usercommands.cpp b/user_channel/usercommands.cpp
+index 7af38b9..d8d5209 100644
+--- a/user_channel/usercommands.cpp
++++ b/user_channel/usercommands.cpp
+@@ -427,7 +427,12 @@ ipmi::RspType<uint8_t,  // channel number
+ 
+     constexpr bool extDataSupport = true; // true for IPMI 2.0 extensions
+     constexpr bool reserved3 = false;
+-    constexpr uint6_t rmcpAuthTypes = 0; // IPMI 1.5 auth types - not supported
++    
++    uint6_t rmcpAuthTypes =  1<<4; //cwsun: IPMI 1.5 auth types MD5 / PASSWORD supported
++    if (getChannelSessionSupport(channel) == EChannelSessSupported::multi){
++        rmcpAuthTypes |= 1 << 2; //for multi-session MD5 authtype
++    }
++
+     constexpr uint2_t reserved4 = 0;
+     constexpr bool KGStatus = false;       // Not supporting now.
+     constexpr bool perMessageAuth = false; // Per message auth - enabled
+@@ -436,7 +441,7 @@ ipmi::RspType<uint8_t,  // channel number
+     constexpr bool anonymousLogin = false; // Anonymous login - not supported
+     constexpr uint6_t reserved5 = 0;
+     constexpr bool rmcpp = true; // IPMI 2.0 - supported
+-    constexpr bool rmcp = false; // IPMI 1.5 - not supported
++    constexpr bool rmcp = true; // cwsun : IPMI 1.5 - supported
+     constexpr uint24_t oemID = 0;
+     constexpr uint8_t oemAuxillary = 0;
+ 
+-- 
+2.33.0
+

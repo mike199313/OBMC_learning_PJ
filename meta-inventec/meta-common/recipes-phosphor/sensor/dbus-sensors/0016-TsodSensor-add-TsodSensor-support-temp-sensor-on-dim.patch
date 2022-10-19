@@ -1,0 +1,726 @@
+From b1df58f1895da364b244cb3b02e488664b40589a Mon Sep 17 00:00:00 2001
+From: "pj.chen" <chen.pj@inventec.com>
+Date: Tue, 1 Mar 2022 08:17:20 +0000
+Subject: [PATCH 16/27] TsodSensor - add TsodSensor support (temp sensor on
+ dimms)
+
+- Add TsodSensor initial commit
+
+[comment for 2.12 upgrade]
+Change code for threshold interfaces are moved in commit 5667808
+---
+ include/TsodSensor.hpp                        |  41 ++
+ meson_options.txt                             |   1 +
+ service_files/meson.build                     |   1 +
+ .../xyz.openbmc_project.tsodsensor.service    |  13 +
+ src/TsodSensor.cpp                            | 194 +++++++++
+ src/TsodSensorMain.cpp                        | 376 ++++++++++++++++++
+ src/meson.build                               |  16 +
+ 7 files changed, 642 insertions(+)
+ create mode 100644 include/TsodSensor.hpp
+ create mode 100644 service_files/xyz.openbmc_project.tsodsensor.service
+ create mode 100644 src/TsodSensor.cpp
+ create mode 100644 src/TsodSensorMain.cpp
+
+diff --git a/include/TsodSensor.hpp b/include/TsodSensor.hpp
+new file mode 100644
+index 0000000..3611c11
+--- /dev/null
++++ b/include/TsodSensor.hpp
+@@ -0,0 +1,41 @@
++#pragma once
++
++#include <Thresholds.hpp>
++#include <sensor.hpp>
++#include <IpmiInfo.hpp>
++#include <boost/asio/streambuf.hpp>
++#include <sdbusplus/asio/object_server.hpp>
++
++#include <string>
++#include <vector>
++
++class TsodSensor :
++    public Sensor,
++    public std::enable_shared_from_this<TsodSensor>
++{
++  public:
++    TsodSensor(const std::string& path, const std::string& objectType,
++                    sdbusplus::asio::object_server& objectServer,
++                    std::shared_ptr<sdbusplus::asio::connection>& conn,
++                    boost::asio::io_service& io, const std::string& fanName,
++                    std::vector<thresholds::Threshold>&& thresholds,
++                    const float pollRate,
++                    std::vector<ipmidata::IpmiConfig>&& ipmiinfo,
++                    const std::string& sensorConfiguration,
++                   const PowerState powerState,
++                    size_t totalThresholdNumber);
++    ~TsodSensor() override;
++    void setupRead(void);
++
++  private:
++    sdbusplus::asio::object_server& objServer;
++    boost::asio::posix::stream_descriptor inputDev;
++    boost::asio::deadline_timer waitTimer;
++    boost::asio::streambuf readBuf;
++    std::string path;
++    unsigned int sensorPollMs;
++    size_t totalThresholdNumber;
++
++    void handleResponse(const boost::system::error_code& err);
++    void checkThresholds(void) override;
++};
+diff --git a/meson_options.txt b/meson_options.txt
+index fc3c140..cb95f43 100644
+--- a/meson_options.txt
++++ b/meson_options.txt
+@@ -8,6 +8,7 @@ option('average', type: 'feature', value: 'enabled', description: 'Enable averag
+ option('invcfm', type: 'feature', value: 'enabled', description: 'Enable InvCfm sensor.',)
+ option('accumulate', type: 'feature', value: 'enabled', description: 'Enable accumulate sensor.',)
+ option('iiohwmon', type: 'feature', value: 'enabled', description: 'Enable iiohwmon sensor.',)
++option('tsod', type: 'feature', value: 'enabled', description: 'Enable TSOD sensor.',)
+ option('intrusion', type: 'feature', value: 'enabled', description: 'Enable intrusion sensor.',)
+ option('ipmb', type: 'feature', value: 'enabled', description: 'Enable IPMB sensor.',)
+ option('mcu', type: 'feature', value: 'enabled', description: 'Enable MCU sensor.',)
+diff --git a/service_files/meson.build b/service_files/meson.build
+index e654b38..c1d8c9e 100644
+--- a/service_files/meson.build
++++ b/service_files/meson.build
+@@ -10,6 +10,7 @@ unit_files = [
+     ['invcfm', 'xyz.openbmc_project.invcfmsensor.service'],
+     ['accumulate', 'xyz.openbmc_project.accumulatesensor.service'],
+     ['iiohwmon', 'xyz.openbmc_project.iiohwmonsensor.service'],
++    ['tsod', 'xyz.openbmc_project.tsodsensor.service'],
+     ['intrusion', 'xyz.openbmc_project.intrusionsensor.service'],
+     ['mcu', 'xyz.openbmc_project.mcutempsensor.service'],
+     ['nvme', 'xyz.openbmc_project.nvmesensor.service'],
+diff --git a/service_files/xyz.openbmc_project.tsodsensor.service b/service_files/xyz.openbmc_project.tsodsensor.service
+new file mode 100644
+index 0000000..ff1ba2f
+--- /dev/null
++++ b/service_files/xyz.openbmc_project.tsodsensor.service
+@@ -0,0 +1,13 @@
++[Unit]
++Description=TSOD Sensor
++StopWhenUnneeded=false
++Requires=xyz.openbmc_project.EntityManager.service
++After=xyz.openbmc_project.EntityManager.service
++
++[Service]
++Restart=always
++RestartSec=5
++ExecStart=/usr/bin/tsodsensor
++
++[Install]
++WantedBy=multi-user.target
+diff --git a/src/TsodSensor.cpp b/src/TsodSensor.cpp
+new file mode 100644
+index 0000000..6ac6984
+--- /dev/null
++++ b/src/TsodSensor.cpp
+@@ -0,0 +1,194 @@
++/*
++// Copyright (c) 2017 Intel Corporation
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//      http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++*/
++
++#include <unistd.h>
++
++#include <TsodSensor.hpp>
++#include <boost/algorithm/string/predicate.hpp>
++#include <boost/algorithm/string/replace.hpp>
++#include <boost/asio/read_until.hpp>
++#include <boost/date_time/posix_time/posix_time.hpp>
++#include <sdbusplus/asio/connection.hpp>
++#include <sdbusplus/asio/object_server.hpp>
++
++#include <iostream>
++#include <istream>
++#include <limits>
++#include <memory>
++#include <string>
++#include <vector>
++
++static constexpr unsigned int sensorScaleFactor = 1000;
++static constexpr size_t warnAfterErrorCount = 10;
++
++static constexpr double maxReading = 127;
++static constexpr double minReading = -128;
++
++TsodSensor::TsodSensor(
++    const std::string& path, const std::string& objectType,
++    sdbusplus::asio::object_server& objectServer,
++    std::shared_ptr<sdbusplus::asio::connection>& conn,
++    boost::asio::io_service& io, const std::string& sensorName,
++    std::vector<thresholds::Threshold>&& thresholdsIn, const float pollRate,
++    std::vector<ipmidata::IpmiConfig>&& _ipmiinfo,
++    const std::string& sensorConfiguration,
++    const PowerState powerState,
++    size_t _totalThresholdNumber) :
++    Sensor(boost::replace_all_copy(sensorName, " ", "_"),
++           std::move(thresholdsIn), sensorConfiguration, objectType, false, false,
++           maxReading, minReading, conn, powerState),
++    std::enable_shared_from_this<TsodSensor>(), objServer(objectServer),
++    inputDev(io, open(path.c_str(), O_RDONLY)), waitTimer(io), path(path),
++    sensorPollMs(static_cast<unsigned int>(pollRate * 1000)),
++    totalThresholdNumber(_totalThresholdNumber)
++{
++    sensorInterface = objectServer.add_interface(
++        "/xyz/openbmc_project/sensors/temperature/" + name,
++        "xyz.openbmc_project.Sensor.Value");
++
++    ipmiInterface = objectServer.add_interface(
++        "/xyz/openbmc_project/sensors/temperature/" + name,
++        "xyz.openbmc_project.Sensor.IpmiSensor");
++
++    if (_ipmiinfo.empty())
++    {
++        // Default
++        ipmiInterface->register_property("sensorNumber", 0);
++        ipmiInterface->register_property("entityID", 0);
++        ipmiInterface->register_property("entityInstance", 0);
++    }
++    else
++    {
++        for (auto& ipmi : _ipmiinfo)
++        {
++            ipmiInterface->register_property("sensorNumber", ipmi.number);
++            ipmiInterface->register_property("entityID", ipmi.entityId);
++            ipmiInterface->register_property("entityInstance", ipmi.entityIns);
++        }
++    }
++
++    for (const auto& threshold : thresholds)
++    {
++        std::string interface =
++            thresholds::getInterface(threshold.level);
++        thresholdInterfaces[static_cast<size_t>(threshold.level)] =
++            objectServer.add_interface("/xyz/openbmc_project/sensors/temperature/" + name, interface);
++    }
++    association = objectServer.add_interface(
++        "/xyz/openbmc_project/sensors/temperature/" + name,
++        association::interface);
++    setInitialProperties(sensor_paths::unitDegreesC, sensorName, totalThresholdNumber);
++}
++
++TsodSensor::~TsodSensor()
++{
++    // close the input dev to cancel async operations
++    inputDev.close();
++    waitTimer.cancel();
++    for (const auto& iface : thresholdInterfaces)
++    {
++        objServer.remove_interface(iface);
++    }
++    objServer.remove_interface(sensorInterface);
++    objServer.remove_interface(ipmiInterface);
++    objServer.remove_interface(association);
++}
++
++void TsodSensor::setupRead(void)
++{
++    std::weak_ptr<TsodSensor> weakRef = weak_from_this();
++
++    boost::asio::async_read_until(inputDev, readBuf, '\n',
++                                  [weakRef](const boost::system::error_code& ec,
++                                            std::size_t /*bytes_transfered*/) {
++                                      std::shared_ptr<TsodSensor> self =
++                                          weakRef.lock();
++                                      if (self)
++                                      {
++                                          self->handleResponse(ec);
++                                      }
++                                  });
++}
++
++void TsodSensor::handleResponse(const boost::system::error_code& err)
++{
++    if ((err == boost::system::errc::bad_file_descriptor) ||
++        (err == boost::asio::error::misc_errors::not_found))
++    {
++        std::cerr << "tsod sensor " << name << " removed " << path
++                  << "\n";
++        return; // we're being destroyed
++    }
++    std::istream responseStream(&readBuf);
++    
++    if (!err)
++    {
++        std::string response;
++        std::getline(responseStream, response);
++        try
++        {
++            rawValue = std::stod(response);
++            double nvalue = rawValue / sensorScaleFactor;
++            updateValue(nvalue);
++        }
++        catch (const std::invalid_argument&)
++        {
++            incrementError();
++        }
++    }
++    else
++    {
++        incrementError();
++    }
++
++    responseStream.clear();
++    inputDev.close();
++    int fd = open(path.c_str(), O_RDONLY);
++    if (fd < 0)
++    {
++        std::cerr << "tsod sensor " << name << " not valid " << path
++                  << "\n";
++        return; // we're no longer valid
++    }
++    inputDev.assign(fd);
++    waitTimer.expires_from_now(boost::posix_time::milliseconds(sensorPollMs));
++    std::weak_ptr<TsodSensor> weakRef = weak_from_this();
++    waitTimer.async_wait([weakRef](const boost::system::error_code& ec) {
++        std::shared_ptr<TsodSensor> self = weakRef.lock();
++        if (ec == boost::asio::error::operation_aborted)
++        {
++            if (self)
++            {
++                std::cerr << "tsod sensor " << self->name
++                          << " read cancelled " << self->path << "\n";
++            }
++            else
++            {
++                std::cerr << "tsod sensor read cancelled, no self\n";
++            }
++            return; // we're being canceled
++        }
++        if (self)
++        {
++            self->setupRead();
++        }
++    });
++}
++
++void TsodSensor::checkThresholds(void)
++{
++    thresholds::checkThresholds(this);
++}
+diff --git a/src/TsodSensorMain.cpp b/src/TsodSensorMain.cpp
+new file mode 100644
+index 0000000..e5c5869
+--- /dev/null
++++ b/src/TsodSensorMain.cpp
+@@ -0,0 +1,376 @@
++/*
++// Copyright (c) 2017 Intel Corporation
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//      http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++*/
++
++#include <TsodSensor.hpp>
++#include <Utils.hpp>
++#include <boost/algorithm/string/predicate.hpp>
++#include <boost/algorithm/string/replace.hpp>
++#include <boost/container/flat_map.hpp>
++#include <boost/container/flat_set.hpp>
++#include <sdbusplus/asio/connection.hpp>
++#include <sdbusplus/asio/object_server.hpp>
++#include <sdbusplus/bus/match.hpp>
++
++#include <array>
++#include <filesystem>
++#include <fstream>
++#include <functional>
++#include <memory>
++#include <regex>
++#include <stdexcept>
++#include <string>
++#include <utility>
++#include <variant>
++#include <vector>
++
++static constexpr float pollRateDefault = 5;
++
++namespace fs = std::filesystem;
++static constexpr std::array<const char*, 1> sensorTypes = {
++    "xyz.openbmc_project.Configuration.TSOD"};
++
++void createSensors(
++    boost::asio::io_service& io, sdbusplus::asio::object_server& objectServer,
++    boost::container::flat_map<std::string, std::shared_ptr<TsodSensor>>&
++        sensors,
++    std::shared_ptr<sdbusplus::asio::connection>& dbusConnection,
++    const std::shared_ptr<boost::container::flat_set<std::string>>&
++        sensorsChanged)
++{
++    auto getter = std::make_shared<GetSensorConfiguration>(
++        dbusConnection,
++        std::move([&io, &objectServer, &sensors, &dbusConnection,
++                   sensorsChanged](
++                      const ManagedObjectType& sensorConfigurations) {
++            bool firstScan = sensorsChanged == nullptr;
++
++            std::vector<fs::path> paths;
++
++            if (!findFiles(fs::path("/sys/class/hwmon"), R"(temp\d+_input)",
++                           paths))
++            {
++                std::cerr << "No temperature sensors in system\n";
++                return;
++            }
++
++            boost::container::flat_set<std::string> directories;
++
++            // iterate through all found temp sensors, and try to match them
++            // with configuration
++            for (auto& path : paths)
++            {
++                std::smatch match;
++                const std::string& pathStr = path.string();
++                auto directory = path.parent_path();
++
++                auto ret = directories.insert(directory.string());
++                if (!ret.second)
++                {
++                    continue; // already searched this path
++                }
++
++                fs::path device = directory / "device";
++                std::string deviceName = fs::canonical(device).stem();
++                auto findHyphen = deviceName.find('-');
++                if (findHyphen == std::string::npos)
++                {
++                    std::cerr << "found bad device " << deviceName << "\n";
++                    continue;
++                }
++                std::string busStr = deviceName.substr(0, findHyphen);
++                std::string addrStr = deviceName.substr(findHyphen + 1);
++
++                size_t bus = 0;
++                size_t addr = 0;
++                try
++                {
++                    bus = std::stoi(busStr);
++                    addr = std::stoi(addrStr, nullptr, 16);
++                }
++                catch (std::invalid_argument&)
++                {
++                    continue;
++                }
++                const SensorData* sensorData = nullptr;
++                const std::string* interfacePath = nullptr;
++                const char* sensorType = nullptr;
++                const SensorBaseConfiguration* baseConfiguration = nullptr;
++                const SensorBaseConfigMap* baseConfigMap = nullptr;
++
++                for (const std::pair<sdbusplus::message::object_path,
++                                     SensorData>& sensor : sensorConfigurations)
++                {
++                    sensorData = &(sensor.second);
++                    for (const char* type : sensorTypes)
++                    {
++                        auto sensorBase = sensorData->find(type);
++                        if (sensorBase != sensorData->end())
++                        {
++                            baseConfiguration = &(*sensorBase);
++                            sensorType = type;
++                            break;
++                        }
++                    }
++                    if (baseConfiguration == nullptr)
++                    {
++                        std::cerr << "error finding base configuration for "
++                                  << deviceName << "\n";
++                       continue;
++                    }
++                    baseConfigMap = &baseConfiguration->second;
++                    auto configurationBus = baseConfigMap->find("Bus");
++                    auto configurationAddress = baseConfigMap->find("Address");
++
++                    if (configurationBus == baseConfigMap->end() ||
++                        configurationAddress == baseConfigMap->end())
++                    {
++                        std::cerr << "error finding bus or address in "
++                                     "configuration\n";
++                        continue;
++                    }
++
++                    if (std::get<uint64_t>(configurationBus->second) != bus ||
++                        std::get<uint64_t>(configurationAddress->second) !=
++                            addr)
++                    {
++                        continue;
++                    }
++
++                    interfacePath = &(sensor.first.str);
++                    break;
++                }
++                if (interfacePath == nullptr)
++                {
++                    std::cerr << "failed to find match for " << deviceName
++                              << "\n";
++                    continue;
++                }
++
++                auto findSensorName = baseConfigMap->find("Name");
++                if (findSensorName == baseConfigMap->end())
++                {
++                    std::cerr << "could not determine configuration name for "
++                              << deviceName << "\n";
++                    continue;
++                }
++                std::string sensorName =
++                    std::get<std::string>(findSensorName->second);
++                // on rescans, only update sensors we were signaled by
++                auto findSensor = sensors.find(sensorName);
++                if (!firstScan && findSensor != sensors.end())
++                {
++                    bool found = false;
++                    for (auto it = sensorsChanged->begin();
++                         it != sensorsChanged->end(); it++)
++                    {
++                        if (boost::ends_with(*it, findSensor->second->name))
++                        {
++                            sensorsChanged->erase(it);
++                            findSensor->second = nullptr;
++                            found = true;
++                            break;
++                        }
++                    }
++                    if (!found)
++                    {
++                        continue;
++                    }
++                }
++
++                std::vector<thresholds::Threshold> sensorThresholds;
++                int index = 1;
++                size_t totalThresholdNumber = 0;
++
++                if (!parseThresholdsFromConfig(*sensorData, sensorThresholds,
++                                               nullptr, &index))
++                {
++                    std::cerr << "error populating thresholds for "
++                          << sensorName << " index 1\n";
++                }
++                /* Counting all threshold config */
++                totalThresholdNumber = sensorThresholds.size();
++
++                auto findPollRate = baseConfiguration->second.find("PollRate");
++                float pollRate = pollRateDefault;
++                if (findPollRate != baseConfiguration->second.end())
++                {
++                    pollRate = std::visit(VariantToFloatVisitor(),
++                                          findPollRate->second);
++                    if (pollRate <= 0.0f)
++                    {
++                        pollRate = pollRateDefault; // polling time too short
++                    }
++                }
++                auto findPowerOn = baseConfiguration->second.find("PowerState");
++                PowerState readState = PowerState::always;
++                if (findPowerOn != baseConfiguration->second.end())
++                {
++                    std::string powerState = std::visit(
++                        VariantToStringVisitor(), findPowerOn->second);
++                    setReadState(powerState, readState);
++                }
++
++                auto permitSet = getPermitSet(*baseConfigMap);
++                auto& sensor = sensors[sensorName];
++                sensor = nullptr;
++                auto hwmonFile = getFullHwmonFilePath(directory.string(),
++                                                      "temp1", permitSet);
++                std::vector<ipmidata::IpmiConfig> sensorIpmiConfig;
++                std::string labelHead = sensorName.substr(0, sensorName.find(" "));
++                if (!parseIpmiDataFromConfig(*sensorData, sensorIpmiConfig, &labelHead))
++                {
++                    std::cerr << "error populating ipmi for "
++                              << sensorName << "\n";
++                }
++                if (hwmonFile)
++                {
++                    sensor = std::make_shared<TsodSensor>(
++                        *hwmonFile, sensorType, objectServer, dbusConnection,
++                        io, sensorName, std::move(sensorThresholds), pollRate,
++                        std::move(sensorIpmiConfig), *interfacePath, 
++                        readState, totalThresholdNumber);
++                    sensor->setupRead();
++                }
++                // Looking for keys like "Name1" for temp2_input,
++                // "Name2" for temp3_input, etc.
++                int i = 0;
++                while (true)
++                {
++                    ++i;
++                    auto findKey =
++                        baseConfigMap->find("Name" + std::to_string(i));
++                    if (findKey == baseConfigMap->end())
++                    {
++                        break;
++                    }
++                    std::string sensorName =
++                        std::get<std::string>(findKey->second);
++                    hwmonFile = getFullHwmonFilePath(
++                        directory.string(), "temp" + std::to_string(i + 1),
++                        permitSet);
++                    if (hwmonFile)
++                    {
++                        // To look up thresholds for these additional sensors,
++                        // match on the Index property in the threshold data
++                        // where the index comes from the sysfs file we're on,
++                        // i.e. index = 2 for temp2_input.
++                        int index = i + 1;
++                        std::vector<thresholds::Threshold> thresholds;
++
++                        if (!parseThresholdsFromConfig(*sensorData, thresholds,
++                                                       nullptr, &index))
++                        {
++                            std::cerr << "error populating thresholds for "
++                                      << sensorName << " index " << index
++                                      << "\n";
++                        }
++
++                        auto& sensor = sensors[sensorName];
++                        /* Extra threshold should all add label.*/
++                        std::vector<thresholds::Threshold> sensorThresholdsExtra;
++                        sensorThresholdsExtra.clear();
++                        std::string labelHead = sensorName.substr(0, sensorName.find(" "));
++                        if (!parseThresholdsFromConfig(*sensorData, sensorThresholdsExtra, &labelHead))
++                        {
++                            std::cerr << "error populating thresholds for "
++                                      << sensorName << "\n";
++                        }
++
++                        /* Extra ipmiconfig.*/
++                        std::vector<ipmidata::IpmiConfig> sensorIpmiConfig;
++                        sensorIpmiConfig.clear();
++                        if (!parseIpmiDataFromConfig(*sensorData, sensorIpmiConfig, &labelHead))
++                        {
++                            std::cerr << "error populating ipmi for "
++                                      << sensorName << "\n";
++                            /*
++                                Skip if sensorIpmiConfig not found.
++                            */
++                            continue;
++                        }
++                        sensor = nullptr;
++                        sensor = std::make_shared<TsodSensor>(
++                            *hwmonFile, sensorType, objectServer,
++                            dbusConnection, io, sensorName,
++                            std::move(sensorThresholdsExtra), pollRate, 
++                            std::move(sensorIpmiConfig), 
++                            *interfacePath, readState, totalThresholdNumber);
++                        sensor->setupRead();
++
++                    }
++                }
++            }
++        }));
++    getter->getConfiguration(
++        std::vector<std::string>(sensorTypes.begin(), sensorTypes.end()));
++}
++
++int main()
++{
++    boost::asio::io_service io;
++    auto systemBus = std::make_shared<sdbusplus::asio::connection>(io);
++    systemBus->request_name("xyz.openbmc_project.TsodSensor");
++    sdbusplus::asio::object_server objectServer(systemBus);
++    boost::container::flat_map<std::string, std::shared_ptr<TsodSensor>>
++        sensors;
++    std::vector<std::unique_ptr<sdbusplus::bus::match::match>> matches;
++    auto sensorsChanged =
++        std::make_shared<boost::container::flat_set<std::string>>();
++
++    io.post([&]() {
++        createSensors(io, objectServer, sensors, systemBus, nullptr);
++    });
++
++    boost::asio::deadline_timer filterTimer(io);
++    std::function<void(sdbusplus::message::message&)> eventHandler =
++        [&](sdbusplus::message::message& message) {
++            if (message.is_method_error())
++            {
++                std::cerr << "callback method error\n";
++                return;
++            }
++            sensorsChanged->insert(message.get_path());
++            // this implicitly cancels the timer
++            filterTimer.expires_from_now(boost::posix_time::seconds(1));
++
++            filterTimer.async_wait([&](const boost::system::error_code& ec) {
++                if (ec == boost::asio::error::operation_aborted)
++                {
++                    /* we were canceled*/
++                    return;
++                }
++                if (ec)
++                {
++                    std::cerr << "timer error\n";
++                    return;
++                }
++                createSensors(io, objectServer, sensors, systemBus,
++                              sensorsChanged);
++            });
++        };
++
++    for (const char* type : sensorTypes)
++    {
++        auto match = std::make_unique<sdbusplus::bus::match::match>(
++            static_cast<sdbusplus::bus::bus&>(*systemBus),
++            "type='signal',member='PropertiesChanged',path_namespace='" +
++                std::string(inventoryPath) + "',arg0namespace='" + type + "'",
++            eventHandler);
++        matches.emplace_back(std::move(match));
++    }
++
++    io.run();
++}
+diff --git a/src/meson.build b/src/meson.build
+index 9880ed0..2d9392f 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -177,6 +177,22 @@ if get_option('iiohwmon').enabled()
+     )
+ endif
+ 
++if get_option('tsod').enabled()
++    executable(
++        'tsodsensor',
++        'TsodSensorMain.cpp',
++        'TsodSensor.cpp',
++        'IpmiInfo.cpp',
++        dependencies: [
++            default_deps,
++            thresholds_dep,
++            utils_dep,
++        ],
++        implicit_include_directories: false,
++        include_directories: '../include',
++        install: true,
++    )
++endif
+ 
+ if get_option('intrusion').enabled()
+     executable(
+-- 
+2.33.0
+

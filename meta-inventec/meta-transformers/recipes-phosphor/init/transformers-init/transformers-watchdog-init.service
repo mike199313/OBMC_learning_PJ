@@ -1,0 +1,12 @@
+[Unit]
+Description=Watchdog related setting for transformers
+Wants=mapper-wait@-xyz-openbmc_project-Logging-IPMI.service
+After=xyz.openbmc_project.Time.Manager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=true
+ExecStart=/usr/sbin/transformers-watchdog-init.sh
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,179 @@
+## The invgpiolib library is a wrap of the libgpiod and provides a common and simple use for GPIO operation.
+
+This library dynamically loads a json-formated GPIO configuration to setup and use each GPIO pin defined by a user in his program.
+The default GPIO configuration file is loacated at Configuration/gpio_defs_inv.json which will be installed
+to BMC fssystem /etc/default/obmc/gpio/gpio_defs_inv.json.
+
+This library provides APIs for operating GPIO, for more detail of APIs, please see include/invgpiolib.hpp .
+For example:
+    invgpio::gpioPinObj::readGPIOValue();
+    invgpio::gpioPinObj::setGPIOValue(const int value);
+    invgpio::gpioPinObj::requestGPIOEvents(const int event);
+
+
+Here are 3 steps to configure GPIO and use this recipe.
+
+Step 1. Configure .bb file of your recipe.
+    To use this recipe you must add [ DEPENDS += "inv-gpiolib" ] in your .bb file.
+
+Step 2. Modify MakeFile of your program/library.
+    To use this library you must add library link in your MakeFile.
+    Here using CMakeLists.txt as an example, please add below these two lines into it.
+
+    target_link_libraries(${XXX-ProgramName} invgpiolib)
+    target_link_libraries(${XXX-ProgramName} gpiodcxx)
+
+Step 3. Define GPIO Configuration "Configuration/gpio_defs_inv.json"
+    Here is an example:
+        {
+            "GPIOCHIPS": [
+                    {
+                        "SOC": "ast2600",
+                        "BaseRegAddr": "1e780000",
+                        "GPIO_definitions": [
+                            {
+                                "GPIO": "M0",
+                                "Name": "POWER_GOOD",
+                                "Direction": "in",
+                                "ActiveLow": false
+                            },
+                            {
+                                "GPIO": "F1",
+                                "Name": "POWER_OUT",
+                                "Direction": "out",
+                                "ActiveLow": true
+                            },
+                        ]
+                    },
+                    {
+                        "SOC": "ast2600",
+                        "BaseRegAddr": "1e780800",
+                        "GPIO_definitions": [
+                            {
+                                "GPIO": "18A0",
+                                "Name": "xxx_Name",
+                                "Direction": "in",
+                                "ActiveLow": false
+                            }
+                        ]
+                    }
+                ]
+        }
+
+    Explanation of each item:
+        GPIOCHIPS: an array object, each member of it is a gpio chip.
+        SOC: the gpiochip belongs to which SOC or IO-expander.
+             Note: Currently this library only supports SOC ast2500 and ast2600.
+        BaseRegAddr: the reg address of the gpiochip, if the gpiochip is of SOC's.
+        GPIO_definitions: define each GPIO pins in the gpiochip.
+        GPIO: the HW GPIO pin name of the SOC.
+        Name: the alias of the GPIO pin to represent its usage and it also be used in APIs of this library.
+        Direction: the direction of this GPIO pin, in or out.
+        ActiveLow: the polarity of the GPIO pin whiuch is active-low or not.
+
+    How it works? 
+    This library uses "Name" to find the target GPIO pin then according to "SOC" and "BaseRegAddr" to define which gpiochip it belongs. 
+    Then uses "GPIO" of "GPIO_definitions" to calculate the pin offset of the gpiochip
+    and uses "Direction" and "ActiveLow" to decide the behavior of this pin.
+
+
+There 4 steps to before using APIs
+    step 1. define GPIO pin object.
+        e.g. invgpio::gpioPinObj powerGood("POWER_GOOD");
+
+    step 2. load GPIO configuration.
+        e.g. invgpio::Json gpioConfigJson =  invgpio::loadGPIOConfigFile();
+
+    step 3. retrieve GPIO pin configuration.
+        e.g. invgpio::getGPIOPinObjConfig(gpioConfigJson, powerGood);
+    
+    step 4. init each GPIO pin object and specify which process is using this GPIO, here the consumer is "power-control".
+        e.g. powerGood.init("power-control");
+
+
+Coding example:
+    ...
+    #include <invgpiolib.hpp>
+    #include <boost/asio/posix/stream_descriptor.hpp> // for using boost::asio
+    ...
+
+    using namespace invgpio;
+
+    /* In the above example, we define GPIO M0, POWER_GOOD and GPIO F1, POWER_OUT */
+    static gpioPinObj powerGood("POWER_GOOD");
+    static gpioPinObj powerOut("POWER_OUT");
+
+    static boost::asio::io_service io;
+    // GPIO Event Descriptors
+    static boost::asio::posix::stream_descriptor PowerGoodEvent(io);
+
+
+    void demo_InitGPIO()
+    {
+        // load the GPIO config file to cache for getting configuration of pins 
+        invgpio::Json gpioConfigJson =  invgpio::loadGPIOConfigFile();
+
+        // Retrieve GPIO pin configuration.
+        getGPIOPinObjConfig(gpioConfigJson, powerGood);
+        getGPIOPinObjConfig(gpioConfigJson, powerOut);
+
+        // Init each GPIO pin object and specify which process is using this GPIO
+        powerGood.init("power-control");
+        powerOut.init("power-control");
+    }
+
+    void demo_ReadWrtieGPIO()
+    {
+        // Set GPIO (powerOut) value 1
+        powerOut.setGPIOValue(1);
+
+        // Read GPIO value
+        std::cout << "GPIO (powerGood) value: "<< powerGood.readGPIOValue()
+                 << "\nGPIO (powerOut) value: " << powerOut.readGPIOValue() << '\n';
+
+        /*
+        Note:
+            The setGPIOValue() and the setGPIOValue() convert the GPIO value automatically,
+            a user doesn't need to consider the polarity (active-Low/active-High).
+        */
+    }
+
+    void demo_ListenGPIOevent()
+    {
+        // Request GPIO edge trigger event(both edge) and get the file descriptor for listening
+        int gpioLineFd = powerGood.requestGPIOEvents(gpiod::line_request::EVENT_BOTH_EDGES);
+        if (gpioLineFd < 0)
+        {
+            return;
+        }
+
+        // This example uses ASIO to listen the fd, you can use other methods such as select, poll or epoll etc.
+        PowerGoodEvent.assign(gpioLineFd);
+
+        PowerGoodEvent.async_wait(
+            boost::asio::posix::stream_descriptor::wait_read,
+            [&](const boost::system::error_code ec) {
+                if (ec)
+                {
+                    std::cerr << powerGood.pinName() << " fd handler error: " << ec.message() << '\n';
+                    return;
+                }
+
+                gpiod::line_event gpioLineEvent = powerGood.readEvent();
+                bool assert = (gpioLineEvent.event_type == gpiod::line_event::RISING_EDGE) ^ powerGood.activeLow();
+
+                std::cout << "powerGood event assert: " << assert << '\n';
+            });
+
+
+        /*
+        Note:
+            Due to the GPIO evnet type of event request can be 3 conditions,
+            a user may according to his need to setup GPIO event request,
+            so the readEvent() DOES NOT convert the GPIO event value automatically.
+            A user must convert the event value according to his setting.
+        */
+    }
+
+You can also refer to "x86-power-control-inv" recipe for more actual usage of this library.
+

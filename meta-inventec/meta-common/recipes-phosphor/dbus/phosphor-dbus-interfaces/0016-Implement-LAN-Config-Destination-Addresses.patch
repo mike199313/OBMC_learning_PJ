@@ -1,0 +1,48 @@
+From 03b2160dee13033921d32f243208c876a7bbae1a Mon Sep 17 00:00:00 2001
+From: Tommy Lin <lin.tommysc@inventec.com>
+Date: Wed, 9 Mar 2022 01:19:50 +0000
+Subject: [PATCH 16/20] Implement LAN Config Destination Addresses
+
+Symptom/Reason :
+    - Implement LAN Config Destination Addresses
+
+Root Cause:
+    - N/A
+
+Solution/Change:
+    [phospher-dubs-interfaces]
+        - Add Id property for Network Client
+    [phospher-ipmi-host]
+        - Use xyz.openbmc_project.Network.Client.Create interface to create new manager
+        - Use xyz.openbmc_project.Network.Client interface to get manager properties
+    [phospher-snmp]
+        - Modify xyz.openbmc_project.Network.Client.Create interface to allow destination selector
+        - Do not serialize manager when selector id is 0
+
+Entry Test:
+    - Get Destination Addresses
+        ipmitool raw 0x0c 0x02 0x01 0x13 0x01 0x00
+    - Set Destination Addresses
+        ipmitool raw 0x0c 0x01 0x01 0x13 0x00 0x00 0x00 0x0a 0x6 0x8d 0x21 0x7c 0xd3 0x0a 0xc4 0x90 0xe4
+---
+ yaml/xyz/openbmc_project/Network/Client/Create.interface.yaml | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/yaml/xyz/openbmc_project/Network/Client/Create.interface.yaml b/yaml/xyz/openbmc_project/Network/Client/Create.interface.yaml
+index d904762..8b11ba4 100644
+--- a/yaml/xyz/openbmc_project/Network/Client/Create.interface.yaml
++++ b/yaml/xyz/openbmc_project/Network/Client/Create.interface.yaml
+@@ -12,6 +12,10 @@ methods:
+             type: uint16
+             description: >
+                 Network port.
++          - name: Id
++            type: byte
++            description: >
++                Client Identifier.
+       errors:
+           - xyz.openbmc_project.Common.Error.InvalidArgument
+       returns:
+-- 
+2.33.0
+

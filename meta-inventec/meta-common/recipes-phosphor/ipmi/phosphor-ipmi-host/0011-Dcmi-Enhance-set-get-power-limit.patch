@@ -1,0 +1,230 @@
+From c6e1f3ecb483dc7638216758d95936076e62c057 Mon Sep 17 00:00:00 2001
+From: "pj.chen" <chen.pj@inventec.com>
+Date: Thu, 3 Mar 2022 11:04:53 +0000
+Subject: [PATCH 11/31] Dcmi - Enhance set/get power limit
+
+Symton/Reason:
+    Enhance set/get power limit
+
+Root Cause:
+    N/A
+
+Solution/Change:
+    [dcmihandler]
+        Add more properties set/get from DCMI power dbus interface
+
+Entry Test:
+
+sysadmin@transformers:~# ipmitool dcmi power set_limit action power_off
+
+    Current Limit State: No Active Power Limit
+    Exception actions:   Hard Power Off & Log Event to SEL
+    Power Limit:         10 Watts
+    Correction time:     1000 milliseconds
+    Sampling period:     2000 seconds
+
+sysadmin@transformers:~# ipmitool dcmi power set_limit limit 10
+
+    Current Limit State: No Active Power Limit
+    Exception actions:   Log Event to SEL
+    Power Limit:         10 Watts
+    Correction time:     0 milliseconds
+    Sampling period:     0 seconds
+
+sysadmin@transformers:~# ipmitool dcmi power set_limit correction 100
+
+    Current Limit State: No Active Power Limit
+    Exception actions:   Log Event to SEL
+    Power Limit:         10 Watts
+    Correction time:     100 milliseconds
+    Sampling period:     0 seconds
+
+sysadmin@transformers:~# ipmitool dcmi power set_limit sample 2000
+
+    Current Limit State: No Active Power Limit
+    Exception actions:   Log Event to SEL
+    Power Limit:         10 Watts
+    Correction time:     100 milliseconds
+    Sampling period:     2000 seconds
+---
+ dcmihandler.cpp | 100 +++++++++++++++++++++++++++++++++++++++++-------
+ dcmihandler.hpp |  13 +++++++
+ 2 files changed, 100 insertions(+), 13 deletions(-)
+
+diff --git a/dcmihandler.cpp b/dcmihandler.cpp
+index b95cf94..143b6f7 100644
+--- a/dcmihandler.cpp
++++ b/dcmihandler.cpp
+@@ -209,6 +209,28 @@ void setSamplingPeriod(sdbusplus::bus::bus& bus, uint32_t samplingPeriod)
+     }
+ }
+ 
++/* Bug 309 - [SW][Common][DCMI] Set and Get power limit */
++std::string getExceptionAction(sdbusplus::bus::bus& bus)
++{
++    auto settingService = ipmi::getService(bus, PCAP_INTERFACE, PCAP_PATH);
++
++    auto method = bus.new_method_call(settingService.c_str(), PCAP_PATH,
++                                      "org.freedesktop.DBus.Properties", "Get");
++
++    method.append(PCAP_INTERFACE, EXCEPTIONACTION_PROP);
++    auto reply = bus.call(method);
++
++    if (reply.is_method_error())
++    {
++        log<level::ERR>("Error in getPcapEnabled prop");
++        elog<InternalFailure>();
++    }
++    std::variant<std::string> exceptionAction;
++    reply.read(exceptionAction);
++
++    return std::get<std::string>(exceptionAction);
++}
++
+ void setExceptionAction(sdbusplus::bus::bus& bus, std::string exceptionAction)
+ {
+     auto service = ipmi::getService(bus, PCAP_INTERFACE, PCAP_PATH);
+@@ -228,6 +250,28 @@ void setExceptionAction(sdbusplus::bus::bus& bus, std::string exceptionAction)
+     }
+ }
+ 
++/* Bug 309 - [SW][Common][DCMI] Set and Get power limit */
++uint32_t getCorrectionTime(sdbusplus::bus::bus& bus)
++{
++    auto settingService = ipmi::getService(bus, PCAP_INTERFACE, PCAP_PATH);
++
++    auto method = bus.new_method_call(settingService.c_str(), PCAP_PATH,
++                                      "org.freedesktop.DBus.Properties", "Get");
++
++    method.append(PCAP_INTERFACE, CORRECTIONTIME_PROP);
++    auto reply = bus.call(method);
++
++    if (reply.is_method_error())
++    {
++        log<level::ERR>("Error in getPcapEnabled prop");
++        elog<InternalFailure>();
++    }
++    std::variant<uint32_t> correctionTime;
++    reply.read(correctionTime);
++
++    return std::get<uint32_t>(correctionTime);
++}
++
+ void setCorrectionTime(sdbusplus::bus::bus& bus, uint32_t correctionTime)
+ {
+     auto service = ipmi::getService(bus, PCAP_INTERFACE, PCAP_PATH);
+@@ -412,12 +456,20 @@ ipmi_ret_t getPowerLimit(ipmi_netfn_t netfn, ipmi_cmd_t cmd,
+         reinterpret_cast<dcmi::GetPowerLimitResponse*>(outPayload.data());
+ 
+     sdbusplus::bus::bus sdbus{ipmid_get_sd_bus_connection()};
++    /* Bug 309 - [SW][Common][DCMI] Set and Get power limit */
++    std::string expectionAction = "";
+     uint32_t pcapValue = 0;
++    uint32_t correctionTime = 0;
++    uint32_t samplingPeriod = 0;
+     bool pcapEnable = false;
+ 
+     try
+     {
++        /* Bug 309 - [SW][Common][DCMI] Set and Get power limit */
++        expectionAction = dcmi::getExceptionAction(sdbus);
+         pcapValue = dcmi::getPcap(sdbus);
++        correctionTime = dcmi::getCorrectionTime(sdbus);
++        samplingPeriod = dcmi::getSamplingPeriod(sdbus);
+         pcapEnable = dcmi::getPcapEnabled(sdbus);
+     }
+     catch (const InternalFailure& e)
+@@ -426,20 +478,23 @@ ipmi_ret_t getPowerLimit(ipmi_netfn_t netfn, ipmi_cmd_t cmd,
+         return IPMI_CC_UNSPECIFIED_ERROR;
+     }
+ 
+-    /*
+-     * Exception action if power limit is exceeded and cannot be controlled
+-     * with the correction time limit is hardcoded to Hard Power Off system
+-     * and log event to SEL.
+-     */
+-    constexpr auto exception = 0x01;
+-    responseData->exceptionAction = exception;
++    /* Bug 309 - [SW][Common][DCMI] Set and Get power limit */
++    if (expectionAction == "xyz.openbmc_project.Control.Power.Cap.Action.None")
++    {
++        responseData->exceptionAction = (uint8_t)dcmi::DCMIExceptionAction::NO_ACTION;
++    }
++    else if (expectionAction == "xyz.openbmc_project.Control.Power.Cap.Action.OffAndLog")
++    {
++        responseData->exceptionAction = (uint8_t)dcmi::DCMIExceptionAction::OFF_AND_LOG;
++    }
++    else if (expectionAction == "xyz.openbmc_project.Control.Power.Cap.Action.Log")
++    {
++        responseData->exceptionAction = (uint8_t)dcmi::DCMIExceptionAction::LOG;
++    }
+ 
+     responseData->powerLimit = static_cast<uint16_t>(pcapValue);
+-
+-    /*
+-     * Correction time limit and Statistics sampling period is currently not
+-     * populated.
+-     */
++    responseData->correctionTime = correctionTime;
++    responseData->samplingPeriod = samplingPeriod;
+ 
+     *data_len = outPayload.size();
+     memcpy(response, outPayload.data(), *data_len);
+@@ -470,10 +525,29 @@ ipmi_ret_t setPowerLimit(ipmi_netfn_t netfn, ipmi_cmd_t cmd,
+ 
+     sdbusplus::bus::bus sdbus{ipmid_get_sd_bus_connection()};
+ 
+-    // Only process the power limit requested in watts.
+     try
+     {
++        /* Bug 309 - [SW][Common][DCMI] Set and Get power limit */
++        if(requestData->exceptionAction == (uint8_t)dcmi::DCMIExceptionAction::NO_ACTION)
++        {
++            dcmi::setExceptionAction(sdbus, "xyz.openbmc_project.Control.Power.Cap.Action.None");
++        }
++        else if(requestData->exceptionAction == (uint8_t)dcmi::DCMIExceptionAction::OFF_AND_LOG)
++        {
++            dcmi::setExceptionAction(sdbus, "xyz.openbmc_project.Control.Power.Cap.Action.OffAndLog");
++        }
++        else if(requestData->exceptionAction == (uint8_t)dcmi::DCMIExceptionAction::LOG)
++        {
++            dcmi::setExceptionAction(sdbus, "xyz.openbmc_project.Control.Power.Cap.Action.Log");
++        }
++        else
++        {
++            *data_len = 0;
++            return IPMI_CC_PARM_OUT_OF_RANGE;
++        }
+         dcmi::setPcap(sdbus, requestData->powerLimit);
++        dcmi::setCorrectionTime(sdbus, requestData->correctionTime);
++        dcmi::setSamplingPeriod(sdbus, requestData->samplingPeriod);
+     }
+     catch (const InternalFailure& e)
+     {
+diff --git a/dcmihandler.hpp b/dcmihandler.hpp
+index 41d3171..0c950de 100644
+--- a/dcmihandler.hpp
++++ b/dcmihandler.hpp
+@@ -243,6 +243,19 @@ struct SetPowerLimitRequest
+     uint16_t samplingPeriod; //!< Statistics sampling period in seconds.
+ } __attribute__((packed));
+ 
++/* Bug 309 - [SW][Common][DCMI] Set and Get power limit */
++/** @enum DCMIExceptionAction
++ *
++ * DCMI Exception Action
++ */
++enum class DCMIExceptionAction
++{
++    NO_ACTION,
++    OFF_AND_LOG,
++    LOG = 0x11,
++};
++
++
+ /** @brief Enable or disable the power capping
+  *
+  *  @param[in] bus - dbus connection
+-- 
+2.33.0
+

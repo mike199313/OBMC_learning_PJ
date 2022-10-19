@@ -1,0 +1,121 @@
+From 39de136e7a5dff3155172d2efedbc2afc00a5ff5 Mon Sep 17 00:00:00 2001
+From: "Fred.Chang" <chang.fredys@inventec.com>
+Date: Tue, 14 Jun 2022 20:33:42 +0800
+Subject: [PATCH 15/17] Bug 1078 - [Transformers][OpenBMC][Redfish]Health
+ status is different between CPU and DIMM's empty slot
+
+Sympton/Reason:
+	Health status is different between CPU and DIMM's empty slot
+
+Root Cause:
+	Redfish doesn't check the property "Functioal" in memory json generation.
+
+Solution/Change:
+	[bmcweb]
+	   - add the check segment on property "Functioal" in memory region.
+
+Entry Test:
+	{
+		"@odata.etag": "3544611896",
+		"@odata.id": "/redfish/v1/Systems/system/Memory/dimm1",
+		"@odata.type": "#Memory.v1_11_0.Memory",
+		"AllowedSpeedsMHz": [],
+		"BaseModuleType": "RDIMM",
+		"BusWidthBits": 0,
+		"CapacityMiB": 0,
+		"DataWidthBits": 0,
+		"ErrorCorrection": "NoECC",
+		"FirmwareRevision": "0",
+		"Id": "dimm1",
+		"Location": {
+			"PartLocation": {
+				"ServiceLabel": "CPU0_DIMM_A2"
+			}
+		},
+		"Manufacturer": "",
+		"Model": "",
+		"Name": "DIMM Slot",
+		"OperatingSpeedMhz": 0,
+		"PartNumber": "NO DIMM",
+		"RankCount": 0,
+		"SerialNumber": "NO DIMM",
+		"SparePartNumber": "",
+		"Status": {
+			"Health": "Critical",
+			"HealthRollup": "OK",
+			"State": "Absent"
+		}
+	}
+
+[comment for 2.12 upgrade]
+Some code in getDimmDataByService() is moved to assembleDimmProperties()
+Move the related code in this patch as well
+---
+ redfish-core/lib/memory.hpp | 23 ++++++++++++++++-------
+ 1 file changed, 16 insertions(+), 7 deletions(-)
+
+diff --git a/redfish-core/lib/memory.hpp b/redfish-core/lib/memory.hpp
+index e741a676..b2a29ab9 100644
+--- a/redfish-core/lib/memory.hpp
++++ b/redfish-core/lib/memory.hpp
+@@ -15,8 +15,6 @@
+ */
+ #pragma once
+ 
+-#include "health.hpp"
+-
+ #include <app.hpp>
+ #include <dbus_utility.hpp>
+ #include <nlohmann/json.hpp>
+@@ -449,6 +447,7 @@ inline void
+     aResp->res.jsonValue[jsonPtr]["Name"] = "DIMM Slot";
+     aResp->res.jsonValue[jsonPtr]["Status"]["State"] = "Enabled";
+     aResp->res.jsonValue[jsonPtr]["Status"]["Health"] = "OK";
++    aResp->res.jsonValue[jsonPtr]["Status"]["HealthRollup"] = "OK";
+ 
+     for (const auto& property : properties)
+     {
+@@ -529,6 +528,21 @@ inline void
+                 aResp->res.jsonValue[jsonPtr]["Status"]["State"] = "Absent";
+             }
+         }
++        else if (property.first == "Functional")
++        {
++            const bool* memFunctional = std::get_if<bool>(&property.second);
++            if (memFunctional == nullptr)
++            {
++                messages::internalError(aResp->res);
++                BMCWEB_LOG_DEBUG
++                    << "Invalid property type for Dimm Functional";
++                return;
++            }
++            if (*memFunctional == false)
++            {
++                aResp->res.jsonValue["Status"]["Health"] = "Critical";
++            }
++        }
+         else if (property.first == "MemoryTotalWidth")
+         {
+             const uint16_t* value = std::get_if<uint16_t>(&property.second);
+@@ -708,10 +722,6 @@ inline void getDimmDataByService(std::shared_ptr<bmcweb::AsyncResp> aResp,
+                                  const std::string& service,
+                                  const std::string& objPath)
+ {
+-    auto health = std::make_shared<HealthPopulate>(aResp);
+-    health->selfPath = objPath;
+-    health->populate();
+-
+     BMCWEB_LOG_DEBUG << "Get available system components.";
+     crow::connections::systemBus->async_method_call(
+         [dimmId, aResp{std::move(aResp)}](
+@@ -754,7 +764,6 @@ inline void assembleDimmPartitionData(
+                 messages::internalError(aResp->res);
+                 return;
+             }
+-
+             partition["OffsetMiB"] = (*value >> 10);
+         }
+         else if (key == "PartitionId")
+-- 
+2.33.0
+

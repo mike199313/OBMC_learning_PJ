@@ -1,0 +1,678 @@
+From f282be87a3ca6f88332af31665f5cd4f86897db7 Mon Sep 17 00:00:00 2001
+From: cynthia <wu.cynthia@inventec.com>
+Date: Tue, 10 Aug 2021 11:00:55 +0800
+Subject: [PATCH] Implement get/set system boot option
+
+Symptom/Reason :
+	Support get/set system boot option feature
+
+Root Cause:
+	N/A
+
+Solution/Change:
+	[chassiscommand.cpp]
+	- Add new function ipmiChassisGetSysBootOptions to
+	  handle the boot option data we get
+	- Add new function ipmiChassisGetSysBootOptions to
+	  set the requierd boot option
+
+Entry test:
+	1.ipmitool chassis bootparam get
+	  ex: ipmitool chassis bootparam get 5
+	2.ipmitool chassis bootparam set
+	  ex: ipmitool chassis bootparam set bootflag none
+	3.ipmitool raw 0x0 0x8 (set)
+	  ex: ipmitool raw 0x0 0x8 0x5 0x80 0x80 0x0 0x0 0x0
+	4.ipmitool raw 0x0 0x9
+	  ex: ipmitool raw 0x0 0x9 0x0 0x0 0x0
+---
+ include/chassiscommand.hpp |  85 ++++++
+ src/chassiscommands.cpp    | 526 +++++++++++++++++++++++++++++++++++++
+ 2 files changed, 611 insertions(+)
+ create mode 100644 include/chassiscommand.hpp
+
+diff --git a/include/chassiscommand.hpp b/include/chassiscommand.hpp
+new file mode 100644
+index 0000000..880e03a
+--- /dev/null
++++ b/include/chassiscommand.hpp
+@@ -0,0 +1,85 @@
++#include <xyz/openbmc_project/Control/Boot/Source/server.hpp>
++#include <xyz/openbmc_project/Control/Boot/Type/server.hpp>
++#include <xyz/openbmc_project/Control/Boot/Mode/server.hpp>
++using namespace sdbusplus::xyz::openbmc_project::Control::Boot::server;
++
++const static constexpr char* SettingService = "xyz.openbmc_project.Settings";
++const static constexpr char* SettingBootOptionObj = "/xyz/openbmc_project/control/host0/boot/boot_options";
++const static constexpr char* SettingBootObj = "/xyz/openbmc_project/control/host0/boot";
++const static constexpr char* SettingOneTimeObj = "/xyz/openbmc_project/control/host0/boot/one_time";
++const static constexpr char* PartitionIntf = "xyz.openbmc_project.Control.Boot.Partition";
++const static constexpr char* ConfigIntf = "xyz.openbmc_project.Control.Boot.Config";
++const static constexpr char* InitiatorInfoIntf = "xyz.openbmc_project.Control.Boot.InitiatorInfo";
++const static constexpr char* MailboxInfoIntf = "xyz.openbmc_project.Control.Boot.Mailbox";
++const static constexpr char* bootSourceIntf = "xyz.openbmc_project.Control.Boot.Source";
++const static constexpr char* bootModeIntf = "xyz.openbmc_project.Control.Boot.Mode";
++const static constexpr char* BootFlagIntf = "xyz.openbmc_project.Control.Boot.Flag";
++const static constexpr char* BootTypeIntf = "xyz.openbmc_project.Control.Boot.Type";
++const static constexpr char* PersistantIntf = "xyz.openbmc_project.Object.Enable";
++
++
++namespace ipmi::chassis{
++    enum class BootOptionParameter : uint8_t
++    {
++        SetInProgress = 0x0,
++        ServicePartitionSelector = 0x1,
++        ServicePartitionScan = 0x2,
++        BootFlagValidBitClr = 0x3,
++        BootInfoAck = 0x4,
++        BootFlags = 0x5,
++        BootInitInfo = 0x6,
++        BootInitMailbox = 0x7
++    };
++
++    enum SetInProgressState
++    {
++        SetComplete,
++        SetInProgress,
++        CommitWrite
++    };
++
++    std::map<Source::Sources, uint8_t> sourceDbusToIpmi = {
++        {Source::Sources::Default, 0x00},
++        {Source::Sources::Network, 0x01},
++        {Source::Sources::Disk, 0x02},
++        {Source::Sources::Disk_safe, 0x03},
++        {Source::Sources::Diagnostic, 0x04},
++        {Source::Sources::ExternalMedia, 0x05},
++        {Source::Sources::BIOS_setup, 0x06 },
++        {Source::Sources::RemoteRemovableMedia, 0x07},
++        {Source::Sources::RemoteExternalMedia, 0x08},
++        {Source::Sources::PrimaryRemoteMedia, 0x09},
++        {Source::Sources::RemoteExternalDisk, 0x0b},
++        {Source::Sources::RemovableMedia, 0x0f}
++    };
++    std::map<uint8_t, Source::Sources> sourceIpmiToDbus = {
++        {0x00, Source::Sources::Default},
++        {0x01, Source::Sources::Network},
++        {0x02, Source::Sources::Disk},
++        {0x03, Source::Sources::Disk_safe},
++        {0x04, Source::Sources::Diagnostic},
++        {0x05, Source::Sources::ExternalMedia},
++        {0x06, Source::Sources::BIOS_setup},
++        {0x07, Source::Sources::RemoteRemovableMedia},
++        {0x08, Source::Sources::RemoteExternalMedia},
++        {0x09, Source::Sources::PrimaryRemoteMedia},
++        {0x0b, Source::Sources::RemoteExternalDisk},
++        {0x0f, Source::Sources::RemovableMedia}
++    };
++
++    std::map<Type::Types, uint8_t> typeDbusToIpmi = {
++        {Type::Types::Legacy, 0x00},
++        {Type::Types::EFI, 0x01}
++    };
++
++    std::map<uint8_t, Type::Types> typeIpmiToDbus = {
++        {0x00, Type::Types::Legacy},
++        {0x01, Type::Types::EFI}
++    };
++
++    std::map<uint8_t, Mode::Modes> modeIpmiToDbus = {
++        {0x00, Mode::Modes::Regular},
++        {0x03, Mode::Modes::Safe},
++        {0x06, Mode::Modes::Setup}
++    };
++}// namespace ipmi::chassis*/
+diff --git a/src/chassiscommands.cpp b/src/chassiscommands.cpp
+index a6df1ac..12cd5ad 100644
+--- a/src/chassiscommands.cpp
++++ b/src/chassiscommands.cpp
+@@ -29,6 +29,8 @@
+ #include <stdexcept>
+ #include <string_view>
+ 
++#include "chassiscommand.hpp"
++
+ using namespace phosphor::logging;
+ 
+ namespace ipmi::chassis
+@@ -634,6 +636,520 @@ ipmi::RspType<> ipmiSetFrontPanelButtonEnables(bool disablePowerButton,
+     return ipmi::responseSuccess();
+ }
+ 
++ipmi::RspType<ipmi::message::Payload>
++    ipmiChassisGetSysBootOptions(ipmi::Context::ptr ctx,
++                                 uint7_t bootOptionParameter, bool reserved1,
++                                 uint8_t setSelector, uint8_t blockSelector)
++{
++
++    uint8_t parameter_version = 1;
++    ipmi::message::Payload response;
++    std::shared_ptr<sdbusplus::asio::connection> dbus = getSdBus();
++    Value variant;
++
++    if(bootOptionParameter== static_cast<uint7_t>(BootOptionParameter::SetInProgress) ){
++        uint8_t state ;
++        try{
++            variant = getDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     ConfigIntf, "SetInProgress");
++            state = std::get<uint8_t>(variant);
++        }catch (sdbusplus::exception::SdBusError& e)
++        {
++            fprintf(stderr,"error to get property 'SetInPRogress': %s\n", e.what());
++            return ipmi::responseUnspecifiedError();
++        }
++
++        response.pack( parameter_version, bootOptionParameter, reserved1,  state);
++        return ipmi::responseSuccess(std::move(response));
++    }else if( bootOptionParameter== static_cast<uint7_t>(BootOptionParameter::ServicePartitionSelector) ){
++        uint8_t selector;
++        try{
++            variant = getDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     PartitionIntf, "PartitionSelector");
++            selector = std::get<uint8_t>(variant);
++        }catch (sdbusplus::exception::SdBusError& e)
++        {
++            fprintf(stderr,"error to get property 'PartitionSelector': %s\n", e.what());
++            return ipmi::responseUnspecifiedError();
++        }
++        response.pack(  parameter_version, bootOptionParameter, reserved1,  selector);
++        return ipmi::responseSuccess(std::move(response));
++    }else if( bootOptionParameter== static_cast<uint7_t>(BootOptionParameter::ServicePartitionScan) ){
++        uint6_t rsvd;
++        bool scan;
++        bool partitiondisvocer;
++        try{
++            variant = getDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     PartitionIntf, "PartitionScan");
++            scan = std::get<bool>(variant);
++            variant = getDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     PartitionIntf, "PartitionDiscovered");
++            partitiondisvocer = std::get<bool>(variant);
++        }catch (sdbusplus::exception::SdBusError& e)
++        {
++            fprintf(stderr,"error to get property 'PartitionScan': %s\n", e.what());
++            return ipmi::responseUnspecifiedError();
++        }
++        response.pack(  parameter_version, bootOptionParameter, reserved1, partitiondisvocer, scan, rsvd);
++        return ipmi::responseSuccess(std::move(response));
++    }else if( bootOptionParameter== static_cast<uint7_t>(BootOptionParameter::BootFlagValidBitClr) ){
++        uint8_t bitclear;
++        try{
++            variant = getDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     ConfigIntf, "BootFlagValidBitClear");
++            bitclear = std::get<uint8_t>(variant);
++        }catch (sdbusplus::exception::SdBusError& e)
++        {
++            fprintf(stderr,"error to get property 'BootFlagValidBitClear': %s\n", e.what());
++            return ipmi::responseUnspecifiedError();
++        }
++        response.pack(  parameter_version, bootOptionParameter, reserved1,  bitclear);
++        return ipmi::responseSuccess(std::move(response));
++    }else if( bootOptionParameter== static_cast<uint7_t>(BootOptionParameter::BootInfoAck) ){
++        uint8_t writemask;
++        uint8_t initdata;
++        uint8_t valid_bit = 0x1F ; //According to spec, bit 7-5 of initiator ack data are reserved, write as 1 and ignore when read
++        try{
++            variant = getDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     ConfigIntf, "WriteMask");
++            writemask = std::get<uint8_t>(variant);
++            variant = getDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     ConfigIntf, "InitiatorAckData");
++            initdata = std::get<uint8_t>(variant);
++            initdata &= valid_bit;
++        }catch (sdbusplus::exception::SdBusError& e)
++        {
++            fprintf(stderr,"error to get property 'BootFlagValidBitClear': %s\n", e.what());
++            return ipmi::responseUnspecifiedError();
++        }
++        response.pack(  parameter_version, bootOptionParameter, reserved1,  writemask, initdata);
++        return ipmi::responseSuccess(std::move(response));
++    }else if( bootOptionParameter== static_cast<uint7_t>(BootOptionParameter::BootFlags) ){
++        std::string bootsource;
++        std::string bootmode;
++        std::string boottype;
++        bool valid;
++        bool persistent;
++        uint8_t type;
++        uint8_t source;
++        uint8_t device_selector;
++        bool screenblank;
++        bool lockbutton;
++        bool lockkeyboard;
++        bool cmosclear;
++        bool lockpower;
++        uint8_t fwverbosity;
++        bool eventtrap;
++        bool pwbypass;
++        bool locksleepbutton;
++        uint8_t consoleredirerct;
++        bool modeoverride;
++        uint8_t muxoverride;
++        uint8_t instanceselector;
++        try{
++            variant = getDbusProperty(*dbus, SettingService, SettingOneTimeObj,
++                                     PersistantIntf, "Enabled");
++            persistent = !( std::get<bool>(variant) );
++            variant = getDbusProperty(*dbus, SettingService, SettingBootObj,
++                                     bootSourceIntf, "BootSource");
++            bootsource = std::get<std::string>(variant);
++            source = sourceDbusToIpmi.at( Source::convertSourcesFromString(bootsource) );
++            variant = getDbusProperty(*dbus, SettingService, SettingBootObj,
++                                     bootModeIntf, "BootMode");
++            bootmode = std::get<std::string>(variant);
++            variant = getDbusProperty(*dbus, SettingService, SettingBootObj,
++                                     BootTypeIntf, "BootType");
++            boottype = std::get<std::string>(variant);
++
++            device_selector = source;
++            if(  bootsource == Source::convertSourcesToString(Source::Sources::Default) ){
++                if (bootmode == Mode::convertModesToString(Mode::Modes::Setup) ){
++                    device_selector = sourceDbusToIpmi.at( Source::Sources::BIOS_setup );
++                }else if( bootmode == Mode::convertModesToString(Mode::Modes::Safe) ){
++                    device_selector = sourceDbusToIpmi.at( Source::Sources::Diagnostic );
++                }
++            }
++            
++            variant = getDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     BootFlagIntf, "BootFlagValid");
++            valid = std::get<bool>(variant);
++            
++            type = typeDbusToIpmi.at( Type::convertTypesFromString(boottype) );
++            variant = getDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     BootFlagIntf, "LockResetButton");
++            lockbutton = std::get<bool>(variant);
++            variant = getDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     BootFlagIntf, "ScreenBlank");
++            screenblank = std::get<bool>(variant);
++            variant = getDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     BootFlagIntf, "LockKeyboard");
++            lockkeyboard = std::get<bool>(variant);
++            variant = getDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     BootFlagIntf, "CMOSClear");
++            cmosclear = std::get<bool>(variant);
++            variant = getDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     BootFlagIntf, "LockOutViaPowerButton");
++            lockpower = std::get<bool>(variant);
++            variant = getDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     BootFlagIntf, "FirmwareVerbosity");
++            fwverbosity = std::get<uint8_t>(variant);
++            variant = getDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     BootFlagIntf, "ProgressEventTrap");
++            eventtrap = std::get<bool>(variant);
++            variant = getDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     BootFlagIntf, "UserPasswordByPass");
++            pwbypass = std::get<bool>(variant);
++            variant = getDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     BootFlagIntf, "LockSleepButton");
++            locksleepbutton = std::get<bool>(variant);
++            variant = getDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     BootFlagIntf, "ConsoleRedirectionControl");
++            consoleredirerct = std::get<uint8_t>(variant);
++            variant = getDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     BootFlagIntf, "SharedModeOverride");
++            modeoverride = std::get<bool>(variant);
++            variant = getDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     BootFlagIntf, "MuxControlOverride");
++            muxoverride = std::get<uint8_t>(variant);
++            variant = getDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     BootFlagIntf, "InstanceSelector");
++            instanceselector = std::get<uint8_t>(variant);
++        }catch (sdbusplus::exception::SdBusError& e)
++        {
++            fprintf(stderr,"error to get property: %s\n", e.what());
++            return ipmi::responseUnspecifiedError();
++        }
++        response.pack(  parameter_version, bootOptionParameter, reserved1,  uint5_t{}, uint1_t{type}, persistent, valid, lockbutton, screenblank, uint4_t{device_selector}, lockkeyboard, cmosclear, uint2_t{consoleredirerct}, locksleepbutton,  pwbypass, eventtrap, uint2_t{fwverbosity}, lockpower,  uint3_t{muxoverride}, modeoverride,  uint4_t{}, uint4_t{instanceselector}, uint4_t{} );
++        return ipmi::responseSuccess(std::move(response));
++    }else if( bootOptionParameter== static_cast<uint7_t>(BootOptionParameter::BootInitInfo) ){
++        uint8_t channelid;
++        uint32_t sessionid;
++        uint32_t timestamp;
++        try{
++            variant = getDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     InitiatorInfoIntf, "ChannelId");
++            channelid = std::get<uint8_t>(variant);
++            variant = getDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     InitiatorInfoIntf, "SessionId");
++            sessionid = std::get<uint32_t>(variant);
++            variant = getDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     InitiatorInfoIntf, "BootInfoTimestamp");
++            timestamp = std::get<uint32_t>(variant);
++        }catch (sdbusplus::exception::SdBusError& e)
++        {
++            fprintf(stderr,"error to get property: %s\n", e.what());
++            return ipmi::responseUnspecifiedError();
++        }
++        response.pack(  parameter_version, bootOptionParameter, reserved1,  channelid, sessionid, timestamp);
++        return ipmi::responseSuccess(std::move(response));
++    }else if( bootOptionParameter== static_cast<uint7_t>(BootOptionParameter::BootInitMailbox) ){
++        uint8_t selector;
++        using MailboxData = std::vector<uint8_t>;
++        MailboxData data;
++        try{
++            variant = getDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     MailboxInfoIntf, "Selector");
++            selector = std::get<uint8_t>(variant);
++            auto method = dbus->new_method_call(
++            SettingService, SettingBootOptionObj, ipmi::PROP_INTF, "Get");
++            method.append(MailboxInfoIntf, "Data");
++            auto reply = dbus->call(method);
++            std::variant<MailboxData> result;
++            reply.read(result);
++            data = std::get<MailboxData>(result);
++        }catch (sdbusplus::exception::SdBusError& e)
++        {
++            fprintf(stderr,"error to get property: %s\n", e.what());
++            return ipmi::responseUnspecifiedError();
++        }
++        response.pack(  parameter_version, bootOptionParameter, reserved1, selector, data);
++        return ipmi::responseSuccess(std::move(response));
++    }else{
++        return ipmi::responseUnspecifiedError();
++    }
++
++    return ipmi::responseSuccess();
++}
++
++ipmi::RspType<> ipmiChassisSetSysBootOptions(ipmi::Context::ptr ctx,
++                                             uint7_t parameterSelector,
++                                             bool parameterIsValid,
++                                             ipmi::message::Payload& data)
++{
++    std::shared_ptr<sdbusplus::asio::connection> dbus = getSdBus();
++
++    if(parameterSelector== static_cast<uint7_t>(BootOptionParameter::SetInProgress) ){        
++        uint2_t setInProgressFlag;
++        uint6_t rsvd;
++        if (data.unpack(setInProgressFlag, rsvd) != 0 || !data.fullyUnpacked())
++        {
++            return ipmi::responseReqDataLenInvalid();
++        }
++        if (rsvd)
++        {
++            return ipmi::responseInvalidFieldRequest();
++        }
++
++        try{
++            setDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     ConfigIntf, "SetInProgress", (uint8_t)(setInProgressFlag) );
++        }catch (sdbusplus::exception::SdBusError& e)
++        {
++            fprintf(stderr,"error to set property 'SetInProgress': %s\n", e.what());
++            return ipmi::responseUnspecifiedError();
++        }
++
++    }else if( parameterSelector== static_cast<uint7_t>(BootOptionParameter::ServicePartitionSelector) ){
++        uint8_t selector;
++        if (data.unpack(selector) != 0 || !data.fullyUnpacked())
++        {
++            return ipmi::responseReqDataLenInvalid();
++        }
++        
++        try{
++            setDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     PartitionIntf, "PartitionSelector", selector );        
++        }catch(sdbusplus::exception::SdBusError& e)
++        {
++            fprintf(stderr,"error to set property 'PartitionScan': %s\n", e.what());
++            return ipmi::responseUnspecifiedError();        
++        }
++    }else if( parameterSelector== static_cast<uint7_t>(BootOptionParameter::ServicePartitionScan) ){
++        bool partitiondisvocer;
++        bool scan;
++        uint6_t rsvd;
++        if (data.unpack(partitiondisvocer, scan, rsvd) != 0 || !data.fullyUnpacked())
++        {
++            return ipmi::responseReqDataLenInvalid();
++        }
++        if (rsvd)
++        {
++            return ipmi::responseInvalidFieldRequest();
++        }
++
++        try{
++            setDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     PartitionIntf, "PartitionScan", scan );
++            setDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     PartitionIntf, "PartitionDiscovered", partitiondisvocer );                                 
++        }catch(sdbusplus::exception::SdBusError& e)
++        {
++            fprintf(stderr,"error to set property: %s\n", e.what());
++            return ipmi::responseUnspecifiedError();        
++        }
++    }else if( parameterSelector== static_cast<uint7_t>(BootOptionParameter::BootFlagValidBitClr) ){
++        uint5_t bitclear;
++        uint3_t rsvd;
++        if (data.unpack(bitclear, rsvd) != 0 || !data.fullyUnpacked())
++        {
++            return ipmi::responseReqDataLenInvalid();
++        }
++        if (rsvd)
++        {
++            return ipmi::responseInvalidFieldRequest();
++        }
++        
++        try{
++            setDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     ConfigIntf, "BootFlagValidBitClear", (uint8_t)(bitclear) );        
++        }catch(sdbusplus::exception::SdBusError& e)
++        {
++            fprintf(stderr,"error to set property 'BootFlagValidBitClear': %s\n", e.what());
++            return ipmi::responseUnspecifiedError();        
++        }
++    }else if( parameterSelector== static_cast<uint7_t>(BootOptionParameter::BootInfoAck) ){
++        uint8_t reserved_data = 0xE0; //According to spec, bit 7-5 of initiator ack data are reserved, write as 1 and ignore when read
++        uint8_t writemask;
++        uint8_t initdata;
++        if (data.unpack(writemask, initdata) != 0 || !data.fullyUnpacked())
++        {
++            return ipmi::responseReqDataLenInvalid();
++        }
++        
++        try{
++            setDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     ConfigIntf, "WriteMask", writemask );
++            Value variant = getDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     ConfigIntf, "WriteMask");
++            writemask = std::get<uint8_t>(variant);
++            initdata &= writemask;
++            initdata |= reserved_data; //set the data for reserved part
++            setDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     ConfigIntf, "InitiatorAckData", initdata );     
++        }catch(sdbusplus::exception::SdBusError& e)
++        {
++            fprintf(stderr,"error to set property: %s\n", e.what());
++            return ipmi::responseUnspecifiedError();        
++        }
++    }else if( parameterSelector== static_cast<uint7_t>(BootOptionParameter::BootFlags) ){
++        uint5_t rsvd;
++        bool valid;
++        bool persistent;
++        bool type;
++
++        bool cmosclear;
++        bool lock_keyboard;
++        uint4_t device_selector;
++        bool screenblank;
++        bool lockbutton;
++
++        bool lockpower;
++        uint2_t fwverbosity;
++        bool eventtrap;
++        bool pwbypass;
++        bool locksleep;
++        uint2_t consoleredirerct;
++
++        uint4_t rsvd2;
++        bool modeoverride;
++        uint3_t muxoverride;
++
++        uint4_t rsvd3;
++        uint4_t instanceselector;
++        if (data.unpack(rsvd, type, persistent, valid, lockbutton, screenblank, device_selector, lock_keyboard,cmosclear, consoleredirerct, locksleep, pwbypass, eventtrap, fwverbosity,lockpower, muxoverride,  modeoverride, rsvd2, instanceselector, rsvd3 ) != 0 || !data.fullyUnpacked())
++        {
++            return ipmi::responseReqDataLenInvalid();
++        }
++        if (rsvd || rsvd2 || rsvd3)
++        {
++            return ipmi::responseInvalidFieldRequest();
++        }
++
++
++        try{
++            
++            setDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     BootFlagIntf, "BootFlagValid", valid );  
++            setDbusProperty(*dbus, SettingService, SettingOneTimeObj,
++                                     PersistantIntf, "Enabled", !persistent );  
++            setDbusProperty(*dbus, SettingService, SettingBootObj,
++                                     BootTypeIntf, "BootType", Type::convertTypesToString( typeIpmiToDbus.at(type) ) ); 
++        }catch(sdbusplus::exception::SdBusError& e)
++        {
++            fprintf(stderr,"error to set property: %s\n", e.what());
++            return ipmi::responseUnspecifiedError();        
++        }
++
++        Source::Sources bootsource = sourceIpmiToDbus.at( uint8_t{device_selector} );
++        std::string bootmode = Mode::convertModesToString(Mode::Modes::Regular);
++        try{
++            setDbusProperty(*dbus, SettingService, SettingBootObj,
++                                     bootSourceIntf, "BootSource", Source::convertSourcesToString(bootsource) ); 
++            if(bootsource == Source::Sources::Disk_safe){
++                bootmode = Mode::convertModesToString(Mode::Modes::Safe);
++            }else if(bootsource == Source::Sources::BIOS_setup){
++                bootmode = Mode::convertModesToString(Mode::Modes::Setup);
++            }
++            setDbusProperty(*dbus, SettingService, SettingBootObj,
++                                     bootModeIntf, "BootMode" ,bootmode);
++
++
++            setDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     BootFlagIntf, "CMOSClear", cmosclear );  
++            setDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     BootFlagIntf, "LockKeyboard", lock_keyboard ); 
++            setDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     BootFlagIntf, "ScreenBlank", screenblank );
++            setDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     BootFlagIntf, "LockResetButton", lockbutton );
++                                      
++        }catch(sdbusplus::exception::SdBusError& e)
++        {
++            fprintf(stderr,"error to set property : %s\n", e.what());
++            return ipmi::responseUnspecifiedError();        
++        }
++        try
++        {
++            setDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     BootFlagIntf, "LockOutViaPowerButton", lockpower );
++            setDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     BootFlagIntf, "FirmwareVerbosity", uint8_t{fwverbosity} );
++            setDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     BootFlagIntf, "LockSleepButton", locksleep );
++            setDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     BootFlagIntf, "ProgressEventTrap", eventtrap );
++            setDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     BootFlagIntf, "UserPasswordByPass", pwbypass );
++            setDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     BootFlagIntf, "ConsoleRedirectionControl", uint8_t{consoleredirerct} );
++        }catch(sdbusplus::exception::SdBusError& e)
++        {
++            fprintf(stderr,"error to set property: %s\n", e.what());
++            return ipmi::responseUnspecifiedError();        
++        }
++
++        try
++        {
++            setDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     BootFlagIntf, "SharedModeOverride", modeoverride );
++            setDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     BootFlagIntf, "MuxControlOverride", uint8_t{muxoverride} );
++        }catch(sdbusplus::exception::SdBusError& e)
++        {
++            fprintf(stderr,"error to set property: %s\n", e.what());
++            return ipmi::responseUnspecifiedError();        
++        }
++
++        try{
++            setDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     BootFlagIntf, "InstanceSelector", uint8_t{instanceselector} );
++        }catch(sdbusplus::exception::SdBusError& e)
++        {
++            fprintf(stderr,"error to set property 'InstanceSelector': %s\n", e.what());
++            return ipmi::responseUnspecifiedError();        
++        }
++
++
++    }else if( parameterSelector== static_cast<uint7_t>(BootOptionParameter::BootInitInfo) ){
++        uint8_t channelid;
++        uint32_t sessionid;
++        uint32_t timestamp;
++        if (data.unpack(channelid, sessionid, timestamp) != 0 || !data.fullyUnpacked())
++        {
++            return ipmi::responseReqDataLenInvalid();
++        }
++        
++        try{
++            
++            setDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     InitiatorInfoIntf, "ChannelId", channelid );  
++            setDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     InitiatorInfoIntf, "SessionId", sessionid );  
++            setDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     InitiatorInfoIntf, "BootInfoTimestamp", timestamp );   
++        }catch(sdbusplus::exception::SdBusError& e)
++        {
++            fprintf(stderr,"error to set property 'BootFlagValidBitClear': %s\n", e.what());
++            return ipmi::responseUnspecifiedError();        
++        }
++    }else if( parameterSelector== static_cast<uint7_t>(BootOptionParameter::BootInitMailbox) ){
++        uint8_t selector;
++        using MailboxData = std::vector<uint8_t>;
++        MailboxData mailboxdata;
++        if (data.unpack(selector, mailboxdata) != 0 || !data.fullyUnpacked())
++        {
++            return ipmi::responseReqDataLenInvalid();
++        }
++        
++        try{
++            setDbusProperty(*dbus, SettingService, SettingBootOptionObj,
++                                     MailboxInfoIntf, "Selector", selector );  
++            std::variant<MailboxData> property(mailboxdata);
++            auto method = dbus->new_method_call( SettingService, SettingBootOptionObj, ipmi::PROP_INTF, "Set");
++
++            method.append( MailboxInfoIntf, "Data", property);
++            dbus->call(method);
++        }catch(sdbusplus::exception::SdBusError& e)
++        {
++            fprintf(stderr,"error to set property: %s\n", e.what());
++            return ipmi::responseUnspecifiedError();        
++        }
++    }else{
++        return ipmi::responseUnspecifiedError();
++    }
++    return ipmi::responseSuccess();
++}
++
+ static void registerChassisFunctions(void)
+ {
+     log<level::INFO>("Registering Chassis commands");
+@@ -669,6 +1185,16 @@ static void registerChassisFunctions(void)
+                           ipmi::chassis::cmdSetFrontPanelButtonEnables,
+                           ipmi::Privilege::Admin,
+                           ipmiSetFrontPanelButtonEnables);
++    // <Get System Boot Options>
++    ipmi::registerHandler(ipmi::prioOpenBmcBase, ipmi::netFnChassis,
++                          ipmi::chassis::cmdGetSystemBootOptions,
++                          ipmi::Privilege::Operator,
++                          ipmiChassisGetSysBootOptions); 
++    // <Set System Boot Options>
++    ipmi::registerHandler(ipmi::prioOpenBmcBase, ipmi::netFnChassis,
++                          ipmi::chassis::cmdSetSystemBootOptions,
++                          ipmi::Privilege::Operator,
++                          ipmiChassisSetSysBootOptions);
+ }
+ 
+ } // namespace ipmi::chassis
+-- 
+2.33.0
+

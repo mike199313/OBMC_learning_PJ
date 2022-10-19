@@ -1,0 +1,138 @@
+From bc16bab8257534da9fc0a4d2b33faf25e88d9f5c Mon Sep 17 00:00:00 2001
+From: Jiaqing Zhao <jiaqing.zhao@intel.com>
+Date: Sun, 9 Oct 2022 17:24:40 +0800
+Subject: [PATCH] log_service: Fix error message for non-existing log entries
+
+When requesting a log extry that does not exist on system, a 404 Not
+Found HTTP status code and corresponding ResourceNotFound error message
+should be returned. Current code mistakenly uses ResourceMissingAtURI
+error which should be used for referencing a non-existing resource in
+request properties.
+
+Tested:
+Verified requesting on a non-existing now responds with HTTP 404 and
+NotFound message manually. (This cannot be checked with Redfish Service
+Validator.)
+
+Change-Id: I3ef525eec3622918921bb9eb0b93fb6195c1a5b9
+Signed-off-by: Jiaqing Zhao <jiaqing.zhao@intel.com>
+---
+ redfish-core/lib/log_services.hpp | 34 ++++++++++++-------------------
+ 1 file changed, 13 insertions(+), 21 deletions(-)
+
+diff --git a/redfish-core/lib/log_services.hpp b/redfish-core/lib/log_services.hpp
+index e8409dee..5b357b65 100644
+--- a/redfish-core/lib/log_services.hpp
++++ b/redfish-core/lib/log_services.hpp
+@@ -284,8 +284,7 @@ inline static bool
+             indexStr.data(), indexStr.data() + indexStr.size(), index);
+         if (ec != std::errc())
+         {
+-            messages::resourceMissingAtURI(
+-                asyncResp->res, crow::utility::urlFromPieces(entryID));
++            messages::resourceNotFound(asyncResp->res, "LogEntry", entryID);
+             return false;
+         }
+     }
+@@ -294,8 +293,7 @@ inline static bool
+         std::from_chars(tsStr.data(), tsStr.data() + tsStr.size(), timestamp);
+     if (ec != std::errc())
+     {
+-        messages::resourceMissingAtURI(asyncResp->res,
+-                                       crow::utility::urlFromPieces(entryID));
++        messages::resourceNotFound(asyncResp->res, "LogEntry", entryID);
+         return false;
+     }
+     return true;
+@@ -1307,8 +1305,7 @@ inline void requestRoutesJournalEventLogEntry(App& app)
+             }
+         }
+         // Requested ID was not found
+-        messages::resourceMissingAtURI(asyncResp->res,
+-                                       crow::utility::urlFromPieces(targetID));
++        messages::resourceNotFound(asyncResp->res, "LogEntry", targetID);
+         });
+ 
+ 
+@@ -2026,14 +2023,10 @@ inline void requestRoutesSystemHostLoggerLogEntry(App& app)
+         const char* end = targetID.data() + targetID.size();
+ 
+         auto [ptr, ec] = std::from_chars(targetID.data(), end, idInt);
+-        if (ec == std::errc::invalid_argument)
++        if (ec == std::errc::invalid_argument ||
++            ec == std::errc::result_out_of_range)
+         {
+-            messages::resourceMissingAtURI(asyncResp->res, req.urlView);
+-            return;
+-        }
+-        if (ec == std::errc::result_out_of_range)
+-        {
+-            messages::resourceMissingAtURI(asyncResp->res, req.urlView);
++            messages::resourceNotFound(asyncResp->res, "LogEntry", param);
+             return;
+         }
+ 
+@@ -2066,7 +2059,7 @@ inline void requestRoutesSystemHostLoggerLogEntry(App& app)
+         }
+ 
+         // Requested ID was not found
+-        messages::resourceMissingAtURI(asyncResp->res, req.urlView);
++        messages::resourceNotFound(asyncResp->res, "LogEntry", param);
+         });
+ }
+ 
+@@ -2390,7 +2383,7 @@ inline void requestRoutesBMCJournalLogEntry(App& app)
+         // Confirm that the entry ID matches what was requested
+         if (idStr != entryID)
+         {
+-            messages::resourceMissingAtURI(asyncResp->res, req.urlView);
++            messages::resourceNotFound(asyncResp->res, "LogEntry", entryID);
+             return;
+         }
+ 
+@@ -2855,8 +2848,7 @@ static void
+ 
+         if (filename.empty() || timestamp.empty())
+         {
+-            messages::resourceMissingAtURI(asyncResp->res,
+-                                           crow::utility::urlFromPieces(logID));
++            messages::resourceNotFound(asyncResp->res, "LogEntry", logID);
+             return;
+         }
+ 
+@@ -3019,20 +3011,20 @@ inline void requestRoutesCrashdumpFile(App& app)
+             if (dbusFilename.empty() || dbusTimestamp.empty() ||
+                 dbusFilepath.empty())
+             {
+-                messages::resourceMissingAtURI(asyncResp->res, url);
++                messages::resourceNotFound(asyncResp->res, "LogEntry", logID);
+                 return;
+             }
+ 
+             // Verify the file name parameter is correct
+             if (fileName != dbusFilename)
+             {
+-                messages::resourceMissingAtURI(asyncResp->res, url);
++                messages::resourceNotFound(asyncResp->res, "LogEntry", logID);
+                 return;
+             }
+ 
+             if (!std::filesystem::exists(dbusFilepath))
+             {
+-                messages::resourceMissingAtURI(asyncResp->res, url);
++                messages::resourceNotFound(asyncResp->res, "LogEntry", logID);
+                 return;
+             }
+             std::ifstream ifs(dbusFilepath, std::ios::in | std::ios::binary);
+@@ -3719,7 +3711,7 @@ inline void requestRoutesPostCodesEntry(App& app)
+         if (!parsePostCode(targetID, codeIndex, bootIndex))
+         {
+             // Requested ID was not found
+-            messages::resourceMissingAtURI(asyncResp->res, req.urlView);
++            messages::resourceNotFound(asyncResp->res, "LogEntry", targetID);
+             return;
+         }
+         if (bootIndex == 0 || codeIndex == 0)
+-- 
+2.33.0
+

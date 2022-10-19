@@ -1,0 +1,285 @@
+From d87db60491ca49d0f68fd1c7c63c48b042e2fe9b Mon Sep 17 00:00:00 2001
+From: "pj.chen" <chen.pj@inventec.com>
+Date: Mon, 7 Mar 2022 01:55:24 +0000
+Subject: [PATCH 03/25] [SEL] SEL time related command support - Implement Set
+ SEL Time and Get/Set UTC time offset command - Support MS spec O-BMC-MAN-0107
+
+- Implement Set SEL Time command.
+
+Note: Time sync mode should be Manual to set.
+
+- Implement SEL get/set UTC time offset - Modify the way to set SEL time - Fix time isn't changed after UTC offset is modified (in remote site)
+
+Symptom/Reason :
+	1. Implement new ipmitool SEL raw command
+	2. SEL time set will be changed after reboot
+	3. SEL time doesn't reflect timezone change in remote site
+
+Root Cause:
+	1. N/A
+	2. The RTC time isn't changed with original way.
+	3. The time is shown in UTC time by ipmitool
+
+Solution/Change:
+	[storagecommands.cpp]
+	1. Add new functions for get/set UTC time offset
+	2. Change to use dbus method to set time, make sure RTC time
+	   is changed.
+	3. Add time offset to timestamp
+
+Entry Test:
+	1. ipmitool raw 0xa 0x5c
+	2. ipmitool raw 0xa 0x5d
+	ex: ipmitool raw 0xa 0x5d 0xe0 0x1
+	3. ipmitool sel time get
+	4. ipmitool sel time set
+	ex: ipmitool sel time set "06/29/2021 01:00:00"
+
+Bug 928 - [SW][Transformers]O-BMC-MAN-0107: The IPMI command may override NTP synchronization.
+---
+ include/storagecommands.hpp |  10 +++
+ src/storagecommands.cpp     | 165 +++++++++++++++++++++++++++++++++++-
+ 2 files changed, 172 insertions(+), 3 deletions(-)
+
+diff --git a/include/storagecommands.hpp b/include/storagecommands.hpp
+index 42cc85b..5e2eccc 100644
+--- a/include/storagecommands.hpp
++++ b/include/storagecommands.hpp
+@@ -21,6 +21,16 @@
+ 
+ static constexpr uint8_t ipmiSdrVersion = 0x51;
+ 
++/*dbus status for timezone and time setting*/
++const static constexpr char* TimeService = "org.freedesktop.timedate1";
++const static constexpr char* TimeObj = "/org/freedesktop/timedate1";
++const static constexpr char* TimeIntf = "org.freedesktop.timedate1";
++const static constexpr char* SetTimeZone = "SetTimezone";
++const static constexpr char* TimeManagerService = "xyz.openbmc_project.Time.Manager";
++const static constexpr char* TimeManagerObj = "/xyz/openbmc_project/time/bmc";
++const static constexpr char* TimeManagerIntf = "xyz.openbmc_project.Time.EpochTime";
++const static constexpr char* EplasedTime = "Elapsed";
++
+ namespace intel_oem::ipmi::sel
+ {
+ static constexpr uint8_t selOperationSupport = 0x02;
+diff --git a/src/storagecommands.cpp b/src/storagecommands.cpp
+index a67fe41..8e0bec7 100644
+--- a/src/storagecommands.cpp
++++ b/src/storagecommands.cpp
+@@ -25,6 +25,8 @@
+ #include <boost/container/flat_map.hpp>
+ #include <ipmid/api.hpp>
+ #include <ipmid/message.hpp>
++#include <ipmid/utils.hpp>
++#include <sys/time.h>
+ #include <phosphor-ipmi-host/selutility.hpp>
+ #include <phosphor-logging/log.hpp>
+ #include <sdbusplus/message/types.hpp>
+@@ -36,8 +38,20 @@
+ #include <stdexcept>
+ #include <unordered_set>
+ 
++#define MAX_TIME 5000
++
+ static constexpr bool DEBUG = false;
+ 
++const static constexpr char* settingMgtService = "xyz.openbmc_project.Settings";
++const static constexpr char* timeSyncObjPath = "/xyz/openbmc_project/time/sync_method";
++const static constexpr char* timeSyncMethodIntf = "xyz.openbmc_project.Time.Synchronization";
++const static constexpr char* timeSyncMethodProp = "TimeSyncMethod";
++const std::vector<std::string> timeSyncMethodValue = {
++    "xyz.openbmc_project.Time.Synchronization.Method.Manual",
++    "xyz.openbmc_project.Time.Synchronization.Method.NTP"
++};
++
++
+ namespace intel_oem::ipmi::sel
+ {
+ static const std::filesystem::path selLogDir = "/var/log";
+@@ -121,6 +135,8 @@ static uint8_t writeAddr = 0XFF;
+ std::unique_ptr<phosphor::Timer> writeTimer = nullptr;
+ static std::vector<sdbusplus::bus::match::match> fruMatches;
+ 
++static const int BUFFER_LENGTH = 20;
++
+ ManagedObjectType frus;
+ 
+ // we unfortunately have to build a map of hashes in case there is a
+@@ -1272,6 +1288,29 @@ ipmi::RspType<uint8_t> ipmiStorageClearSEL(ipmi::Context::ptr ctx,
+     return ipmi::responseSuccess(ipmi::sel::eraseComplete);
+ }
+ 
++int16_t GetSELTimeUTCOffset(){
++    time_t local_time;
++    time_t gmt_time;
++    time_t time_offset;
++    struct tm *ptm;
++    int16_t utc_time_offset;
++
++    time(&local_time);
++    ptm = gmtime(&local_time);
++    gmt_time = mktime(ptm);
++
++    ptm = localtime(&local_time);
++
++    time_offset = local_time - gmt_time;
++    if (ptm->tm_isdst){
++        time_offset += 3600;
++    }
++
++    utc_time_offset = (int)(time_offset)/60; //offset originally in seconds, change to minutes
++
++    return utc_time_offset;
++}
++
+ ipmi::RspType<uint32_t> ipmiStorageGetSELTime()
+ {
+     struct timespec selTime = {};
+@@ -1280,14 +1319,124 @@ ipmi::RspType<uint32_t> ipmiStorageGetSELTime()
+     {
+         return ipmi::responseUnspecifiedError();
+     }
++    selTime.tv_sec += GetSELTimeUTCOffset()*60;
+ 
+     return ipmi::responseSuccess(selTime.tv_sec);
+ }
+ 
+-ipmi::RspType<> ipmiStorageSetSELTime(uint32_t selTime)
++ipmi::RspType<> ipmiStorageSetSELTime(std::vector<uint8_t> selTime)
+ {
+-    // Set SEL Time is not supported
+-    return ipmi::responseInvalidCommand();
++    uint32_t setSelTime;
++    struct timeval stime;
++    int dataLen = 4; // Time Stamp only 4 Byte
++
++    if (selTime.size() != dataLen)
++    {
++        if (DEBUG)
++        {
++            std::fprintf(stderr, "ipmiStorageSetSELTime invalide Length %d\n",
++                                  selTime.size());
++        }
++        return ipmi::responseReqDataLenInvalid();
++    }
++
++    try
++    {
++        // Check time sync mode is Manual
++        std::shared_ptr<sdbusplus::asio::connection> dbus = getSdBus();
++        std::string service = getService(*dbus, timeSyncMethodIntf,
++                                                timeSyncObjPath);
++        Value variant = getDbusProperty(*dbus, service, timeSyncObjPath,
++                                 timeSyncMethodIntf, timeSyncMethodProp);
++        std::string& syncMode = std::get<std::string>(variant);
++
++        if (syncMode.find("Manual") == std::string::npos)
++        {
++            setDbusProperty(*dbus, "xyz.openbmc_project.Settings", "/xyz/openbmc_project/time/sync_method",
++                                "xyz.openbmc_project.Time.Synchronization", "TimeSyncMethod","xyz.openbmc_project.Time.Synchronization.Method.Manual");
++        }
++
++        std::memcpy(&setSelTime, selTime.data(), dataLen);
++
++        if (DEBUG)
++        {
++            std::fprintf(stderr, "ipmiStorageSetSELTime data: 0x%X\n",
++                                  setSelTime);
++        }
++
++        using namespace std::chrono;
++        microseconds usec{seconds(setSelTime)};
++
++        gettimeofday(&stime, NULL);
++        stime.tv_sec = setSelTime;
++
++
++        unsigned long long int time_usec = (unsigned long long int)(stime.tv_sec)*1000000;  //get time in micro second
++
++        clock_t now = clock();
++        bool setDbusPropertySuccess = false;
++        while((clock() - now )< MAX_TIME )
++        {
++            try
++            {
++                setDbusProperty(*dbus, TimeManagerService, TimeManagerObj, TimeManagerIntf, EplasedTime, time_usec);
++                setDbusPropertySuccess = true;
++                break;
++            }
++            catch(const std::exception& e)
++            {
++                //std::fprintf(stderr, "not yet: %s\n",syncMode.c_str());
++            }
++        }
++        if(setDbusPropertySuccess == false)
++        {
++		  fprintf(stderr,"ipmiStorageSetSELTime failed: time out\n");
++		  return responseCommandNotAvailable();
++		}
++    }
++    catch (const std::exception& e)
++    {
++         fprintf(stderr, "ipmiStorageSetSELTime exception %s\n", e.what());
++         return ipmi::responseUnspecifiedError();
++     }
++    catch (sdbusplus::exception_t& e)
++    {
++        fprintf(stderr, "ipmiStorageSetSELTime exception %s\n", e.what());
++        return ipmi::responseUnspecifiedError();
++    }
++
++    return ipmi::responseSuccess();
++}
++
++ipmi::RspType<uint16_t> ipmiStorageGetSELTimeUTCOffset(){   
++    int16_t utc_time_offset = GetSELTimeUTCOffset();
++    return ipmi::responseSuccess(utc_time_offset);
++
++}
++
++ipmi::RspType<> ipmiStorageSetSELTimeUTCOffset(int16_t utc_offset_min){
++    int offset_hour = (int)(utc_offset_min)/60;
++    char buffer[BUFFER_LENGTH];
++    auto bus = getSdBus();
++
++    /* set new timezone with utc offset */
++    snprintf(buffer,BUFFER_LENGTH,"Etc/GMT%+d",offset_hour*(-1));
++    auto method = bus->new_method_call(TimeService, TimeObj, TimeIntf, SetTimeZone);
++    std::string str(buffer);
++    method.append( str, true);
++
++    try
++    {
++        sdbusplus::message::message SetSelResp = bus->call(method);
++    }
++    catch (sdbusplus::exception_t&)
++    {
++        phosphor::logging::log<phosphor::logging::level::ERR>(
++            "error setting timezone");
++        return ipmi::responseUnspecifiedError();
++    }
++    
++    return ipmi::responseSuccess();
+ }
+ 
+ std::vector<uint8_t> getType12SDRs(uint16_t index, uint16_t recordId)
+@@ -1399,6 +1548,16 @@ void registerStorageFunctions()
+     ipmi::registerHandler(ipmi::prioOpenBmcBase, ipmi::netFnStorage,
+                           ipmi::storage::cmdSetSelTime,
+                           ipmi::Privilege::Operator, ipmiStorageSetSELTime);
++
++    // <Get SEL Time UTC offset>
++    ipmi::registerHandler(ipmi::prioOpenBmcBase, ipmi::netFnStorage,
++                          ipmi::storage::cmdGetSelTimeUtcOffset, ipmi::Privilege::User,
++                          ipmiStorageGetSELTimeUTCOffset);
++
++    // <Set SEL Time UTC offset>
++    ipmi::registerHandler(ipmi::prioOpenBmcBase, ipmi::netFnStorage,
++                          ipmi::storage::cmdSetSelTimeUtcOffset, ipmi::Privilege::Operator,
++                          ipmiStorageSetSELTimeUTCOffset);
+ }
+ } // namespace storage
+ } // namespace ipmi
+-- 
+2.33.0
+

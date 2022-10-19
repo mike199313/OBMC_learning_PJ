@@ -1,0 +1,91 @@
+From caeab5153f0703cfd99c685a5aa4ba1b14a79ed0 Mon Sep 17 00:00:00 2001
+From: Tommy Lin <lin.tommysc@inventec.com>
+Date: Thu, 25 Aug 2022 06:26:57 +0000
+Subject: [PATCH] Fix reboot message missing when graceful reset from redfish
+
+Symptom/Reason:
+- After OpenBmc reboot, It should show "-- Reboot --" by "journalctl" command.
+
+Root Cause:
+- The original log was added in phosphor-ipmi-host which was not triggered by redfish
+
+Solution/Change:
+- [phosphor-ipmi-host]
+  - remove patch 0028-MS-M-BMC-LOG-0008-bmcreset.patch
+- [phosphor-state-manager]
+  - Add SEL log entry for GracefulRestart
+- [inventec-util]
+  - Add reboot message for normal boot
+
+Entry Test:
+- Graceful reset via redfish
+  - curl -X POST https://${bmc}/redfish/v1/Managers/bmc/Actions/Manager.Reset -d '{"ResetType": "GracefulRestart"}'
+- Check reboot message
+  - journalctl  | grep -i reboot
+---
+ bmc_state_manager.cpp | 42 ++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 42 insertions(+)
+
+diff --git a/bmc_state_manager.cpp b/bmc_state_manager.cpp
+index 37597f8..619cc02 100644
+--- a/bmc_state_manager.cpp
++++ b/bmc_state_manager.cpp
+@@ -135,6 +135,34 @@ void BMC::subscribeToSystemdSignals()
+     return;
+ }
+ 
++static void generateSystemRecordTypeSEL(sdbusplus::bus::bus& bus,
++                                        char const *jrMessage,
++                                        char const *SensorPath,
++                                        std::vector<uint8_t> eventData,
++                                        bool assert,
++                                        uint16_t generateID)
++{
++    auto writeSEL = bus.new_method_call( "xyz.openbmc_project.Logging.IPMI",
++                                          "/xyz/openbmc_project/Logging/IPMI",
++                                          "xyz.openbmc_project.Logging.IPMI",
++                                          "IpmiSelAdd");
++    writeSEL.append(jrMessage, std::string(SensorPath), eventData, assert, generateID);
++    try {
++        bus.call(writeSEL);
++    } catch (sdbusplus::exception_t &e) {
++        std::fprintf(stderr, "%s:%d exception=%s\n", __func__, __LINE__, e.what());
++    }
++}
++
++static void generateBMCHealthSEL(sdbusplus::bus::bus& bus,
++                                char const *SensorPath,
++                                std::vector<uint8_t> eventData,
++                                bool assert)
++{
++    uint16_t genid = 0x20;
++    generateSystemRecordTypeSEL(bus, "BMC Health", SensorPath, eventData, assert, genid);
++}
++
+ void BMC::executeTransition(const Transition tranReq)
+ {
+     // HardReboot does not shutdown any services and immediately transitions
+@@ -159,6 +187,20 @@ void BMC::executeTransition(const Transition tranReq)
+         if (iter == SYSTEMD_TABLE.end())
+             return;
+ 
++        // Tommy. Add SEL log for BMC reboot
++        std::vector<uint8_t> eventData1 = {0x01, 0xFF, 0xFF};
++        uint16_t genid = 0x10;
++        generateSystemRecordTypeSEL(
++                this->bus,
++                "^-- Reboot --",
++                "/xyz/openbmc_project/sensor/specific/system_boot_restart_initiated/system_reset_cold",
++                eventData1,
++                true,
++                genid);
++
++        std::vector<uint8_t> eventData2 = {0xA8, 0x01, 0xFF};
++        generateBMCHealthSEL(this->bus, "/xyz/openbmc_project/sensors/oem_event_70h/oem_e0h/BMC_health", eventData2, true);
++
+         const auto& sysdUnit = iter->second;
+ 
+         auto method = this->bus.new_method_call(
+-- 
+2.33.0
+

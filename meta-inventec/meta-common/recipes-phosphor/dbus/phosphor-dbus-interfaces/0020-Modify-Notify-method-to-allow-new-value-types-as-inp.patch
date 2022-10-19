@@ -1,0 +1,27 @@
+From fd5dea1973d065008911739d6fcb95fee31a813a Mon Sep 17 00:00:00 2001
+From: cynthia <wu.cynthia@inventec.com>
+Date: Sun, 25 Sep 2022 17:57:02 +0800
+Subject: [PATCH 20/20] Modify 'Notify' method, to allow new value types as
+ input
+
+---
+ yaml/xyz/openbmc_project/Inventory/Manager.interface.yaml | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/yaml/xyz/openbmc_project/Inventory/Manager.interface.yaml b/yaml/xyz/openbmc_project/Inventory/Manager.interface.yaml
+index 6c791ee..fb06e81 100644
+--- a/yaml/xyz/openbmc_project/Inventory/Manager.interface.yaml
++++ b/yaml/xyz/openbmc_project/Inventory/Manager.interface.yaml
+@@ -12,6 +12,6 @@ methods:
+           state managed.
+       parameters:
+           - name: object
+-            type: dict[path,dict[string,dict[string,variant[boolean,size,int64,string,array[byte]]]]]
++            type: dict[path,dict[string,dict[string,variant[boolean,size,int64,uint16,string,array[byte],array[uint16],array[string]]]]]
+             description: >
+-                A dictionary of fully enumerated items to be managed.
++                A dictionary of fully enumerated items to be managed.
+\ No newline at end of file
+-- 
+2.33.0
+

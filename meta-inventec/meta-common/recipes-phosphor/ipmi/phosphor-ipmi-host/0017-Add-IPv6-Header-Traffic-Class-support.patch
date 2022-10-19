@@ -1,0 +1,92 @@
+From fe2d2462597d98bfc23ea4da5f943a88700f0308 Mon Sep 17 00:00:00 2001
+From: "Lin.TommySC" <lin.tommysc@inventec.com>
+Date: Wed, 21 Jul 2021 02:01:37 +0000
+Subject: [PATCH 17/31] Add IPv6 Header Traffic Class support
+
+Symptom/Reason :
+    - Add IPv6 Header Traffic Class support
+
+Root Cause:
+    - N/A
+
+Solution/Change:
+    [phosphor-ipmi-host]
+        - Add handler for IPv6TrafficClass command
+    [phosphor-ipmi-config]
+        - Add ipv6_traffic_class config field
+    [phosphor-snmp]
+        - Set IPv6 Header Traffic Class before sending SNMP trap
+    [phosphor-dbus-monitor]
+        - Fix type mismatch when calling sendTrap
+
+Entry Test:
+    - Set IPv6 Header Traffic Class
+        ipmitool raw 0x0c 0x01 0x01 0x34 0x2
+    - Get IPv6 Header Traffic Class
+        ipmitool raw 0x0c 0x02 0x01 0x34 0x00 0x00
+---
+ transporthandler.cpp | 20 ++++++++++++++++++++
+ transporthandler.hpp |  2 ++
+ 2 files changed, 22 insertions(+)
+
+diff --git a/transporthandler.cpp b/transporthandler.cpp
+index 0232e0b..21abbbe 100644
+--- a/transporthandler.cpp
++++ b/transporthandler.cpp
+@@ -1408,6 +1408,19 @@ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
+             channelCall<setIPFamily>(channel, static_cast<IPFamilyEnables>(enables));
+             return responseSuccess();
+         }
++        case LanParam::IPv6TrafficClass:
++        {
++            uint8_t tClass;
++            if (req.unpack(tClass) != 0 || !req.fullyUnpacked())
++            {
++                return responseReqDataLenInvalid();
++            }
++            if (updateConfigValue<uint8_t>(LAN_CONFIG_IPV6_TCLASS, tClass))
++            {
++                return responseResponseError();
++            }
++            return responseSuccess();
++        }
+         case LanParam::IPv6Status:
+         {
+             req.trailingOk = true;
+@@ -1851,6 +1864,13 @@ RspType<message::Payload> getLan(Context::ptr ctx, uint4_t channelBits,
+             ret.pack(static_cast<uint8_t>(enables));
+             return responseSuccess(std::move(ret));
+         }
++        case LanParam::IPv6TrafficClass:
++        {
++            uint8_t tClass = 0;
++            loadConfigValue<uint8_t>(LAN_CONFIG_IPV6_TCLASS, tClass);
++            ret.pack(tClass);
++            return responseSuccess(std::move(ret));
++        }
+         case LanParam::IPv6Status:
+         {
+             ret.pack(MAX_IPV6_STATIC_ADDRESSES);
+diff --git a/transporthandler.hpp b/transporthandler.hpp
+index add4d11..360364b 100644
+--- a/transporthandler.hpp
++++ b/transporthandler.hpp
+@@ -92,6 +92,7 @@ enum class LanParam : uint8_t
+     cipherSuitePrivilegeLevels = 24,
+     IPFamilySupport = 50,
+     IPFamilyEnables = 51,
++    IPv6TrafficClass = 52,
+     IPv6HopLimit = 53,
+     IPv6Status = 55,
+     IPv6StaticAddresses = 56,
+@@ -192,6 +193,7 @@ constexpr auto LAN_CFG_FILE = "/usr/share/ipmi-providers/lan_config.json";
+ // Config name for LAN Config Parameters
+ constexpr auto LAN_CONFIG_COMM_STR = "community_str";
+ constexpr auto LAN_CONFIG_PRI_RMCP_PORT = "primary_rmcp_port";
++constexpr auto LAN_CONFIG_IPV6_TCLASS = "ipv6_traffic_class";
+ 
+ /** @brief get config value from LAN configuration file.
+  *  @param[in] name - config name.
+-- 
+2.33.0
+

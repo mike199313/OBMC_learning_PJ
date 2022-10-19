@@ -1,0 +1,224 @@
+From f279222f2264e3139cb935045a797ea16ecaddfd Mon Sep 17 00:00:00 2001
+From: "pj.chen" <chen.pj@inventec.com>
+Date: Fri, 10 Jun 2022 15:50:00 +0800
+Subject: [PATCH] Bug 707 - When login to OS from new windows via iKVM then
+ power cycle via ipmi, DUT wont boot up.
+
+Symptom/Reason :
+    - When using browser access ikvm. The ipmitool power cycle will make the host down successfully but host up failed
+
+Root Cause:
+    - The VGA path is occupied when power cycle. The ikvm is using the aspeed video capture engine (/dev/video0) to capture the video output. So the vga path is occupied. and make the power up failed.
+
+Solution/Change:
+    [x86-power-control]
+        - When the power transition start, make the ikvm stopping the video capturing by calling ikvm registered method call . When the power is OK to boot up. Call the ikvm registered method to start video capturing.
+    [obmc-ikvm]
+        -register two method call to systemd to let the x86-power-control to control the video capture at correct time.
+
+Entry Test:
+    - 1. using browser access the ikvm
+    - 2. using ipmitool power cycle
+    - 3. The video capture stop but websocket is still connected.
+    - 4. When power ok, The ikvm video capturing is up and working.
+    - 5. The user can get the bios screen and enter bios.
+---
+ src/power_control.cpp | 97 ++++++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 96 insertions(+), 1 deletion(-)
+
+diff --git a/src/power_control.cpp b/src/power_control.cpp
+index e25cc08..ecac2ad 100644
+--- a/src/power_control.cpp
++++ b/src/power_control.cpp
+@@ -27,7 +27,11 @@
+ #include <nlohmann/json.hpp>
+ #include <phosphor-logging/lg2.hpp>
+ #include <sdbusplus/asio/object_server.hpp>
++#include <sdbusplus/bus.hpp>
+ 
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
+ #include <filesystem>
+ #include <fstream>
+ #include <string_view>
+@@ -139,7 +143,8 @@ boost::container::flat_map<std::string, int> TimerMap = {
+     {"GracefulPowerOffS", (5 * 60)},
+     {"WarmResetCheckMs", 500},
+     {"PowerOffSaveMs", 7000},
+-    {"SlotPowerCycleMs", 200}};
++    {"SlotPowerCycleMs", 200},
++    {"forceikvmVideoStartTimeMs", 20000}};
+ 
+ static bool nmiEnabled = true;
+ static bool sioEnabled = true;
+@@ -164,6 +169,9 @@ static boost::asio::steady_timer pohCounterTimer(io);
+ // Time when to allow restart cause updates
+ static boost::asio::steady_timer restartCauseTimer(io);
+ static boost::asio::steady_timer slotPowerCycleTimer(io);
++// Time force the video enable
++static boost::asio::steady_timer forceikvmVideoStartTimer(io);
++
+ 
+ // GPIO Lines and Event Descriptors
+ static gpiod::line psPowerOKLine;
+@@ -189,6 +197,42 @@ static gpiod::line slotPowerLine;
+ 
+ static constexpr uint8_t beepPowerFail = 8;
+ 
++static void IkvmStartVideoCapture(void)
++{
++    try
++    {
++        using namespace sdbusplus;
++        auto b = bus::new_default_system();
++        auto m = b.new_method_call(
++            "xyz.openbmc_project.IKVM", "/xyz/openbmc_project/ikvm",
++            "xyz.openbmc_project.ikvm", "startVideoCapture");
++        auto reply = b.call(m);
++        fprintf(stderr, "ikvm start video capture \n");
++    }
++    catch (std::exception& e)
++    {
++        fprintf(stderr, "ikvm start video catpure exception %s \n", e.what());
++    }
++}
++
++static void IkvmStopVideoCapture(void)
++{
++    try
++    {
++        using namespace sdbusplus;
++        auto b = bus::new_default_system();
++        auto m = b.new_method_call(
++            "xyz.openbmc_project.IKVM", "/xyz/openbmc_project/ikvm",
++            "xyz.openbmc_project.ikvm", "stopVideoCapture");
++        auto reply = b.call(m);
++        fprintf(stderr, "ikvm stop video capture \n");
++    }
++    catch (std::exception& e)
++    {
++        fprintf(stderr, "ikvm stop video catpure exception %s \n", e.what());
++    }
++}
++
+ static void beep(const uint8_t& beepPriority)
+ {
+     lg2::info("Beep with priority: {BEEP_PRIORITY}", "BEEP_PRIORITY",
+@@ -1584,6 +1628,32 @@ static void pohCounterTimerStart()
+     });
+ }
+ 
++static void forceikvmVideoStartTimerStart()
++{
++    lg2::info("Power-cycle timer started");
++    forceikvmVideoStartTimer.expires_after(std::chrono::milliseconds(
++        TimerMap["forceikvmVideoStartTimeMs"]));
++    forceikvmVideoStartTimer.async_wait([](const boost::system::error_code ec) {
++        if (ec)
++        {
++            // operation_aborted is expected if timer is canceled before
++            // completion.
++            if (ec != boost::asio::error::operation_aborted)
++            {
++                std::string errMsg =
++                    "forceikvmVideoStartTimer async_wait failed: " + ec.message();
++                lg2::error(errMsg.c_str());
++            }
++            lg2::info("forceikvmVideoStartTimer timer canceled");
++            return;
++        }
++        lg2::info("forceikvmVideoStartTimer timer completed");
++        IkvmStartVideoCapture();
++    });
++}
++
++
++
+ static void currentHostStateMonitor()
+ {
+     if (getHostState(powerState) ==
+@@ -1740,6 +1810,9 @@ void systemHostPowerOn()
+         },
+         systemdBusname, systemdPath, systemdInterface, "StartUnit",
+         systemHostOnTargetName, "replace");
++
++    forceikvmVideoStartTimer.cancel();         
++    IkvmStartVideoCapture();
+ }
+ 
+ void systemHostPowerOff()
+@@ -1807,6 +1880,9 @@ static void powerStateOn(const Event event)
+             break;
+         default:
+             lg2::info("No action taken.");
++            //for example ipmitool power on at PowerState::on
++            IkvmStartVideoCapture();
++            forceikvmVideoStartTimer.cancel();
+             break;
+     }
+ }
+@@ -3001,6 +3077,10 @@ int main(int argc, char* argv[])
+     sdbusplus::asio::object_server hostServer =
+         sdbusplus::asio::object_server(conn);
+ 
++    // bug707 we need stop video capturing before the power transition
++    // and start video after power transition completed.
++
++
+     // Power Control Interface
+     hostIface =
+         hostServer.add_interface("/xyz/openbmc_project/state/host" + node,
+@@ -3015,6 +3095,9 @@ int main(int argc, char* argv[])
+                 // if power button is masked, ignore this
+                 if (!powerButtonMask)
+                 {
++                    forceikvmVideoStartTimer.cancel();
++                    forceikvmVideoStartTimerStart();
++                    IkvmStopVideoCapture();
+                     sendPowerControlEvent(Event::gracefulPowerOffRequest);
+                     addRestartCause(RestartCause::command);
+                 }
+@@ -3031,6 +3114,9 @@ int main(int argc, char* argv[])
+                 // if power button is masked, ignore this
+                 if (!powerButtonMask)
+                 {
++                    forceikvmVideoStartTimer.cancel();
++                    forceikvmVideoStartTimerStart();
++                    IkvmStopVideoCapture();
+                     sendPowerControlEvent(Event::powerOnRequest);
+                     addRestartCause(RestartCause::command);
+                 }
+@@ -3047,6 +3133,9 @@ int main(int argc, char* argv[])
+                 // if power button is masked, ignore this
+                 if (!powerButtonMask)
+                 {
++                    forceikvmVideoStartTimer.cancel();
++                    forceikvmVideoStartTimerStart();
++                    IkvmStopVideoCapture();
+                     sendPowerControlEvent(Event::powerCycleRequest);
+                     addRestartCause(RestartCause::command);
+                 }
+@@ -3064,6 +3153,9 @@ int main(int argc, char* argv[])
+                 // if reset button is masked, ignore this
+                 if (!resetButtonMask)
+                 {
++                    forceikvmVideoStartTimer.cancel();
++                    forceikvmVideoStartTimerStart();
++                    IkvmStopVideoCapture();
+                     sendPowerControlEvent(Event::gracefulPowerCycleRequest);
+                     addRestartCause(RestartCause::command);
+                 }
+@@ -3081,6 +3173,9 @@ int main(int argc, char* argv[])
+                 // if reset button is masked, ignore this
+                 if (!resetButtonMask)
+                 {
++                    forceikvmVideoStartTimer.cancel();
++                    forceikvmVideoStartTimerStart();
++                    IkvmStopVideoCapture();
+                     sendPowerControlEvent(Event::resetRequest);
+                     addRestartCause(RestartCause::command);
+                 }
+-- 
+2.33.0
+

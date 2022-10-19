@@ -1,0 +1,320 @@
+From 88659f063b541174058d72e0b6ebdb32ca88fccd Mon Sep 17 00:00:00 2001
+From: "sun.cwsun" <sun.cwsun@inventec.com>
+Date: Tue, 17 May 2022 21:34:49 +0800
+Subject: [PATCH 22/27] Bug 985 - [SW][Transformers][OpenBMC] MS M-BMC-LOG0008
+ The BMC should generate an BMC Health SEL when FRU Empty / eeprom without
+ valid mac address
+
+    Symptom/Reason :
+		-  The BMC should generate an BMC Health SEL when FRU Empty / eeprom without valid mac address
+
+	Root Cause:
+        - none
+
+    Solution/Change:
+        [dbus-sensors]
+            - check the FRU devices by dbus when system after BMC booting done
+		[mac-util]
+			- check if the mac address is written successfully and if the eeprom is working good
+
+    Entry Test:
+
+	- simulate no mac address written by the writing the checksum error with 't' mode
+
+		-- /usr/bin/mac_util t eth0 38:68:dd:3e:99:f1
+root@transformers:~# ipmitool sel elist
+aff | 05/16/22 | 14:45:40 GMT | Unknown BMC_health |  | Asserted
+root@transformers:~# ipmitool sel get 0xaff
+SEL Record ID          : 0aff
+ Record Type           : 02
+ Timestamp             : 14:45:40 GMT 14:45:40 GMT
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Unknown
+ Sensor Number         : b1
+ Event Type            : OEM
+ Event Direction       : Assertion Event
+ Event Data (RAW)      : acffff
+ Description           :
+
+Sensor ID              : BMC_health (0xb1)
+ Entity ID             : 7.0
+ Sensor Type (Discrete): Unknown
+
+	- simulate the FRU is invalid by unbinding the device
+
+		-- echo 8-0051 > /sys/bus/i2c//drivers/at24/unbind
+		-- /usr/bin/mac_util r eth0
+
+root@transformers:~# ipmitool sel elist
+ b0e | 05/16/22 | 14:55:58 GMT | Unknown BMC_health |  | Asserted
+root@transformers:~# ipmitool sel get 0xb0e
+SEL Record ID          : 0b0e
+ Record Type           : 02
+ Timestamp             : 14:55:58 GMT 14:55:58 GMT
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Unknown
+ Sensor Number         : b1
+ Event Type            : OEM
+ Event Direction       : Assertion Event
+ Event Data (RAW)      : a4ffff
+ Description           :
+
+Sensor ID              : BMC_health (0xb1)
+ Entity ID             : 7.0
+ Sensor Type (Discrete): Unknown
+
+	- simulate the FRU is invalid
+		-- echo 3-0050 > /sys/bus/i2c//drivers/at24/bind
+		-- /usr/bin/ms_subsystem_check
+try opening /sys/bus/i2c/devices/3-0050/eeprom
+Unable to oepn file /sys/bus/i2c/devices/3-0050/eeprom
+root@transformers:~# ipmitool sel elist
+13cd | 05/17/22 | 13:27:54 UTC | Unknown BMC_health |  | Asserted
+root@transformers:~# ipmitool sel get 0x13cd
+SEL Record ID          : 13cd
+ Record Type           : 02
+ Timestamp             : 13:27:54 UTC 13:27:54 UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Unknown
+ Sensor Number         : b1
+ Event Type            : OEM
+ Event Direction       : Assertion Event
+ Event Data (RAW)      : a4ffff
+ Description           :
+
+Sensor ID              : BMC_health (0xb1)
+ Entity ID             : 7.0
+ Sensor Type (Discrete): Unknown
+---
+ src/ms_subsystem_check.cpp | 176 ++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 174 insertions(+), 2 deletions(-)
+
+diff --git a/src/ms_subsystem_check.cpp b/src/ms_subsystem_check.cpp
+index 88860a1..409a423 100644
+--- a/src/ms_subsystem_check.cpp
++++ b/src/ms_subsystem_check.cpp
+@@ -14,8 +14,7 @@
+ // limitations under the License.
+ */
+ 
+-#include <PSUEvent.hpp>
+-#include <PSUSensor.hpp>
++#include <chrono>
+ #include <Utils.hpp>
+ #include <boost/algorithm/string/predicate.hpp>
+ #include <boost/algorithm/string/replace.hpp>
+@@ -39,6 +38,18 @@
+ #include <vector>
+ #include <unistd.h>
+ 
++using Value =
++    std::variant<bool, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t,
++                 uint64_t, double, std::string, std::vector<std::string>>;
++
++using GetSubTreeType = std::vector<
++    std::pair<std::string,
++              std::vector<std::pair<std::string, std::vector<std::string>>>>>;
++
++using PropertyMap = std::map<std::string, Value>;
++
++
++
+ static const std::string DBUS_OBJPATH_SUBYSTEM_HEALTH_CHECK = 
+                         "/xyz/openbmc_project/sensors/discrete_6fh/management_subsystem_health/Subsystem_health";
+ 
+@@ -51,6 +62,10 @@ static const std::string DBUS_OBJPATH_PSU_STATE_CHECK =
+                         "/xyz/openbmc_project/sensors/discrete_6fh/power_supply/PSUStateCheck";
+ 
+ 
++static const std::string DBUS_OBJPATH_BMC_HEALTH_CHECK = 
++                        "/xyz/openbmc_project/sensors/oem_event_70h/oem_e0h/BMC_health";
++
++
+ static const int MAX_SLEEP_TIME = 5;
+ static const int FULL_DATA = 0xFF;
+ 
+@@ -70,6 +85,14 @@ static const int CMD_INDEX_SENSOR_NUMBER = 0;
+ 
+ int CMD_OPTION_TEST_MODE = 0x00; // -t
+ 
++constexpr std::chrono::microseconds DBUS_TIMEOUT(10000);
++
++static const bool SEL_ASSERTED = true;
++static const bool SEL_DEASSERTED = false;
++static const uint8_t BMC_HEALTH_MASK_EMPTY_INVALID_FRU = static_cast<uint8_t>(0xA4);
++static const uint8_t BMC_HEALTH_MASK_NO_MACADDRESS_PROGRAMMED = static_cast<uint8_t>(0xAC);
++
++
+ #if 0
+ static void dbg_payload(std::vector<uint8_t>& data, const char* prompt)
+ {
+@@ -161,7 +184,153 @@ void static check_IntelME_sensor_status(std::shared_ptr<sdbusplus::asio::connect
+     }
+ }
+ 
++PropertyMap getAllDbusProperties(sdbusplus::bus::bus& bus,
++                                 const std::string& service,
++                                 const std::string& objPath,
++                                 const std::string& interface,
++                                 std::chrono::microseconds timeout = DBUS_TIMEOUT)
++{
++    PropertyMap properties;
++
++    auto method = bus.new_method_call(service.c_str(), objPath.c_str(),
++                                      "org.freedesktop.DBus.Properties", "GetAll");
++
++    method.append(interface);
++
++    auto reply = bus.call(method, timeout.count());
++
++    if (reply.is_method_error())
++    {  
++        fprintf(stderr, "%s:%d error of service=%s, objPath=%s interface=%s\n",
++                __func__, __LINE__, service.c_str(), objPath.c_str(), interface.c_str());
++    }
++
++    reply.read(properties);
++    return properties;
++}
++
++static Value getDbusProperty(sdbusplus::bus::bus& bus, const std::string& service,
++                      const std::string& objPath, const std::string& interface,
++                      const std::string& property,
++                      std::chrono::microseconds timeout = DBUS_TIMEOUT)
++{
++
++    Value value;
+ 
++    auto method = bus.new_method_call(service.c_str(), objPath.c_str(),
++                                      "org.freedesktop.DBus.Properties", "Get");
++
++    method.append(interface, property);
++
++    auto reply = bus.call(method, timeout.count());
++
++    if (reply.is_method_error())
++    {
++        fprintf(stderr, "%s:%d error of service=%s, objPath=%s interface=%s property=%s\n",
++                __func__, __LINE__, service.c_str(), objPath.c_str(), interface.c_str(), property.c_str());
++    }
++
++
++    reply.read(value);
++
++    return value;
++}
++
++void static check_FRU_devices_status(std::shared_ptr<sdbusplus::asio::connection> bus)
++{   
++    using pathsOfServiceAndObject = std::pair<std::string, std::string>;
++    std::vector<pathsOfServiceAndObject> serviceAndObjectList;
++    
++    GetSubTreeType resp;
++
++    //If no FRU dbus object is found it is empty/invalid error
++    std::map<std::string, std::vector<std::string>> interfacesResponse;
++    std::vector<std::string> interfaces = {"xyz.openbmc_project.FruDevice"};
++    auto method = bus->new_method_call(
++        "xyz.openbmc_project.ObjectMapper",
++        "/xyz/openbmc_project/object_mapper",
++        "xyz.openbmc_project.ObjectMapper", "GetSubTree");
++
++    method.append("/", 0, interfaces);
++    try{
++        auto reply = bus->call(method);
++        reply.read(resp);
++    }catch(const sdbusplus::exception_t& e){
++        fprintf(stderr, "%s:%d exception:%s \n", __func__, __LINE__, e.what());
++        return;
++    }
++
++    for(auto p1 : resp)
++    {
++        auto objPath = p1.first;
++        auto vect1 = p1.second;
++        for(auto p2 : vect1)
++        {
++            auto service = p2.first;
++            pathsOfServiceAndObject val = {service, objPath};
++            serviceAndObjectList.push_back(val);
++        }
++    }
++
++    for(auto p : serviceAndObjectList)
++    {
++        //Check if the bus/address of the FRU is working by trying opening the mapped file in /sys/bus/i2c/devices
++        auto busProperty = getDbusProperty(*bus, p.first, p.second, "xyz.openbmc_project.FruDevice", "BUS");
++        auto addressProperty = getDbusProperty(*bus, p.first, p.second, "xyz.openbmc_project.FruDevice", "ADDRESS");
++	    std::stringstream output;
++	    output << "/sys/bus/i2c/devices/" << std::get<uint32_t>(busProperty) << "-" << std::right
++		   << std::setfill('0') << std::setw(4) << std::hex << std::get<uint32_t>(addressProperty)
++		   << "/eeprom";
++        std::cerr << "try opening " << output.str() << std::endl;
++        std::ifstream file(output.str(), std::ios::in | std::ios::binary | std::ios::ate);
++        if (file.is_open() == false)
++        {
++            std::cerr << "Unable to oepn file " << output.str() << std::endl;
++            std::vector<uint8_t> eventData = {0xFF, 0xFF, 0xFF};
++            eventData.at(0) = BMC_HEALTH_MASK_EMPTY_INVALID_FRU;
++            eventData.at(1) = 0xFF;
++            eventData.at(2) = 0xFF;
++
++            do_SystemEventRecordSEL(bus, DBUS_OBJPATH_BMC_HEALTH_CHECK,
++                                    eventData, std::string("BMC Health Check"),
++                                    true, static_cast<uint8_t>(0x20));
++            return;
++        }
++        else
++        {
++            file.close();
++        }
++
++        //checking if the data in the properties is empty
++        
++        PropertyMap properties = getAllDbusProperties(*bus, p.first, p.second, "xyz.openbmc_project.FruDevice");
++        size_t zeroLengthCount = 0;
++        for(auto map : properties)
++        {
++            try
++            {
++                // only get the std::string.
++                std::string value = std::get<std::string>(map.second);
++                if(value.length()==0) zeroLengthCount++;
++            }
++            catch (std::exception& e)
++            {}
++        }
++        //ignore ADDRESS / BUS properties
++        if(zeroLengthCount >= (properties.size()-2) )
++        {
++            std::vector<uint8_t> eventData = {0xFF, 0xFF, 0xFF};
++            eventData.at(0) = BMC_HEALTH_MASK_EMPTY_INVALID_FRU;
++            eventData.at(1) = 0xFF;
++            eventData.at(2) = 0xFF;
++            do_SystemEventRecordSEL(bus, DBUS_OBJPATH_BMC_HEALTH_CHECK,
++                                    eventData, std::string("BMC Health Check"),
++                                    true, static_cast<uint8_t>(0x20));
++        }
++    }
++    
++
++}
+ 
+ 
+ 
+@@ -392,6 +561,9 @@ int main(int argc, char** argv)
+     boost::asio::io_service io;
+     auto systemBus = std::make_shared<sdbusplus::asio::connection>(io);
+ 
++    //Checking FRU device after service start up only update
++    check_FRU_devices_status(systemBus);
++
+     while(true)
+     {
+         check_subsystem_sensor_status(systemBus);
+-- 
+2.33.0
+

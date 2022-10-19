@@ -1,0 +1,228 @@
+From 3e000f5ee5d07b957a3dd5d42453de468cd3e1e6 Mon Sep 17 00:00:00 2001
+From: "pj.chen" <chen.pj@inventec.com>
+Date: Tue, 8 Mar 2022 05:59:23 +0000
+Subject: [PATCH] phosphor-nvme - patches
+
+Bug 713 - [SW][Common][phosphor-nvme] - Remove the dbus sensor create function
+
+Symptom/Reason:
+    Since we were using intel-ipmi-oem for SDR function,
+    the dbus interface should follow the dbus-sensors's way to create the dbus service.
+    The "phosphor-nvme" using the function created by "phosphor-dbus-interface",
+    which would not have "org.freedesktop.DBus.ObjectManager -> GetManagedObjects" at root "/".
+
+    So here we should block the dbus creation in phosphor-nvme,
+    if there's the need for the thermal sensor on nvme, would use dbus-sensors to create.
+
+Root Cause:
+    N/A
+
+Solution/Change:
+    Add flag CREATE_TEMPERATURE_SENSORS to seperate the sensor creation.
+
+Entry Test:
+
+sysadmin@starscream:~# busctl tree xyz.openbmc_project.nvme.manager
+`-/xyz
+  `-/xyz/openbmc_project
+    `-/xyz/openbmc_project/sensors
+      `-/xyz/openbmc_project/sensors/temperature
+
+----------------------
+Bug 746 - [SW][Common][phosphor-nvme] - Treat device absent if I2C access fail
+
+Symptom/Reason:
+    If nvme present pin is not implemented, treat device absent if I2C access fail.
+
+Root Cause:
+    N/A
+
+Solution/Change:
+    Set absent if I2C access fail.
+
+Entry Test:
+sysadmin@starscream:~# busctl introspect xyz.openbmc_project.Inventory.Manager /xyz/openbmc_project/inventory/system/chassis/motherboard/nvme11
+NAME                                          TYPE      SIGNATURE RESULT/VALUE FLAGS
+org.freedesktop.DBus.Introspectable           interface -         -            -
+.Introspect                                   method    -         s            -
+org.freedesktop.DBus.Peer                     interface -         -            -
+.GetMachineId                                 method    -         s            -
+.Ping                                         method    -         -            -
+org.freedesktop.DBus.Properties               interface -         -            -
+.Get                                          method    ss        v            -
+.GetAll                                       method    s         a{sv}        -
+.Set                                          method    ssv       -            -
+.PropertiesChanged                            signal    sa{sv}as  -            -
+xyz.openbmc_project.Inventory.Decorator.Asset interface -         -            -
+.BuildDate                                    property  s         ""           emits-change writable
+.Manufacturer                                 property  s         ""           emits-change writable
+.Model                                        property  s         ""           emits-change writable
+.PartNumber                                   property  s         ""           emits-change writable
+.SerialNumber                                 property  s         ""           emits-change writable
+.SparePartNumber                              property  s         ""           emits-change writable
+.SubModel                                     property  s         ""           emits-change writable
+xyz.openbmc_project.Inventory.Item            interface -         -            -
+.EepromPath                                   property  s         ""           emits-change writable
+.EepromService                                property  s         ""           emits-change writable
+.Present                                      property  b         false        emits-change writable
+.PrettyName                                   property  s         ""           emits-change writable
+xyz.openbmc_project.Nvme.Status               interface -         -            -
+.BackupDeviceFault                            property  b         false        emits-change writable
+.CapacityFault                                property  b         false        emits-change writable
+.DegradesFault                                property  b         false        emits-change writable
+.DriveLifeUsed                                property  s         ""           emits-change writable
+.MediaFault                                   property  b         false        emits-change writable
+.SmartWarnings                                property  s         ""           emits-change writable
+.StatusFlags                                  property  s         ""           emits-change writable
+.TemperatureFault                             property  b         false        emits-change writable
+
+----------------
+Bug 875 - [SW][Common][phosphor-nvme] - core dump issue at 2.11 version
+
+Symptom/Reason:
+    Core dump when reading data from nvme.
+
+Root Cause:
+    iter to use for map_vendor has issue using iter++.
+
+Solution/Change:
+    Using map find api to get target.
+
+Enrty Test:
+
+root@starscream:~# busctl introspect xyz.openbmc_project.Inventory.Manager /xyz/openbmc_project/inventory/system/chassis/motherboard/nvme19
+NAME                                          TYPE      SIGNATURE RESULT/VALUE         FLAGS
+org.freedesktop.DBus.Introspectable           interface -         -                    -
+.Introspect                                   method    -         s                    -
+org.freedesktop.DBus.Peer                     interface -         -                    -
+.GetMachineId                                 method    -         s                    -
+.Ping                                         method    -         -                    -
+org.freedesktop.DBus.Properties               interface -         -                    -
+.Get                                          method    ss        v                    -
+.GetAll                                       method    s         a{sv}                -
+.Set                                          method    ssv       -                    -
+.PropertiesChanged                            signal    sa{sv}as  -                    -
+xyz.openbmc_project.Inventory.Decorator.Asset interface -         -                    -
+.BuildDate                                    property  s         ""                   emits-change writable
+.Manufacturer                                 property  s         "Intel"              emits-change writable
+.Model                                        property  s         ""                   emits-change writable
+.PartNumber                                   property  s         ""                   emits-change writable
+.SerialNumber                                 property  s         "BTLJ936507UU4P0SGN" emits-change writable
+.SparePartNumber                              property  s         ""                   emits-change writable
+.SubModel                                     property  s         ""                   emits-change writable
+xyz.openbmc_project.Inventory.Item            interface -         -                    -
+.EepromPath                                   property  s         ""                   emits-change writable
+.EepromService                                property  s         ""                   emits-change writable
+.Present                                      property  b         true                 emits-change writable
+.PrettyName                                   property  s         ""                   emits-change writable
+xyz.openbmc_project.Nvme.Status               interface -         -                    -
+.BackupDeviceFault                            property  b         false                emits-change writable
+.CapacityFault                                property  b         false                emits-change writable
+.DegradesFault                                property  b         false                emits-change writable
+.DriveLifeUsed                                property  s         "0"                  emits-change writable
+.MediaFault                                   property  b         false                emits-change writable
+.SmartWarnings                                property  s         "ff"                 emits-change writable
+.StatusFlags                                  property  s         "bb"                 emits-change writable
+.TemperatureFault                             property  b         false                emits-change writable
+---
+ nvme_manager.cpp | 24 ++++++++++++++++++++++--
+ nvme_manager.hpp |  1 +
+ smbus.cpp        |  5 ++++-
+ 3 files changed, 27 insertions(+), 3 deletions(-)
+
+diff --git a/nvme_manager.cpp b/nvme_manager.cpp
+index d15732c..2bf6a8b 100644
+--- a/nvme_manager.cpp
++++ b/nvme_manager.cpp
+@@ -259,10 +259,8 @@ bool Nvme::getNVMeInfobyBusID(int busID,
+         }
+ 
+         nvmeData.present = false;
+-
+         return nvmeData.present;
+     }
+-
+     auto res_int = smbus.SendSmbusRWCmdRAW(busID, NVME_SSD_SLAVE_ADDRESS,
+                                            &tx_data, sizeof(tx_data),
+                                            rsp_data_command_0, CODE_0_LENGTH);
+@@ -308,6 +306,14 @@ bool Nvme::getNVMeInfobyBusID(int busID,
+     nvmeData.vendor =
+         intToHex(rsp_data_command_8[1]) + " " + intToHex(rsp_data_command_8[2]);
+ 
++
++    /* Inventec - Bug 875 - [SW][Common][phosphor-nvme] - core dump issue at 2.11 version */
++    auto iter = map_vendor.find(nvmeData.vendor);
++    if (iter != map_vendor.end())
++    {
++        nvmeData.vendor = iter->second;
++    }
++    #if 0
+     for (auto iter = map_vendor.begin(); iter != map_vendor.end(); iter++)
+     {
+         if (iter->first == nvmeData.vendor)
+@@ -316,6 +322,7 @@ bool Nvme::getNVMeInfobyBusID(int busID,
+             break;
+         }
+     }
++    #endif
+ 
+     for (int offset = SERIALNUMBER_START_INDEX; offset < SERIALNUMBER_END_INDEX;
+          offset++)
+@@ -551,6 +558,15 @@ void Nvme::readNvmeData(NVMeConfig& config)
+ 
+     // get NVMe information through i2c by busID.
+     auto success = getNVMeInfobyBusID(config.busID, nvmeData);
++
++    /* Inventec - If gpio not config, i2c get fail should treat as not present.*/
++    if ((!success) & ( !config.presentPin))
++    {
++        setNvmeInventoryProperties(config, false, nvmeData, inventoryPath);
++        return;
++    }
++
++#if CREATE_TEMPERATURE_SENSORS
+     auto iter = nvmes.find(config.index);
+ 
+     // can not find. create dbus
+@@ -593,6 +609,10 @@ void Nvme::readNvmeData(NVMeConfig& config)
+         iter->second->checkSensorThreshold();
+         setLEDsStatus(config, success, nvmeData);
+     }
++#else
++    setNvmeInventoryProperties(config, true, nvmeData, inventoryPath);
++    setLEDsStatus(config, success, nvmeData);
++#endif
+ }
+ 
+ /** @brief Monitor NVMe drives every one second  */
+diff --git a/nvme_manager.hpp b/nvme_manager.hpp
+index 391a768..890a6bd 100644
+--- a/nvme_manager.hpp
++++ b/nvme_manager.hpp
+@@ -17,6 +17,7 @@ namespace phosphor
+ {
+ namespace nvme
+ {
++#define CREATE_TEMPERATURE_SENSORS 0
+ 
+ /** @class Nvme
+  *  @brief Nvme manager implementation.
+diff --git a/smbus.cpp b/smbus.cpp
+index a015714..ee035af 100644
+--- a/smbus.cpp
++++ b/smbus.cpp
+@@ -109,7 +109,10 @@ int phosphor::smbus::Smbus::SendSmbusRWCmdRAW(int smbus_num, int8_t device_addr,
+ 
+     if (res < 0)
+     {
+-        fprintf(stderr, "Error: SendSmbusRWCmdRAW failed\n");
++        if(DEBUG)
++        {
++            fprintf(stderr, "Error: SendSmbusRWCmdRAW failed\n");
++        }
+     }
+ 
+     res_len = Rx_buf[0] + 1;
+-- 
+2.17.1
+

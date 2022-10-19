@@ -1,0 +1,219 @@
+From 7548692c8243e113303be2fc2245a3df766cfac9 Mon Sep 17 00:00:00 2001
+From: "pj.chen" <chen.pj@inventec.com>
+Date: Fri, 4 Mar 2022 02:39:59 +0000
+Subject: [PATCH 22/31] Channel - Add special case for system interface in Get
+ Channel Info
+
+Symptom/Reason :
+    - Enhance Get Channel Info command
+
+Root Cause:
+    - Original implementation does not consider system interface case
+
+Solution/Change:
+    [phosphor-ipmi-host]
+        - Add special case for system interface
+
+Entry Test:
+    - Get channel info
+      ipmitool raw 0x06 0x42 0xf
+
+Bug630 - Transformers][OpenBMC][IPMI] Active session count always zero
+
+    Symptom/Reason :
+        - The active session count of ipmi command get channel info always return 0
+
+    Root Cause:
+        - The implementation of the get channel info just read active session count from
+            configuration file of channel_config.json. But The value is fixed at 0. The value
+            of in the configuration file should be "Maximum Activate Session count". The value
+            should not be treated as current active session count in the channel.
+
+    Solution/Change:
+        [phosphor-ipmi-host]
+            - Count the active state of sessions in the channel by dbus programming interface.
+
+    Entry Test:
+        - ipmitool -C 17 -I lanplus -H 172.17.0.2 -p2623 -U root -P 0penBmc shell
+            -- run the command serval times (4times, for example) and keep in ipmitool shell state
+        - in bmc box
+            -- ipmitool channel info 1
+            ipmitool> channel info 1
+                Channel 0x1 info:
+                  Channel Medium Type   : 802.3 LAN
+                  Channel Protocol Type : IPMB-1.0
+                  Session Support       : multi-session
+                  Active Session Count  : 4
+                  Protocol Vendor ID    : 7154
+                  Volatile(active) Settings
+                    Alerting            : enabled
+                    Per-message Auth    : enabled
+                    User Level Auth     : enabled
+                    Access Mode         : always available
+                  Non-Volatile Settings
+                    Alerting            : enabled
+                    Per-message Auth    : enabled
+                    User Level Auth     : enabled
+                    Access Mode         : always available
+---
+ user_channel/channelcommands.cpp | 128 ++++++++++++++++++++++++++++++-
+ 1 file changed, 127 insertions(+), 1 deletion(-)
+
+diff --git a/user_channel/channelcommands.cpp b/user_channel/channelcommands.cpp
+index 769f9ff..2a304b6 100644
+--- a/user_channel/channelcommands.cpp
++++ b/user_channel/channelcommands.cpp
+@@ -18,6 +18,9 @@
+ #include "channel_layer.hpp"
+ 
+ #include <ipmid/api.hpp>
++#include <ipmid/sessiondef.hpp>
++#include <ipmid/types.hpp>
++#include <ipmid/utils.hpp>
+ #include <phosphor-logging/log.hpp>
+ #include <regex>
+ 
+@@ -222,6 +225,63 @@ ipmi ::RspType<uint3_t, // access mode,
+         types::enum_cast<uint4_t>(chAccess.privLimit), reservedOut2);
+ }
+ 
++/**
++ * @brief parse session input payload.
++ *
++ * This function retrives the session id and session handle from the session
++ * object path.
++ * A valid object path will be in the form
++ * "/xyz/openbmc_project/ipmi/session/channel/sessionId_sessionHandle"
++ *
++ * Ex: "/xyz/openbmc_project/ipmi/session/eth0/12a4567d_8a"
++ * SessionId    : 0X12a4567d
++ * SessionHandle: 0X8a
++
++ * @param[in] objectPath - session object path
++ * @param[in] sessionId - retrived session id will be asigned.
++ * @param[in] sessionHandle - retrived session handle will be asigned.
++ *
++ * @return true if session id and session handle are retrived else returns
++ * false.
++ */
++static bool _parseClosedSessionData(const std::string& objectPath,
++                                   uint32_t& sessionId, uint8_t& sessionHandle)
++{
++    if (objectPath.empty())
++    {
++        return false;
++    }
++    // getting the position of session id and session handle string from
++    // object path.
++    std::size_t ptrPosition = objectPath.rfind("/");
++    uint16_t tempSessionHandle = 0;
++
++    if (ptrPosition != std::string::npos)
++    {
++        // get the sessionid & session handle string from the session object
++        // path Ex: sessionIdString: "12a4567d_8a"
++        std::string sessionIdString = objectPath.substr(ptrPosition + 1);
++        std::size_t pos = sessionIdString.rfind("_");
++
++        if (pos != std::string::npos)
++        {
++            // extracting the session handle
++            std::string sessionHandleString = sessionIdString.substr(pos + 1);
++            // extracting the session id
++            sessionIdString = sessionIdString.substr(0, pos);
++            // converting session id string  and session handle string to
++            // hexadecimal.
++            std::stringstream handle(sessionHandleString);
++            handle >> std::hex >> tempSessionHandle;
++            sessionHandle = tempSessionHandle & 0xFF;
++            std::stringstream idString(sessionIdString);
++            idString >> std::hex >> sessionId;
++            return true;
++        }
++    }
++    return false;
++}
++
+ /** @brief implements the get channel info command
+  *  @ param ctx - context pointer
+  *  @ param channel - channel number
+@@ -280,9 +340,75 @@ RspType<uint4_t,  // chNum
+     uint8_t protocolType = chInfo.protocolType;
+     uint2_t sessionType = chInfo.sessionSupported;
+     uint6_t activeSessionCount = getChannelActiveSessions(chNum);
++    if(sessionType == 0x02)
++    {
++        //multi-session
++        activeSessionCount = 0;
++        ipmi::ObjectTree objectTree;
++
++        auto busp = getSdBus();
++        std::string matchedNIC = ipmi::getChannelName(chNum);
++        boost::system::error_code ec =
++            ipmi::getAllDbusObjects(ctx, session::sessionManagerRootPath,
++                                    session::sessionIntf, matchedNIC, objectTree);
++        if (ec)
++        {
++            fprintf(stderr, "%s Failed to fetch objects from dbus ec=%s\n",
++                    __func__, ec.message().c_str());
++
++            log<level::ERR>("Failed to fetch object from dbus",
++                            entry("INTERFACE=%s", session::sessionIntf),
++                            entry("ERRMSG=%s", ec.message().c_str()));
++            return ipmi::responseUnspecifiedError();
++        }
++
++        for (auto& objectTreeItr : objectTree)
++        {
++            std::string objectPath = objectTreeItr.first;
++
++            uint32_t sessionId = 0;
++            uint8_t sessionHandle = session::defaultSessionHandle;
++            if (!_parseClosedSessionData(objectPath, sessionId, sessionHandle))
++            {
++                continue;
++            }
++            
++            auto& serviceMap = objectTreeItr.second;
++            auto itr = serviceMap.begin();
++
++            if (serviceMap.size() != 1)
++            {
++                return ipmi::responseUnspecifiedError();
++            }
++
++            std::string service = itr->first;
++            uint8_t sessionState = 0;
++            auto completionCode = ipmi::getDbusProperty(
++                ctx, service, objectPath, session::sessionIntf, "State",
++                sessionState);
++
++            if (completionCode)
++            {
++                return ipmi::responseUnspecifiedError();
++            }
++
++            if (sessionState == static_cast<uint8_t>(session::State::active))
++            {
++                activeSessionCount++;
++            }
++        }
++    }
++
+     // IPMI Spec: The IPMI Enterprise Number is: 7154 (decimal)
+     constexpr uint24_t vendorId = 7154;
+-    constexpr uint16_t auxChInfo = 0;
++    uint16_t auxChInfo = 0;
++
++    // Tommy. Add special case for system interface.
++    if (chNum == 0x0f)
++    {
++        auxChInfo = 0xffff;
++    }
++
+ 
+     return responseSuccess(chNum, reserved1, mediumType, reserved2,
+                            protocolType, reserved3, activeSessionCount,
+-- 
+2.33.0
+

@@ -1,0 +1,27 @@
+# /etc/logrotate.d/rsyslog - Ported from Debian
+
+# Keep up to four 64k files for ipmi_sel (256k total)
+/var/lib/sel_log/ipmi_sel
+{
+    rotate 3
+    size 64k
+    missingok
+    postrotate
+        systemctl reload rsyslog 2> /dev/null || true
+	export COUNT=`ls -l /var/lib/sel_log/ipmi_sel.* | wc -l`
+	busctl call "xyz.openbmc_project.Logging.IPMI" "/xyz/openbmc_project/Logging/IPMI" \
+ 		"xyz.openbmc_project.Logging.IPMI" "IpmiSelAdd" ssaybq "BMC health" \
+ 		"/xyz/openbmc_project/sensors/oem_event_70h/oem_e0h/BMC_health" 3 {0xab,${COUNT},0xFF} yes 0x20
+    endscript
+}
+# Keep up to four 64k files for redfish (256k total)
+/var/log/redfish
+{
+    rotate 3
+    size 64k
+    missingok
+    postrotate
+        systemctl reload rsyslog 2> /dev/null || true
+    endscript
+}
+

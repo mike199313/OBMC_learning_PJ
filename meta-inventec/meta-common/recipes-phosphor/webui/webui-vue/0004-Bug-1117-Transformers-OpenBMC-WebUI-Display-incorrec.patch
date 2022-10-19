@@ -1,0 +1,33 @@
+From d0bf0c68ca8f34c04e271474f37f76e2382bfea9 Mon Sep 17 00:00:00 2001
+From: Jason Lin <lin.jasonyy@inventec.com>
+Date: Thu, 23 Jun 2022 14:21:09 +0800
+Subject: [PATCH 4/6] Bug 1117 - [Transformers][OpenBMC][WebUI]Display
+ incorrect model of Chassis information Inventory and LEDs of WebUI.
+
+---
+ src/store/modules/HardwareStatus/ChassisStore.js | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/store/modules/HardwareStatus/ChassisStore.js b/src/store/modules/HardwareStatus/ChassisStore.js
+index 8a08e37..911ed15 100644
+--- a/src/store/modules/HardwareStatus/ChassisStore.js
++++ b/src/store/modules/HardwareStatus/ChassisStore.js
+@@ -13,6 +13,7 @@ const ChassisStore = {
+     setChassisInfo: (state, data) => {
+       state.chassis = data.map((chassis) => {
+         const {
++          Model,
+           Id,
+           Status = {},
+           PartNumber,
+@@ -29,6 +30,7 @@ const ChassisStore = {
+         } = chassis;
+ 
+         return {
++          model: Model,
+           id: Id,
+           health: Status.Health,
+           partNumber: PartNumber,
+-- 
+2.33.0
+

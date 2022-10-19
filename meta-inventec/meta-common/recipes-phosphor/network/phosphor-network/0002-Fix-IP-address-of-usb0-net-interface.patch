@@ -1,0 +1,80 @@
+From bf1eab668774e378cc732b7b38a967e05a67386c Mon Sep 17 00:00:00 2001
+From: Tommy Lin <lin.tommysc@inventec.com>
+Date: Mon, 7 Mar 2022 03:27:13 +0000
+Subject: [PATCH 02/10] Fix IP address of usb0 net interface
+
+Symptom/Reason :
+    - Can't upgrade BMC image through ipminet interface
+
+Root Cause:
+    - Feature not implemented
+
+Solution/Change:
+    [linux-aspeed]
+        - Enable vhub in device tree
+        - Correct control pin setting of pinctrl_usb2ad_default
+    [phospher-network]
+        - Fix IP address for usb0 interface
+
+Entry Test:
+    - Check IP address of usb0
+        # ip addr show usb0
+---
+ meson.build            |  1 +
+ meson_options.txt      |  3 +++
+ src/network_config.cpp | 15 +++++++++++++++
+ 3 files changed, 19 insertions(+)
+
+diff --git a/meson.build b/meson.build
+index f227b1a..aed1a72 100644
+--- a/meson.build
++++ b/meson.build
+@@ -22,6 +22,7 @@ conf_data.set(
+ conf_data.set('NIC_SUPPORTS_ETHTOOL', get_option('nic-ethtool'))
+ conf_data.set('SYNC_MAC_FROM_INVENTORY', get_option('sync-mac'))
+ conf_data.set('PERSIST_MAC', get_option('persist-mac'))
++conf_data.set_quoted('CUST_USB_IP_ADDR', get_option('cust-usb-ip'))
+ 
+ sdbusplus_dep = dependency('sdbusplus')
+ sdbusplusplus_prog = find_program('sdbus++', native: true)
+diff --git a/meson_options.txt b/meson_options.txt
+index 59d20f4..f106047 100644
+--- a/meson_options.txt
++++ b/meson_options.txt
+@@ -14,3 +14,6 @@ option('hyp-nw-config', type : 'boolean',
+        description : 'ibm-oem: Enable the hypervisor network manager')
+ option('persist-mac', type: 'boolean',
+        description: 'Permit the MAC address to be written to the systemd.network config')
++option('cust-usb-ip', type: 'string', value : '169.254.0.17',
++       description: 'Fixed static IP address assigned to usb0 interface')
++       
+\ No newline at end of file
+diff --git a/src/network_config.cpp b/src/network_config.cpp
+index 94c8eae..195bef1 100644
+--- a/src/network_config.cpp
++++ b/src/network_config.cpp
+@@ -17,6 +17,21 @@ void writeDHCPDefault(const std::string& filename, const std::string& interface)
+     std::ofstream filestream;
+ 
+     filestream.open(filename);
++
++    // Tommy. Assign fixed static IP address for usb0 interface
++    if (interface.compare("usb0") == 0)
++    {
++        filestream << "[Match]\n"
++                    "Name=" << interface << std::endl <<
++                    "[Address]\n"
++                    "Address=" CUST_USB_IP_ADDR "/24\n"
++                    "[Network]\n"
++                    "DHCP=no\n"
++                    "LinkLocalAddressing=no\n"
++                    "IPv6AcceptRA=false\n";
++        return;
++    }
++
+     // Add the following line to your phosphor-network bbappend file
+     // to control IPV6_ACCEPT_RA
+     //   EXTRA_OECONF_append = " --enable-ipv6-accept-ra=yes"
+-- 
+2.33.0
+

@@ -1,0 +1,13 @@
+[Unit]
+Description=IPMB Time Sync
+Requires=xyz.openbmc_project.Logging.IPMI.service
+After=phosphor-ipmi-host.service
+
+[Service]
+ExecStart=/usr/bin/ipmbtimesync
+SyslogIdentifier=ipmbtimesync
+Restart=no
+Type=oneshot
+
+[Install]
+WantedBy=multi-user.target

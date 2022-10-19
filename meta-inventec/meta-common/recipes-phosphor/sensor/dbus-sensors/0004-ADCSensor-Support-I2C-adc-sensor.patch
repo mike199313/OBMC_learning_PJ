@@ -1,0 +1,188 @@
+From 37eedfd6d61e46aceab62e6f3fb7e3a50a260030 Mon Sep 17 00:00:00 2001
+From: "pj.chen" <chen.pj@inventec.com>
+Date: Tue, 1 Mar 2022 02:28:27 +0000
+Subject: [PATCH 04/27] ADCSensor - Support I2C adc sensor
+
+- Support I2C adc sensor
+- Support IPMI sensor info
+---
+ include/ADCSensor.hpp |  2 ++
+ src/ADCSensor.cpp     | 24 ++++++++++++++++++
+ src/ADCSensorMain.cpp | 57 ++++++++++++++++++++++++++++++++++++++++++-
+ 3 files changed, 82 insertions(+), 1 deletion(-)
+
+diff --git a/include/ADCSensor.hpp b/include/ADCSensor.hpp
+index 9d2369b..cb99706 100644
+--- a/include/ADCSensor.hpp
++++ b/include/ADCSensor.hpp
+@@ -5,6 +5,7 @@
+ #include <gpiod.hpp>
+ #include <sdbusplus/asio/object_server.hpp>
+ #include <sensor.hpp>
++#include <IpmiInfo.hpp>
+ 
+ #include <memory>
+ #include <optional>
+@@ -70,6 +71,7 @@ class ADCSensor : public Sensor, public std::enable_shared_from_this<ADCSensor>
+               std::shared_ptr<sdbusplus::asio::connection>& conn,
+               boost::asio::io_service& io, const std::string& sensorName,
+               std::vector<thresholds::Threshold>&& thresholds,
++              std::vector<ipmidata::IpmiConfig>&& ipmiinfo,
+               const double scaleFactor, const float pollRate,
+               PowerState readState, const std::string& sensorConfiguration,
+               std::optional<BridgeGpio>&& bridgeGpio);
+diff --git a/src/ADCSensor.cpp b/src/ADCSensor.cpp
+index a8287b4..55082e3 100644
+--- a/src/ADCSensor.cpp
++++ b/src/ADCSensor.cpp
+@@ -45,6 +45,7 @@ ADCSensor::ADCSensor(const std::string& path,
+                      std::shared_ptr<sdbusplus::asio::connection>& conn,
+                      boost::asio::io_service& io, const std::string& sensorName,
+                      std::vector<thresholds::Threshold>&& thresholdsIn,
++                     std::vector<ipmidata::IpmiConfig>&& _ipmiinfo,
+                      const double scaleFactor, const float pollRate,
+                      PowerState readState,
+                      const std::string& sensorConfiguration,
+@@ -70,6 +71,28 @@ ADCSensor::ADCSensor(const std::string& path,
+     sensorInterface = objectServer.add_interface(
+         "/xyz/openbmc_project/sensors/voltage/" + name,
+         "xyz.openbmc_project.Sensor.Value");
++
++    ipmiInterface = objectServer.add_interface(
++        "/xyz/openbmc_project/sensors/voltage/" + name,
++        "xyz.openbmc_project.Sensor.IpmiSensor");
++
++    if (_ipmiinfo.empty())
++    {
++        // Default
++        ipmiInterface->register_property("sensorNumber", 0);
++        ipmiInterface->register_property("entityID", 0);
++        ipmiInterface->register_property("entityInstance", 0);
++    }
++    else
++    {
++        for (auto& ipmi : _ipmiinfo)
++        {
++            ipmiInterface->register_property("sensorNumber", ipmi.number);
++            ipmiInterface->register_property("entityID", ipmi.entityId);
++            ipmiInterface->register_property("entityInstance", ipmi.entityIns);
++        }
++    }
++
+     for (const auto& threshold : thresholds)
+     {
+         std::string interface = thresholds::getInterface(threshold.level);
+@@ -93,6 +116,7 @@ ADCSensor::~ADCSensor()
+         objServer.remove_interface(iface);
+     }
+     objServer.remove_interface(sensorInterface);
++    objServer.remove_interface(ipmiInterface);
+     objServer.remove_interface(association);
+ }
+ 
+diff --git a/src/ADCSensorMain.cpp b/src/ADCSensorMain.cpp
+index 401da12..5a33503 100644
+--- a/src/ADCSensorMain.cpp
++++ b/src/ADCSensorMain.cpp
+@@ -92,6 +92,8 @@ void createSensors(
+                 return;
+             }
+ 
++            boost::container::flat_set<std::string> directories;
++
+             // iterate through all found adc sensors, and try to match them with
+             // configuration
+             for (auto& path : paths)
+@@ -107,6 +109,31 @@ void createSensors(
+                 std::string indexStr = *(match.begin() + 1);
+ 
+                 auto directory = path.parent_path();
++
++                /* Inventec - Support for I2C ADC device */
++                fs::path device = directory / "device";
++                std::string deviceName = fs::canonical(device).stem();
++                auto findHyphen = deviceName.find("-");
++                if (findHyphen == std::string::npos)
++                {
++                    std::cerr << "found bad device " << deviceName << "\n";
++                    continue;
++                }
++                std::string busStr = deviceName.substr(0, findHyphen);
++                std::string addrStr = deviceName.substr(findHyphen + 1);
++
++                size_t bus = 0;
++                size_t addr = 0;
++                try
++                {
++                    bus = std::stoi(busStr);
++                    addr = std::stoi(addrStr, 0, 16);
++                }
++                catch (std::invalid_argument&)
++                {
++                    continue;
++                }
++
+                 // convert to 0 based
+                 size_t index = std::stoul(indexStr) - 1;
+ 
+@@ -116,6 +143,7 @@ void createSensors(
+                     std::string,
+                     boost::container::flat_map<std::string, BasicVariantType>>*
+                     baseConfiguration = nullptr;
++                const SensorBaseConfigMap* baseConfigMap = nullptr;
+                 for (const std::pair<sdbusplus::message::object_path,
+                                      SensorData>& sensor : sensorConfigurations)
+                 {
+@@ -136,6 +164,25 @@ void createSensors(
+                     {
+                         continue;
+                     }
++
++                    /* Inventec - Support for I2C ADC device */
++                    baseConfigMap = &baseConfiguration->second;
++                    auto configurationBus = baseConfigMap->find("Bus");
++                    auto configurationAddress = baseConfigMap->find("Address");
++
++                    if (configurationBus == baseConfigMap->end() ||
++                        configurationAddress == baseConfigMap->end())
++                    {
++                        std::cerr << "error finding bus or address in "
++                                     "configuration\n";
++                    }
++                    if (std::get<uint64_t>(configurationBus->second) != bus ||
++                        std::get<uint64_t>(configurationAddress->second) !=
++                            addr)
++                    {
++                        continue;
++                    }
++
+                     auto findIndex = baseConfiguration->second.find("Index");
+                     if (findIndex == baseConfiguration->second.end())
+                     {
+@@ -230,6 +277,14 @@ void createSensors(
+                               << sensorName << "\n";
+                 }
+ 
++                std::vector<ipmidata::IpmiConfig> sensorIpmiConfig;
++                std::string labelHead = sensorName.substr(0, sensorName.find(" "));
++                if (!parseIpmiDataFromConfig(*sensorData, sensorIpmiConfig, &labelHead))
++                {
++                    std::cerr << "error populating ipmi for "
++                              << sensorName << "\n";
++                }
++
+                 auto findScaleFactor =
+                     baseConfiguration->second.find("ScaleFactor");
+                 float scaleFactor = 1.0;
+@@ -312,7 +367,7 @@ void createSensors(
+ 
+                 sensor = std::make_shared<ADCSensor>(
+                     path.string(), objectServer, dbusConnection, io, sensorName,
+-                    std::move(sensorThresholds), scaleFactor, pollRate,
++                    std::move(sensorThresholds), std::move(sensorIpmiConfig), scaleFactor, pollRate,
+                     readState, *interfacePath, std::move(bridgeGpio));
+                 sensor->setupRead();
+             }
+-- 
+2.33.0
+

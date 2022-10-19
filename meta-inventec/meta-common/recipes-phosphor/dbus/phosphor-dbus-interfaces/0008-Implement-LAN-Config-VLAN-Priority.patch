@@ -1,0 +1,49 @@
+From 8dd9b83d19cfbbe4503c60dd35e54d78f1c87ec0 Mon Sep 17 00:00:00 2001
+From: "Lin.TommySC" <lin.tommysc@inventec.com>
+Date: Tue, 25 May 2021 05:51:21 +0000
+Subject: [PATCH 08/20] Implement LAN Config VLAN Priority
+
+Symptom/Reason :
+    - Implement LAN Config VLAN Priority
+
+Root Cause:
+    - N/A
+
+Solution/Change:
+    [phospher-dbus-interfaces]
+        - Add Priority property in xyz.openbmc_project.Network.VLAN interface
+    [phospher-ipmi-config]
+        - Add vlan_priority field in lan_config.json
+    [phospher-ipmi-host]
+        - Use xyz.openbmc_project.Network.VLAN interface to get/set VLAN Priority
+    [phospher-network]
+        - Use vconfig command to set VLAN priority
+        - Read/Write vlan_priority value from/to lan_config.json
+
+Entry Test:
+    - Set VLAN id
+        ipmitool raw 0x0c 0x01 0x01 0x14 0x64 0x80
+    - Set VLAN priority
+        ipmitool raw 0x0c 0x01 0x01 0x15 0x5
+    - Get VLAN priority
+        ipmitool raw 0x0c 0x02 0x01 0x15 0x00 0x00
+---
+ yaml/xyz/openbmc_project/Network/VLAN.interface.yaml | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/yaml/xyz/openbmc_project/Network/VLAN.interface.yaml b/yaml/xyz/openbmc_project/Network/VLAN.interface.yaml
+index e04c36c..0eb7644 100644
+--- a/yaml/xyz/openbmc_project/Network/VLAN.interface.yaml
++++ b/yaml/xyz/openbmc_project/Network/VLAN.interface.yaml
+@@ -17,3 +17,8 @@ properties:
+           - const
+       description: >
+           VLAN Identifier.
++    - name: Priority
++      type: byte
++      default: 0
++      description: >
++          802.1q VLAN Priority.
+-- 
+2.33.0
+

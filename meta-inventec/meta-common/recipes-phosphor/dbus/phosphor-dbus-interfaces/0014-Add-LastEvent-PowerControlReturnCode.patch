@@ -1,0 +1,100 @@
+From adec2ee5ab90f311423a5d1a3dd6035a04d6034c Mon Sep 17 00:00:00 2001
+From: "sun.cwsun" <sun.cwsun@inventec.com>
+Date: Wed, 24 Nov 2021 09:13:27 +0800
+Subject: [PATCH 14/20] Bug623 - [SW][Transformers][OpenBMC][IPMI] Implement
+ get chassis status command
+
+    Symptom/Reason :
+        - Implement the IPMI get chassis status command
+
+    Root Cause:
+        - None
+
+    Solution/Change:
+        [intel-ipmi-oem]
+            - support attribute
+                -- Current Power State
+                    --- Power is on
+                    --- Power overload
+                    --- power fault
+                    --- power control fault
+
+                -- Last Power event
+                    --- Power down caused by Power overload
+                    --- Power down caused by power fault
+                    --- Power is on casued by ipmi command
+
+                -- Misc chassis State
+                    --- Colling/fan detected
+                    --- Chassis identify state
+                    --- Chassis identify supported
+        [phosphor-dbus-interface]
+            - register attributes
+                -- LastPowerEvent
+                -- PowerControlReturnCode
+
+        [phosphor-ipmi-host]
+            - record the power control return code by ipmi command chassis control
+
+        [x86-power-control]
+            - register the LastPowerEvent and powerControlReturnCode to dbus system
+
+        [inventec-dcmi-power]
+            - monitor the power fault and power overload and do
+                chassis power off if power fault or power overload.
+
+    Entry Test:
+        - ipmitool chassis status
+        - ipmitool raw 0x00 0x01
+            -- to get current chassis status
+---
+ .../State/Chassis.interface.yaml              | 28 +++++++++++++++++++
+ 1 file changed, 28 insertions(+)
+
+diff --git a/yaml/xyz/openbmc_project/State/Chassis.interface.yaml b/yaml/xyz/openbmc_project/State/Chassis.interface.yaml
+index d3a8edc..8cb6cd6 100644
+--- a/yaml/xyz/openbmc_project/State/Chassis.interface.yaml
++++ b/yaml/xyz/openbmc_project/State/Chassis.interface.yaml
+@@ -37,6 +37,22 @@ properties:
+       description: >
+           The desired power cycle interval in milliseconds on this chassis.
+           This will be preserved across AC power cycles of the BMC.
++    
++    - name: LastPowerEvent
++      type: uint32
++      description: >
++            The LastPowerEvent. The are 
++            power on by ipmicommand
++            power down because of power fault
++            power down because of power interlock is activated
++            power down because of power overload
++            power down because of AC Failed
++
++    - name: PowerControlReurnCode
++      type: int32
++      description: >
++            If request power contorl to on or off but failed
++            the PowerControlResult will be non-zero, otherwise false
+ 
+ enumerations:
+     - name: Transition
+@@ -93,3 +109,15 @@ enumerations:
+           - name: "Good"
+             description: >
+                 Chassis power status is in a good condition
++          - name: 'Off'
++            description: >
++              Chassis power is off
++          - name: 'TransitioningToOff'
++            description: >
++              Firmware is transitioning the chassis to an Off state
++          - name: 'On'
++            description: >
++              Chassis power is on
++          - name: 'TransitioningToOn'
++            description: >
++              Firmware is transitioning the chassis to an On state
+\ No newline at end of file
+-- 
+2.33.0
+

@@ -1,0 +1,30 @@
+From 02163cd94cdc2124bb10295edc120cc731c99c46 Mon Sep 17 00:00:00 2001
+From: "Alang.Huang" <Huang.Alang@inventec.com>
+Date: Wed, 6 Jan 2021 02:52:35 +0000
+Subject: [PATCH 06/25] dont register mfg filters, coz it may filter out
+ masterWriteRead cmd
+
+---
+ src/manufacturingcommands.cpp | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/manufacturingcommands.cpp b/src/manufacturingcommands.cpp
+index 9f16d95..472c839 100644
+--- a/src/manufacturingcommands.cpp
++++ b/src/manufacturingcommands.cpp
+@@ -1227,9 +1227,11 @@ void register_mtm_commands()
+     ipmi::registerHandler(ipmi::prioOemBase, ipmi::intel::netFnPlatform,
+                           ipmi::intel::platform::cmdClearCMOS,
+                           ipmi::Privilege::Admin, ipmi::clearCMOS);
+-
++    /*dont register mfg filters, coz it may filter out masterWriteRead cmd(0x52)*/
++    #if 0
+     ipmi::registerFilter(ipmi::prioOemBase,
+                          [](ipmi::message::Request::ptr request) {
+                              return ipmi::mfgFilterMessage(request);
+                          });
++    #endif	
+ }
+-- 
+2.33.0
+

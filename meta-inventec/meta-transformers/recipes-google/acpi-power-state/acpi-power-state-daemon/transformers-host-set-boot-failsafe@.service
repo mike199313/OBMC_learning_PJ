@@ -1,0 +1,13 @@
+[Unit]
+Description=Set gBMC boot time failsafe
+Wants=mapper-wait@-xyz-openbmc_project-state-chassis%i.service
+After=mapper-wait@-xyz-openbmc_project-state-chassis%i.service
+After=acpi-power-state.service
+
+[Service]
+Type=exec
+ExecStart=/usr/bin/transformers-set-boot-failsafe.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=transformers-host-ready.target

@@ -1,0 +1,119 @@
+From 5518168a7c8c46531494303748af983cf3ff34c4 Mon Sep 17 00:00:00 2001
+From: Tommy Lin <lin.tommysc@inventec.com>
+Date: Tue, 8 Mar 2022 08:20:11 +0000
+Subject: [PATCH 09/10] Implement ChannelAccess d-bus interface
+
+Symptom/Reason :
+    - Enable/Disable Lan Channel Access command failed
+
+Root Cause:
+    - xyz.openbmc_project.Channel.ChannelAccess d-bus interface was not available
+
+Solution/Change:
+    [phosphor-ipmi-config]
+        - Modify channel_access.json to fit transformers's configuration
+    [phosphor-ipmi-config]
+        - Add error checking to prevent core dump
+    [phosphor-network]
+        - Implement xyz.openbmc_project.Channel.ChannelAccess d-bus interface
+
+Entry Test:
+    - Disable Lan Channel Access
+        ipmitool lan set 1 access off
+    - Enable Lan Channel Access
+        ipmitool lan set 1 access on
+---
+ src/ethernet_interface.cpp | 19 +++++++++++++++++++
+ src/ethernet_interface.hpp | 12 +++++++++++-
+ 2 files changed, 30 insertions(+), 1 deletion(-)
+
+diff --git a/src/ethernet_interface.cpp b/src/ethernet_interface.cpp
+index 5bfd9f2..d304c23 100644
+--- a/src/ethernet_interface.cpp
++++ b/src/ethernet_interface.cpp
+@@ -45,6 +45,9 @@ constexpr auto PROPERTY_INTERFACE = "org.freedesktop.DBus.Properties";
+ constexpr auto RESOLVED_SERVICE_PATH = "/org/freedesktop/resolve1/link/";
+ constexpr auto METHOD_GET = "Get";
+ constexpr auto USB_INTF_NAME = "usb0";
++const std::array<std::string, 6> privList = {
++    "priv-reserved", "priv-callback", "priv-user",
++    "priv-operator", "priv-admin",    "priv-oem"};
+ 
+ 
+ constexpr char SYSTEMD_BUSNAME[] = "org.freedesktop.systemd1";
+@@ -1422,5 +1425,21 @@ std::string EthernetInterface::defaultGateway6(std::string gateway)
+ 
+     return gw;
+ }
++
++std::string EthernetInterface::maxPrivilege(std::string priv)
++{
++    auto iter = std::find(privList.begin(), privList.end(), priv);
++    if (iter == privList.end())
++    {
++        return ChannelAccessIntf::maxPrivilege();
++    }
++
++    if (ChannelAccessIntf::maxPrivilege() == priv)
++    {
++        return priv;
++    }
++
++    return ChannelAccessIntf::maxPrivilege(std::move(priv));
++}
+ } // namespace network
+ } // namespace phosphor
+diff --git a/src/ethernet_interface.hpp b/src/ethernet_interface.hpp
+index d719a2d..70003e6 100644
+--- a/src/ethernet_interface.hpp
++++ b/src/ethernet_interface.hpp
+@@ -2,6 +2,7 @@
+ 
+ #include "types.hpp"
+ #include "util.hpp"
++#include "xyz/openbmc_project/Channel/ChannelAccess/server.hpp"
+ #include "xyz/openbmc_project/Network/IP/Create/server.hpp"
+ #include "xyz/openbmc_project/Network/Neighbor/CreateStatic/server.hpp"
+ 
+@@ -23,7 +24,8 @@ using Ifaces = sdbusplus::server::object::object<
+     sdbusplus::xyz::openbmc_project::Network::server::MACAddress,
+     sdbusplus::xyz::openbmc_project::Network::IP::server::Create,
+     sdbusplus::xyz::openbmc_project::Network::Neighbor::server::CreateStatic,
+-    sdbusplus::xyz::openbmc_project::Collection::server::DeleteAll>;
++    sdbusplus::xyz::openbmc_project::Collection::server::DeleteAll,
++    sdbusplus::xyz::openbmc_project::Channel::server::ChannelAccess>;
+ 
+ using IP = sdbusplus::xyz::openbmc_project::Network::server::IP;
+ 
+@@ -31,6 +33,8 @@ using EthernetInterfaceIntf =
+     sdbusplus::xyz::openbmc_project::Network::server::EthernetInterface;
+ using MacAddressIntf =
+     sdbusplus::xyz::openbmc_project::Network::server::MACAddress;
++using ChannelAccessIntf =
++    sdbusplus::xyz::openbmc_project::Channel::server::ChannelAccess;
+ 
+ using ServerList = std::vector<std::string>;
+ using ObjectPath = sdbusplus::message::object_path;
+@@ -245,6 +249,11 @@ class EthernetInterface : public Ifaces
+      */
+     std::string defaultGateway6(std::string gateway) override;
+ 
++    /** @brief set maximum privilege level.
++     *  @param[in] value - maximum privilege level.
++     */
++    std::string maxPrivilege(std::string value) override;
++
+     using EthernetInterfaceIntf::dhcpEnabled;
+     using EthernetInterfaceIntf::interfaceName;
+     using EthernetInterfaceIntf::linkUp;
+@@ -253,6 +262,7 @@ class EthernetInterface : public Ifaces
+     using EthernetInterfaceIntf::ipv6HopLimit;
+     using EthernetInterfaceIntf::ipFamily;
+     using MacAddressIntf::macAddress;
++    using ChannelAccessIntf::maxPrivilege;
+ 
+     using EthernetInterfaceIntf::defaultGateway;
+     using EthernetInterfaceIntf::defaultGateway6;
+-- 
+2.33.0
+

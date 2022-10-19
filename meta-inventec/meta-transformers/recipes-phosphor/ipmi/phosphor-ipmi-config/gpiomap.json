@@ -1,0 +1,19 @@
+{
+	"banks":[
+
+		{
+			"chip" : "gpiochip816",
+			"base" : 816,
+			"ngpio" : 208,
+			"type" : "gpio"
+		},
+
+		{
+			"chip" : "gpiochip736",
+			"base" : 736,
+			"ngpio" : 80,
+			"type" : "sgpio"
+		}
+
+	]
+}

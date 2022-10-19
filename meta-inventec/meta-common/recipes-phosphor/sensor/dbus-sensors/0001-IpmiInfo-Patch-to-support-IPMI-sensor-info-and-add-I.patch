@@ -1,0 +1,356 @@
+From 4d28b8dd9414ee79d80baaa9708cf13b8a4d93c4 Mon Sep 17 00:00:00 2001
+From: "pj.chen" <chen.pj@inventec.com>
+Date: Fri, 25 Feb 2022 09:32:44 +0000
+Subject: [PATCH 01/27] IpmiInfo - Patch to support IPMI sensor info and add
+ IPMI sel
+
+- Support retrieving IPMI information from entity-manager inventory
+- Add the dbus-interface definitions of IPMI logging service in Utils.hpp for recording IPMI SEL.
+- Add a hook function in the setupPowerMatch function.
+---
+ include/IpmiInfo.hpp | 33 +++++++++++++++++
+ include/Utils.hpp    | 14 ++++++++
+ include/sensor.hpp   |  7 ++++
+ src/IpmiInfo.cpp     | 86 ++++++++++++++++++++++++++++++++++++++++++++
+ src/Utils.cpp        | 20 +++++++++++
+ src/meson.build      | 12 ++++++-
+ 6 files changed, 171 insertions(+), 1 deletion(-)
+ create mode 100644 include/IpmiInfo.hpp
+ create mode 100644 src/IpmiInfo.cpp
+
+diff --git a/include/IpmiInfo.hpp b/include/IpmiInfo.hpp
+new file mode 100644
+index 0000000..68d29cb
+--- /dev/null
++++ b/include/IpmiInfo.hpp
+@@ -0,0 +1,33 @@
++#pragma once
++#include "Utils.hpp"
++
++#include <boost/asio/io_service.hpp>
++#include <list>
++#include <memory>
++#include <nlohmann/json.hpp>
++#include <string>
++#include <utility>
++#include <vector>
++
++namespace ipmidata
++{
++
++struct IpmiConfig
++{
++    IpmiConfig(const uint64_t num, 
++               const uint64_t id, 
++               const uint64_t ins) :
++              number(num), entityId(id), entityIns(ins)
++    {
++    }
++    uint64_t number;
++    uint64_t entityId;
++    uint64_t entityIns;
++};
++
++bool parseIpmiDataFromConfig(
++    const SensorData& sensorData,
++    std::vector<ipmidata::IpmiConfig>& ipmiVector,
++    std::string* matchLabel = nullptr);
++
++} // namespace ipmidata
+diff --git a/include/Utils.hpp b/include/Utils.hpp
+index 0a89d13..60f6d4f 100644
+--- a/include/Utils.hpp
++++ b/include/Utils.hpp
+@@ -79,6 +79,10 @@ void createAssociation(
+ void findLimits(std::pair<double, double>& limits,
+                 const SensorBaseConfiguration* data);
+ 
++// to setup a hook function pointer which can be used to do some action immediately once recieve dbus signal of power status match
++void setupPowerStatHookHandlr(std::function<void(bool)> hookHandlr);
++
++
+ enum class PowerState
+ {
+     on,
+@@ -88,6 +92,16 @@ enum class PowerState
+ 
+ bool readingStateGood(const PowerState& powerState);
+ 
++namespace sel
++{
++const static constexpr char* service = "xyz.openbmc_project.Logging.IPMI";
++const static constexpr char* interface = "xyz.openbmc_project.Logging.IPMI";
++const static constexpr char* path = "/xyz/openbmc_project/Logging/IPMI";
++const static constexpr char* addsel = "IpmiSelAdd";
++} // namespace sel
++
++
++
+ namespace mapper
+ {
+ constexpr const char* busName = "xyz.openbmc_project.ObjectMapper";
+diff --git a/include/sensor.hpp b/include/sensor.hpp
+index 2c7a020..1236c00 100644
+--- a/include/sensor.hpp
++++ b/include/sensor.hpp
+@@ -4,6 +4,7 @@
+ #include <SensorPaths.hpp>
+ #include <Thresholds.hpp>
+ #include <Utils.hpp>
++#include <IpmiInfo.hpp>
+ #include <sdbusplus/asio/object_server.hpp>
+ 
+ #include <limits>
+@@ -73,6 +74,7 @@ struct Sensor
+     double minValue;
+     std::vector<thresholds::Threshold> thresholds;
+     std::shared_ptr<sdbusplus::asio::dbus_interface> sensorInterface;
++    std::shared_ptr<sdbusplus::asio::dbus_interface> ipmiInterface;
+     std::shared_ptr<sdbusplus::asio::dbus_interface> association;
+     std::shared_ptr<sdbusplus::asio::dbus_interface> availableInterface;
+     std::shared_ptr<sdbusplus::asio::dbus_interface> operationalInterface;
+@@ -364,6 +366,11 @@ struct Sensor
+             operationalInterface->register_property("Functional", true);
+             operationalInterface->initialize();
+         }
++
++        if (ipmiInterface && !ipmiInterface->initialize())
++        {
++            std::cerr << "error initializing ipmi interface\n";
++        }
+     }
+ 
+     std::string propertyLevel(const Level lev, const Direction dir)
+diff --git a/src/IpmiInfo.cpp b/src/IpmiInfo.cpp
+new file mode 100644
+index 0000000..4187f68
+--- /dev/null
++++ b/src/IpmiInfo.cpp
+@@ -0,0 +1,86 @@
++#include "IpmiInfo.hpp"
++
++#include "VariantVisitors.hpp"
++#include "sensor.hpp"
++
++#include <array>
++#include <boost/algorithm/string/replace.hpp>
++#include <boost/container/flat_map.hpp>
++#include <boost/lexical_cast.hpp>
++#include <cmath>
++
++#include <fstream>
++#include <iostream>
++#include <stdexcept>
++#include <string>
++#include <utility>
++#include <variant>
++#include <vector>
++
++static constexpr bool DEBUG = false;
++
++namespace ipmidata
++{
++
++bool parseIpmiDataFromConfig(
++    const SensorData& sensorData,
++    std::vector<ipmidata::IpmiConfig>& ipmiVector,
++    std::string* matchLabel)
++{
++
++    for (const auto& item : sensorData)
++    {
++        if constexpr (DEBUG)
++        {
++            std::cout << "parseIpmiDataFromConfig " << *matchLabel  << "\n";
++        }
++
++        if (item.first.find("SensorInfo") == std::string::npos)
++        {
++            continue;
++        }
++
++        if (matchLabel != nullptr)
++        {
++            auto labelFind = item.second.find("Label");
++            if (labelFind == item.second.end())
++                continue;
++
++            if constexpr (DEBUG)
++            {
++                std::cout << "Label: " << std::visit(VariantToStringVisitor(), labelFind->second) << " NAME: " << *matchLabel << "\n";
++            }
++
++            if (std::visit(VariantToStringVisitor(), labelFind->second) !=
++                *matchLabel)
++                continue;
++        }
++
++        auto configurationSN = item.second.find("SensorNum");
++        auto configurationEID = item.second.find("EntityId");
++        auto configurationEIS = item.second.find("EntityInstance");
++        if (configurationSN == item.second.end() ||
++            configurationEID == item.second.end() ||
++            configurationEIS == item.second.end())
++        {
++            std::cout << "Missing ipmi data in configuration\n";
++            return false;
++        }
++
++        uint64_t sn =  std::visit(VariantToUnsignedIntVisitor(), configurationSN->second);
++        uint64_t id =  std::visit(VariantToUnsignedIntVisitor(), configurationEID->second);
++        uint64_t is =  std::visit(VariantToUnsignedIntVisitor(), configurationEIS->second);
++
++        if constexpr (DEBUG)
++        {
++            std::cerr << "SN: "  << sn << " "
++                      << "EID: " << id << " "
++                      << "EIS: " << is << "\n";
++        }
++        ipmiVector.emplace_back(sn, id, is);
++        return true; // Get match IPMI info and then return
++    }
++    return true;
++}
++
++} // namespace ipmidata
+diff --git a/src/Utils.cpp b/src/Utils.cpp
+index 8df9a48..8d15d23 100644
+--- a/src/Utils.cpp
++++ b/src/Utils.cpp
+@@ -129,6 +129,24 @@ std::set<std::string> getPermitSet(const SensorBaseConfigMap& config)
+     return permitSet;
+ }
+ 
++// Define a hook function pointer which can be used to do some action immediately once recieve dbus signal of power status match
++static std::function<void(bool)> powerStatHookHandlr = [] (bool powerStatus) {
++    // It's only for compilers . Otherwise, unused variable powerStatus will be treated as errors.
++    if(!powerStatus)
++        powerStatus=true;
++};
++void setupPowerStatHookHandlr(std::function<void(bool)> hookHandlr)
++{
++    // this a global function for this sensor monitor service, so only need setup at first time
++    static bool set = false;
++    if (!set)
++    {
++        powerStatHookHandlr = std::move(hookHandlr);
++        set = true;
++    }
++}
++
++
+ bool getSensorConfiguration(
+     const std::string& type,
+     const std::shared_ptr<sdbusplus::asio::connection>& dbusConnection,
+@@ -426,6 +444,7 @@ void setupPowerMatch(const std::shared_ptr<sdbusplus::asio::connection>& conn)
+                 {
+                     timer.cancel();
+                     powerStatusOn = false;
++                    powerStatHookHandlr(powerStatusOn);
+                     return;
+                 }
+                 // on comes too quickly
+@@ -441,6 +460,7 @@ void setupPowerMatch(const std::shared_ptr<sdbusplus::asio::connection>& conn)
+                         return;
+                     }
+                     powerStatusOn = true;
++                    powerStatHookHandlr(powerStatusOn);
+                 });
+             }
+         });
+diff --git a/src/meson.build b/src/meson.build
+index 0fe5f56..199857b 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -8,6 +8,7 @@ if get_option('adc').enabled()
+         'adcsensor',
+         'ADCSensor.cpp',
+         'ADCSensorMain.cpp',
++        'IpmiInfo.cpp',
+         dependencies: [
+             default_deps,
+             gpiodcxx,
+@@ -25,6 +26,7 @@ if get_option('cpu').enabled()
+         'cpusensor',
+         'CPUSensorMain.cpp',
+         'CPUSensor.cpp',
++        'IpmiInfo.cpp',
+         dependencies: [
+             default_deps,
+             gpiodcxx,
+@@ -43,6 +45,7 @@ if get_option('exit-air').enabled()
+     executable(
+         'exitairtempsensor',
+         'ExitAirTempSensor.cpp',
++        'IpmiInfo.cpp',
+         dependencies: [
+             default_deps,
+             thresholds_dep,
+@@ -60,6 +63,7 @@ if get_option('fan').enabled()
+         'FanMain.cpp',
+         'TachSensor.cpp',
+         'PwmSensor.cpp',
++        'IpmiInfo.cpp',
+         dependencies: [
+             default_deps,
+             gpiodcxx,
+@@ -77,6 +81,7 @@ if get_option('hwmon-temp').enabled()
+         'hwmontempsensor',
+         'HwmonTempMain.cpp',
+         'HwmonTempSensor.cpp',
++        'IpmiInfo.cpp',
+         dependencies: [
+             default_deps,
+             thresholds_dep,
+@@ -93,6 +98,7 @@ if get_option('intrusion').enabled()
+         'intrusionsensor',
+         'ChassisIntrusionSensor.cpp',
+         'IntrusionSensorMain.cpp',
++        'IpmiInfo.cpp',
+         dependencies: [
+             default_deps,
+             gpiodcxx,
+@@ -109,6 +115,7 @@ if get_option('ipmb').enabled()
+     executable(
+         'ipmbsensor',
+         'IpmbSensor.cpp',
++        'IpmiInfo.cpp',
+         dependencies: [
+             default_deps,
+             thresholds_dep,
+@@ -124,6 +131,7 @@ if get_option('mcu').enabled()
+     executable(
+         'mcutempsensor',
+         'MCUTempSensor.cpp',
++        'IpmiInfo.cpp',
+         dependencies: [
+             default_deps,
+             i2c,
+@@ -137,7 +145,7 @@ if get_option('mcu').enabled()
+ endif
+ 
+ if get_option('nvme').enabled()
+-    nvme_srcs = files('NVMeSensorMain.cpp', 'NVMeSensor.cpp')
++    nvme_srcs = files('NVMeSensorMain.cpp', 'NVMeSensor.cpp', 'IpmiInfo.cpp')
+     nvme_srcs += files('NVMeBasicContext.cpp')
+ 
+     nvme_deps = [ default_deps, i2c, thresholds_dep, utils_dep, threads ]
+@@ -158,6 +166,7 @@ if get_option('psu').enabled()
+         'PSUEvent.cpp',
+         'PSUSensor.cpp',
+         'PSUSensorMain.cpp',
++        'IpmiInfo.cpp',
+         dependencies: [
+             default_deps,
+             pwmsensor_dep,
+@@ -175,6 +184,7 @@ if get_option('external').enabled()
+         'externalsensor',
+         'ExternalSensor.cpp',
+         'ExternalSensorMain.cpp',
++        'IpmiInfo.cpp',
+         dependencies: [
+             default_deps,
+             thresholds_dep,
+-- 
+2.33.0
+

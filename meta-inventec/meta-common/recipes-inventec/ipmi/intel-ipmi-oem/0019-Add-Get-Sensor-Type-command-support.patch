@@ -1,0 +1,80 @@
+From 4c5f38bc93c34b7c8dd8877d90e2c4c0a7fdc4a0 Mon Sep 17 00:00:00 2001
+From: Tommy Lin <lin.tommysc@inventec.com>
+Date: Wed, 8 Dec 2021 02:35:10 +0000
+Subject: [PATCH 19/25] Add Get Sensor Type command support
+
+Symptom/Reason:
+    - Get Sensor Type command failed
+
+Root Cause:
+    - Sensor data mismatch between phosphor-ipmi-host and intel-ipmi-oem
+
+Solution/Change:
+    [intel-ipmi-oem]
+        - Add ipmiSenGetSensorType function to override implementation in phosphor-ipmi-host
+
+Entry Test:
+    - Get sensor type:
+    ipmitool raw 0x04 0x2f {sensor_number}
+---
+ src/sensorcommands.cpp | 37 +++++++++++++++++++++++++++++++++++++
+ 1 file changed, 37 insertions(+)
+
+diff --git a/src/sensorcommands.cpp b/src/sensorcommands.cpp
+index bef0f9f..dfb2602 100644
+--- a/src/sensorcommands.cpp
++++ b/src/sensorcommands.cpp
+@@ -689,6 +689,38 @@ ipmi::RspType<uint8_t, uint8_t, uint8_t, std::optional<uint8_t>>
+     return ipmi::responseSuccess(value, operation, thresholds, std::nullopt);
+ }
+ 
++/** @brief implements the get Sensor type command
++ *  @param sensorNumber - sensor number, FFh = reserved
++ *
++ *  @returns IPMI completion code plus response data
++ *   - sensorNum - sensor number
++ */
++ipmi::RspType<uint8_t,      // sensor type
++              uint8_t      // Event/Reading type code
++              >
++    ipmiSenGetSensorType(ipmi::Context::ptr ctx, uint8_t sensorNumber)
++{
++    std::string connection;
++    std::string path;
++
++    auto status = getSensorConnection(ctx, sensorNumber, connection, path);
++    if (status)
++    {
++        return ipmi::response(status);
++    }
++
++    SensorMap sensorMap;
++    if (!getSensorMap(ctx->yield, connection, path, sensorMap))
++    {
++        return ipmi::responseResponseError();
++    }
++
++    uint8_t sensorType = getSensorTypeFromPath(path);
++    uint8_t eventType = getSensorEventTypeFromPath(path);
++
++    return ipmi::responseSuccess(sensorType, eventType);
++}
++
+ /** @brief implements the Set Sensor threshold command
+  *  @param sensorNumber        - sensor number
+  *  @param lowerNonCriticalThreshMask
+@@ -1941,6 +1973,11 @@ void registerSensorFunctions()
+                           ipmi::sensor_event::cmdGetSensorReading,
+                           ipmi::Privilege::User, ipmiSenGetSensorReading);
+ 
++    // <Get Sensor Type>
++    ipmi::registerHandler(ipmi::prioOemBase, ipmi::netFnSensor,
++                          ipmi::sensor_event::cmdGetSensorType,
++                          ipmi::Privilege::User, ipmiSenGetSensorType);
++
+     // <Get Sensor Threshold>
+     ipmi::registerHandler(ipmi::prioOemBase, ipmi::netFnSensor,
+                           ipmi::sensor_event::cmdGetSensorThreshold,
+-- 
+2.33.0
+

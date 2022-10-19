@@ -1,0 +1,21 @@
+{
+        "reset_self": true,
+        "rule_list": [
+                {
+                        "path": "/xyz/openbmc_project/Ipmi/Channel",
+                        "contains":["Ipmb","kcs"]
+                },
+                {
+                        "path": "/xyz/openbmc_project/ipmi/session",
+                        "contains":["eth"]
+                },
+                {
+                        "path": "/xyz/openbmc_project/certs/server",
+                        "contains":["http"]
+                }
+
+        ],
+	"unit_list": [
+                "bmcweb.service"
+        ]
+}

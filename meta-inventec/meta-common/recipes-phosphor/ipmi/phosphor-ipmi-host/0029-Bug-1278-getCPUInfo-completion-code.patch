@@ -1,0 +1,49 @@
+From b72d031ae190a50cf6b4512d25f411af7b38c361 Mon Sep 17 00:00:00 2001
+From: bonnie <Liu.Bonnie@inventec.com>
+Date: Thu, 15 Sep 2022 15:41:07 +0800
+Subject: [PATCH 29/31] Bug 1278 - [Transformers][Openbmc][IPMI]The byte 11th
+ of Processor status should only be 01 or ff
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Symptom/Reason：
+        When set the byte 11th of Processor status, should only allow be set to 01 or ff.
+Root Cause：
+        Code didn't restrict the value of input.
+Solution/Change：
+        1.Add the code if input value neither 01 nor ff, then return invalid index error(0x81).
+	2.Add the completion code 0x80,0x81.
+Entry Test：
+	sysadmin@transformers:~# ipmitool raw 0x30 0xF0 0x49 0x4D 0x41 0x00 0x00 0x1 0x0 0x15 0x0 0x10 0x2
+	Unable to send RAW command (channel=0x0 netfn=0x30 lun=0x0 cmd=0xf0 rsp=0x81): Unknown (0x81)
+	sysadmin@transformers:~# ipmitool raw 0x30 0xF0 0x49 0x4D 0x41 0x00 0x00 0x1 0x0 0x15 0x0 0x10 0x1
+
+	sysadmin@transformers:~# ipmitool raw 0x30 0x1B 0x0
+	15 00 10 01
+	sysadmin@transformers:~# ipmitool raw 0x30 0xF0 0x49 0x4D 0x41 0x00 0x00 0x1 0x0 0x15 0x0 0x10 0x4
+	Unable to send RAW command (channel=0x0 netfn=0x30 lun=0x0 cmd=0xf0 rsp=0x81): Unknown (0x81)
+	sysadmin@transformers:~# ipmitool raw 0x30 0xF0 0x49 0x4D 0x41 0x00 0x00 0x1 0x0 0x15 0x0 0x10 0xff
+
+	sysadmin@transformers:~# ipmitool raw 0x30 0x1B 0x0
+	15 00 10 ff
+---
+ include/ipmid/api-types.hpp | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/include/ipmid/api-types.hpp b/include/ipmid/api-types.hpp
+index 518db03..67130f7 100644
+--- a/include/ipmid/api-types.hpp
++++ b/include/ipmid/api-types.hpp
+@@ -389,6 +389,8 @@ constexpr Cc ccInsufficientPrivilege = 0xD4;
+ constexpr Cc ccCommandNotAvailable = 0xD5;
+ constexpr Cc ccCommandDisabled = 0xD6;
+ constexpr Cc ccUnspecifiedError = 0xFF;
++constexpr Cc ccInvalidNumOfEntries = 0x80;
++constexpr Cc ccInvalidIndex = 0x81;
+ 
+ /* ipmi often has two return types:
+  * 1. Failure: CC is non-zero; no trailing data
+-- 
+2.33.0
+

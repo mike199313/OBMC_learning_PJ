@@ -1,0 +1,17 @@
+[Unit]
+Description=Inventec DCMI power service
+Requires=xyz.openbmc_project.psusensor.service
+After=xyz.openbmc_project.psusensor.service
+After=xyz.openbmc_project.Settings.service
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+[Service]
+Restart=always
+ExecStart=/usr/bin/inventec-dcmi-power
+SyslogIdentifier=inventec-dcmi-power
+TimeoutSec=infinity
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

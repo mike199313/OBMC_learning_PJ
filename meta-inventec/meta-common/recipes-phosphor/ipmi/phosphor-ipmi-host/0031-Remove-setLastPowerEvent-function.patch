@@ -1,0 +1,75 @@
+From ab0eea3295f0c9787c81d5a964ac7ef7d8e37ee5 Mon Sep 17 00:00:00 2001
+From: Matt Cheng <cheng.matt@inventec.com>
+Date: Tue, 20 Sep 2022 08:44:29 +0800
+Subject: [PATCH 31/31] Remove setLastPowerEvent function
+
+Symptom/Reason:
+        Power Overload is always true.
+
+Root Cause:
+        Use the redfish to turn on the host power then the event of the LastPowerEvent is not reset.
+
+Solution/Change:
+	[phosphor-impi-host]
+		Remove the original setLastPowerEvent function from ipmi-host and move to the power control to set the property.
+	[x86-power-control]
+	        Clear the LastPowerEvent after the host power is turned on.
+
+Entry Test:
+        ipmitool dcmi power deactivate
+        ipmitool dcmi power set_limit limit 100
+        ipmitool dcmi power activate
+        Wait 10s
+        ipmitool dcmi power deactivate
+        curl -u root:0penBmc -k -X POST https://10.6.141.88/redfish/v1/Systems/system/Actions/ComputerSystem.Reset/ -d '{"ResetType": "On"}'
+        ipmitool chassis status
+---
+ chassishandler.cpp | 18 ------------------
+ 1 file changed, 18 deletions(-)
+
+diff --git a/chassishandler.cpp b/chassishandler.cpp
+index 3bf67f5..bc840ea 100644
+--- a/chassishandler.cpp
++++ b/chassishandler.cpp
+@@ -1318,22 +1318,6 @@ ipmi::RspType<uint4_t, // Restart Cause
+     return ipmi::responseSuccess(cause.value(), reserved, channel);
+ }
+ 
+-void setLastPowerEvent(sdbusplus::bus::bus& bus, uint32_t value)
+-{
+-    try
+-    {
+-        const std::string objPath = "/xyz/openbmc_project/state/chassis0";
+-        const std::string intf = "xyz.openbmc_project.State.Chassis";
+-        auto service = ipmi::getService(bus, intf, objPath);
+-        ipmi::setDbusProperty(bus, service, objPath, intf, "LastPowerEvent",
+-                              value);
+-    }
+-    catch (sdbusplus::exception::SdBusError& e)
+-    {
+-        fprintf(stderr, "%s exception:%s \n", __func__, e.what());
+-    }
+-}
+-
+ void setPowerControlReturnCode(sdbusplus::bus::bus& bus, int value)
+ {
+     try
+@@ -1366,7 +1350,6 @@ ipmi::RspType<> ipmiChassisControl(ipmi::Context::ptr& ctx,
+     {
+         case CMD_POWER_ON:
+             rc = initiateHostStateTransition(ctx, State::Host::Transition::On);
+-            setLastPowerEvent(*bus, 1 << 4);
+             break;
+         case CMD_POWER_OFF:
+             rc = initiateChassisStateTransition(
+@@ -1379,7 +1362,6 @@ ipmi::RspType<> ipmiChassisControl(ipmi::Context::ptr& ctx,
+         case CMD_POWER_CYCLE:
+             rc = initiateHostStateTransition(ctx,
+                                              State::Host::Transition::Reboot);
+-            setLastPowerEvent(*bus, 1 << 4);
+             break;
+         case CMD_SOFT_OFF_VIA_OVER_TEMP:
+             rc = initiateHostStateTransition(ctx, State::Host::Transition::Off);
+-- 
+2.33.0
+

@@ -1,0 +1,92 @@
+From a7fcd963fa1116e5fec3b1d3aff707cfe0fc1bcc Mon Sep 17 00:00:00 2001
+From: "pj.chen" <chen.pj@inventec.com>
+Date: Mon, 7 Mar 2022 07:27:52 +0000
+Subject: [PATCH 13/25] Sensor - Fix set sensor threshold command fail issue
+
+Symptom/Reason :
+    - Set sensor threshold command may fail under intensive test
+
+Root Cause:
+    - Sensor tree was regenerated after next record ID was determined
+
+Solution/Change:
+    [intel-ipmi-oem]
+        - Sensor tree should be regenerated before next record ID was determined
+
+Entry Test:
+    - Copy following commands and paste them on BMC console
+      ipmitool sensor thresh THERMAL_U95 lcr 6.000
+      ipmitool sensor thresh THERMAL_U95 lnc 11.000
+      ipmitool sensor thresh THERMAL_U95 unc 66.000
+      ipmitool sensor thresh THERMAL_U95 ucr 71.000
+      ipmitool sensor thresh THERMAL_U95 lcr 5.000
+      ipmitool sensor thresh THERMAL_U95 lnc 10.000
+      ipmitool sensor thresh THERMAL_U95 unc 65.000
+      ipmitool sensor thresh THERMAL_U95 ucr 70.000
+---
+ src/sensorcommands.cpp | 17 +++++++++--------
+ 1 file changed, 9 insertions(+), 8 deletions(-)
+
+diff --git a/src/sensorcommands.cpp b/src/sensorcommands.cpp
+index 436eddb..4d87108 100644
+--- a/src/sensorcommands.cpp
++++ b/src/sensorcommands.cpp
+@@ -90,7 +90,6 @@ const static boost::container::flat_map<const char*, SensorUnits, CmpStr>
+     sensorUnits{{{"temperature", SensorUnits::degreesC},
+                  {"voltage", SensorUnits::volts},
+                  {"current", SensorUnits::amps},
+-                 {"cfm", SensorUnits::cfm},
+                  {"fan_tach", SensorUnits::rpm},
+                  {"power", SensorUnits::watts}}};
+ 
+@@ -1381,8 +1380,6 @@ static int getSensorDataRecord(ipmi::Context::ptr ctx,
+     record.body.entity_id = entityId;
+     record.body.entity_instance = entityInstance;
+ 
+-    /* Inventec patch - Fix sensor reading factor un-match in SDR */
+-    #if 0
+     auto maxObject = sensorObject->second.find("MaxValue");
+     auto minObject = sensorObject->second.find("MinValue");
+ 
+@@ -1399,11 +1396,6 @@ static int getSensorDataRecord(ipmi::Context::ptr ctx,
+     {
+         min = std::visit(VariantToDoubleVisitor(), minObject->second);
+     }
+-    #endif
+-    double max = 0;
+-    double min = 0;
+-    getSensorMaxMin(sensorMap, max, min);
+-    /* Inventec patch - Fix sensor reading factor un-match in SDR - END*/
+ 
+     int16_t mValue = 0;
+     int8_t rExp = 0;
+@@ -1779,10 +1771,13 @@ ipmi::RspType<uint16_t,            // next record ID
+         return ipmi::response(ret);
+     }
+ 
++    /* Inventec - Fix set sensor threshold command fail issue */
++    #if 0
+     size_t lastRecord = getNumberOfSensors() + fruCount +
+                         ipmi::storage::type12Count +
+                         ipmi::storage::nmDiscoverySDRCount - 1;
+     uint16_t nextRecordId = lastRecord > recordID ? recordID + 1 : 0XFFFF;
++    #endif
+ 
+     if (!getSensorSubtree(sensorTree) && sensorTree.empty())
+     {
+@@ -1791,6 +1786,12 @@ ipmi::RspType<uint16_t,            // next record ID
+         return ipmi::responseResponseError();
+     }
+ 
++    /* Inventec - Fix set sensor threshold command fail issue */
++    size_t lastRecord = sensorTree.size() + fruCount +
++                        ipmi::storage::type12Count +
++                        ipmi::storage::nmDiscoverySDRCount - 1;
++    uint16_t nextRecordId = lastRecord > recordID ? recordID + 1 : 0XFFFF;
++
+     std::vector<uint8_t> record;
+     if (getSensorDataRecord(ctx, record, recordID))
+     {
+-- 
+2.33.0
+

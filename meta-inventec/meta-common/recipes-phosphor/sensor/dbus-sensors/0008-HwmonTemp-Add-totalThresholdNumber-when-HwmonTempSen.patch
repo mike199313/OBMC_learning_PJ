@@ -1,0 +1,151 @@
+From 598d02771ea922717af3066614801527898b2ec8 Mon Sep 17 00:00:00 2001
+From: "pj.chen" <chen.pj@inventec.com>
+Date: Tue, 1 Mar 2022 03:28:39 +0000
+Subject: [PATCH 08/27] HwmonTemp - Add totalThresholdNumber when
+ HwmonTempSensor create
+
+Symptom/Reason:
+  For HwmonTempSensor, may have threshold config in one hwmon path, for example "tmp468".
+  When setting the threshold, would also modify the property in entity-manager.
+  So if we modify the sensor in the extention(temp2, temp3.....),
+  would have error to find correct dbus interface.
+
+Root Cause:
+  In persistThreshold() in Thresholds.cpp, would find all threshold dbus interface.
+  The threshold count default is the thresholds.size().
+  But for the extention sensors for tmp468, all of the threshod are config in the temp1.
+  And temp1 itself's thresholds only contain it's own. Whis is 4 for normal case.
+
+  Here we need to find all threshold interface, so give the totalThresholdNumber.
+  Which is 4*sensor numbers for normal case.
+
+Solution/Change:
+  Extend the input requirement for HwmonTempSensor creation.
+  And give the label and total threshold size when setInitialProperties()
+
+Entry Test:
+
+THERMAL_Q89      | 23.000     | degrees C  | ok    | na        | 5.000     | 10.000    | 65.000    | 70.000    | na
+THERMAL_Q90      | 24.000     | degrees C  | ok    | na        | 5.000     | 10.000    | 65.000    | 70.000    | na
+THERMAL_Q91      | 26.000     | degrees C  | ok    | na        | 5.000     | 10.000    | 65.000    | 70.000    | na
+THERMAL_Q92      | 26.000     | degrees C  | ok    | na        | 5.000     | 10.000    | 65.000    | 70.000    | na
+THERMAL_Q93      | 29.000     | degrees C  | ok    | na        | 5.000     | 10.000    | 65.000    | 70.000    | na
+THERMAL_Q94      | 28.000     | degrees C  | ok    | na        | 5.000     | 10.000    | 65.000    | 70.000    | na
+THERMAL_U6       | 32.000     | degrees C  | ok    | na        | 5.000     | 10.000    | 35.000    | 36.000    | na
+THERMAL_U8       | 23.000     | degrees C  | ok    | na        | 5.000     | 10.000    | 55.000    | 56.000    | na
+THERMAL_U95      | 27.000     | degrees C  | ok    | na        | 5.000     | 10.000    | 65.000    | 70.000    | na
+
+ipmitool raw 0x04 0x26 0x61 0x01 0x06 0x00 0x00 0x00 0x00 0x00
+
+THERMAL_Q89      | 23.000     | degrees C  | ok    | na        | 5.000     | 6.000     | 65.000    | 70.000    | na
+THERMAL_Q90      | 24.000     | degrees C  | ok    | na        | 5.000     | 10.000    | 65.000    | 70.000    | na
+THERMAL_Q91      | 26.000     | degrees C  | ok    | na        | 5.000     | 10.000    | 65.000    | 70.000    | na
+THERMAL_Q92      | 26.000     | degrees C  | ok    | na        | 5.000     | 10.000    | 65.000    | 70.000    | na
+THERMAL_Q93      | 28.000     | degrees C  | ok    | na        | 5.000     | 10.000    | 65.000    | 70.000    | na
+THERMAL_Q94      | 28.000     | degrees C  | ok    | na        | 5.000     | 10.000    | 65.000    | 70.000    | na
+THERMAL_U6       | 32.000     | degrees C  | ok    | na        | 5.000     | 10.000    | 35.000    | 36.000    | na
+THERMAL_U8       | 24.000     | degrees C  | ok    | na        | 5.000     | 10.000    | 55.000    | 56.000    | na
+THERMAL_U95      | 27.000     | degrees C  | ok    | na        | 5.000     | 10.000    | 65.000    | 70.000    | na
+---
+ include/HwmonTempSensor.hpp |  3 ++-
+ src/HwmonTempMain.cpp       | 17 +++++++++++++++--
+ src/HwmonTempSensor.cpp     |  6 +++---
+ 3 files changed, 20 insertions(+), 6 deletions(-)
+
+diff --git a/include/HwmonTempSensor.hpp b/include/HwmonTempSensor.hpp
+index 86cad31..856058a 100644
+--- a/include/HwmonTempSensor.hpp
++++ b/include/HwmonTempSensor.hpp
+@@ -33,7 +33,7 @@ class HwmonTempSensor :
+                     const struct SensorParams& thisSensorParameters,
+                     const float pollRate,
+                     const std::string& sensorConfiguration,
+-                    const PowerState powerState);
++                    const PowerState powerState, size_t totalThresholdNumber);
+     ~HwmonTempSensor() override;
+     void setupRead(void);
+ 
+@@ -46,6 +46,7 @@ class HwmonTempSensor :
+     double offsetValue;
+     double scaleValue;
+     unsigned int sensorPollMs;
++    size_t totalThresholdNumber;
+ 
+     void handleResponse(const boost::system::error_code& err);
+     void restartRead();
+diff --git a/src/HwmonTempMain.cpp b/src/HwmonTempMain.cpp
+index 7b11bd9..ae38669 100644
+--- a/src/HwmonTempMain.cpp
++++ b/src/HwmonTempMain.cpp
+@@ -384,6 +384,19 @@ void createSensors(
+ 
+                 std::vector<thresholds::Threshold> sensorThresholds;
+ 
++                /* Inventec - Add totalThresholdNumber when HwmonTempSensor create*/
++                size_t totalThresholdNumber = 0;
++
++                if (!parseThresholdsFromConfig(sensorData, sensorThresholds,
++                                                nullptr, &index))
++                {
++                    std::cerr << "error populating thresholds for "
++                            << sensorName << " index 1\n";
++                }
++                /* Counting all threshold config */
++                totalThresholdNumber = sensorThresholds.size();
++
++                /* Replace Threshold for TMP468*/
+                 /* Inventec - Add tmp468 support and Label search for extra thresold and ipmi config */
+                 if( !sensorType.compare("xyz.openbmc_project.Configuration.TMP468") ) {
+                     std::string thresholdLabel = sensorName.substr(0, sensorName.find(" "));
+@@ -447,7 +460,7 @@ void createSensors(
+                         io, sensorName, std::move(sensorThresholds),
+                         std::move(sensorIpmiConfig),
+                         thisSensorParameters, pollRate, interfacePath,
+-                        readState);
++                        readState, totalThresholdNumber);
+                     sensor->setupRead();
+                     hwmonName.erase(
+                         remove(hwmonName.begin(), hwmonName.end(), sensorName),
+@@ -515,7 +528,7 @@ void createSensors(
+                             *hwmonFile, sensorType, objectServer,
+                             dbusConnection, io, sensorName,
+                             std::move(sensorThresholdsExtra), std::move(sensorIpmiConfig), thisSensorParameters,
+-                            pollRate, interfacePath, readState);
++                            pollRate, interfacePath, readState, totalThresholdNumber);
+                         sensor->setupRead();
+                         hwmonName.erase(remove(hwmonName.begin(),
+                                                hwmonName.end(), sensorName),
+diff --git a/src/HwmonTempSensor.cpp b/src/HwmonTempSensor.cpp
+index 20e14f5..3f01238 100644
+--- a/src/HwmonTempSensor.cpp
++++ b/src/HwmonTempSensor.cpp
+@@ -46,7 +46,7 @@ HwmonTempSensor::HwmonTempSensor(
+     boost::asio::io_service& io, const std::string& sensorName,
+     std::vector<thresholds::Threshold>&& thresholdsIn, std::vector<ipmidata::IpmiConfig>&& _ipmiinfo,
+     const struct SensorParams& thisSensorParameters, const float pollRate,
+-    const std::string& sensorConfiguration, const PowerState powerState) :
++    const std::string& sensorConfiguration, const PowerState powerState, size_t _totalThresholdNumber) :
+     Sensor(boost::replace_all_copy(sensorName, " ", "_"),
+            std::move(thresholdsIn), sensorConfiguration, objectType, false,
+            false, thisSensorParameters.maxValue, thisSensorParameters.minValue,
+@@ -55,7 +55,7 @@ HwmonTempSensor::HwmonTempSensor(
+     inputDev(io), waitTimer(io), path(path),
+     offsetValue(thisSensorParameters.offsetValue),
+     scaleValue(thisSensorParameters.scaleValue),
+-    sensorPollMs(static_cast<unsigned int>(pollRate * 1000))
++    sensorPollMs(static_cast<unsigned int>(pollRate * 1000)), totalThresholdNumber(_totalThresholdNumber)
+ {
+     // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg)
+     int fd = open(path.c_str(), O_RDONLY);
+@@ -105,7 +105,7 @@ HwmonTempSensor::HwmonTempSensor(
+                                                  thisSensorParameters.typeName +
+                                                  "/" + name,
+                                              association::interface);
+-    setInitialProperties(thisSensorParameters.units);
++    setInitialProperties(thisSensorParameters.units, sensorName, totalThresholdNumber);
+ }
+ 
+ HwmonTempSensor::~HwmonTempSensor()
+-- 
+2.33.0
+

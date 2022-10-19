@@ -1,0 +1,87 @@
+From a7216ec644ac37f7cbc1eef0e1c701ab3accf22e Mon Sep 17 00:00:00 2001
+From: "pj.chen" <chen.pj@inventec.com>
+Date: Wed, 2 Jun 2021 09:39:55 +0000
+Subject: [PATCH 13/31] Bug 354 - [Transformers][OpenBMC][IPMI]Get "Enhanced
+ System Power Statistics attributes" failed
+
+Symptom/Reason:
+    Add support for DCMI capability "Enhanced System Power Statistics attrubutes"
+
+Root Cause:
+    N/A
+
+Solution/Change:
+    [dcmihandler]
+        Read config from dcmi_cap.json
+
+Entry Test:
+
+sysadmin@transformers:~# ipmitool raw 0x2c 0x01 0xdc 0x05
+ dc 01 05 02 05 00 05 0a 1e 3c
+---
+ dcmihandler.cpp | 29 +++++++++++++++++++++++++++--
+ dcmihandler.hpp |  1 +
+ 2 files changed, 28 insertions(+), 2 deletions(-)
+
+diff --git a/dcmihandler.cpp b/dcmihandler.cpp
+index 143b6f7..5fbe578 100644
+--- a/dcmihandler.cpp
++++ b/dcmihandler.cpp
+@@ -852,7 +852,11 @@ dcmi::DCMICaps dcmiCaps = {
+      {3,
+       {{"MandatoryPrimaryLanOOBSupport", 1, 0, 8},
+        {"OptionalSecondaryLanOOBSupport", 2, 0, 8},
+-       {"OptionalSerialOOBMTMODECapability", 3, 0, 8}}}}};
++       {"OptionalSerialOOBMTMODECapability", 3, 0, 8}}}},
++    // ENHANCE_SYSTEM_POWER_STATISTICS
++    {dcmi::DCMICapParameters::ENHANCE_SYSTEM_POWER_STATISTICS,
++     {1,
++      {{"NumberOfSupportedRollingPeriod", 1, 0, 8}}}}};
+ 
+ ipmi_ret_t getDCMICapabilities(ipmi_netfn_t netfn, ipmi_cmd_t cmd,
+                                ipmi_request_t request, ipmi_response_t response,
+@@ -922,7 +926,28 @@ ipmi_ret_t getDCMICapabilities(ipmi_netfn_t netfn, ipmi_cmd_t cmd,
+     responseData->major = DCMI_SPEC_MAJOR_VERSION;
+     responseData->minor = DCMI_SPEC_MINOR_VERSION;
+     responseData->paramRevision = DCMI_PARAMETER_REVISION;
+-    *data_len = sizeof(*responseData) + caps->second.size;
++
++    if(static_cast<dcmi::DCMICapParameters>(requestData->param) ==
++        dcmi::DCMICapParameters::ENHANCE_SYSTEM_POWER_STATISTICS)
++    {
++        uint32_t index=0;
++
++        if( data.contains("RollingPeriodList")
++            && data.contains("NumberOfSupportedRollingPeriod"))
++        {
++            for (auto& rollingPeriod : data["RollingPeriodList"])
++            {
++                auto period = rollingPeriod.get_ptr<int64_t*>();
++                responseData->data[index+1] = (uint8_t)*period;
++                index++;
++            }
++        }
++        *data_len = sizeof(*responseData) + index + 1;
++    }
++    else
++    {
++        *data_len = sizeof(*responseData) + caps->second.size;
++    }
+ 
+     return IPMI_CC_OK;
+ }
+diff --git a/dcmihandler.hpp b/dcmihandler.hpp
+index 0c950de..3e3c09a 100644
+--- a/dcmihandler.hpp
++++ b/dcmihandler.hpp
+@@ -323,6 +323,7 @@ enum class DCMICapParameters
+     MANDATORY_PLAT_ATTRIBUTES = 0x02,       //!< Mandatory Platform Attributes
+     OPTIONAL_PLAT_ATTRIBUTES = 0x03,        //!< Optional Platform Attributes
+     MANAGEABILITY_ACCESS_ATTRIBUTES = 0x04, //!< Manageability Access Attributes
++    ENHANCE_SYSTEM_POWER_STATISTICS = 0x05, //!< Enhanced System Power Statistics
+ };
+ 
+ /** @struct GetDCMICapRequest
+-- 
+2.33.0
+

@@ -1,0 +1,48 @@
+From 81cdcf870718de53190c492b017cf094842bf9c3 Mon Sep 17 00:00:00 2001
+From: "pj.chen" <chen.pj@inventec.com>
+Date: Tue, 9 Mar 2021 05:33:46 +0000
+Subject: [PATCH 04/20] - Store Don't log flag to dbus
+
+Symtom/Reason:
+    Save the don't log flag to dbus for watchdog command.
+
+Root Cause:
+    The don't log flag didn't work.
+
+Solution/Change:
+    Add the don't log to yaml.
+
+Entry Test:
+
+ipmitool raw 0x06 0x24 0x81 0x30 0x10 0x02 0x2c 0x01
+
+And check dbus interface
+busctl introspect xyz.openbmc_project.Watchdog /xyz/openbmc_project/watchdog/host0
+
+xyz.openbmc_project.State.Watchdog  interface -         -                                        -
+.ResetTimeRemaining                 method    b         -                                        -
+.CurrentTimerUse                    property  s         "xyz.openbmc_project.State.Watchdog.T... emits-change writable
+.DontLog                            property  b         true                                     emits-change writable
+---
+ yaml/xyz/openbmc_project/State/Watchdog.interface.yaml | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/yaml/xyz/openbmc_project/State/Watchdog.interface.yaml b/yaml/xyz/openbmc_project/State/Watchdog.interface.yaml
+index db2f393..a327634 100644
+--- a/yaml/xyz/openbmc_project/State/Watchdog.interface.yaml
++++ b/yaml/xyz/openbmc_project/State/Watchdog.interface.yaml
+@@ -65,6 +65,11 @@ properties:
+       description: >
+           PreTimeoutInterruptOccurFlag that preTimeoutInterrupt action occurred.
+       default: false
++    - name: DontLog
++      type: boolean
++      description: >
++          Create by Inventec, Log to SEL or not when expired.
++      default: false
+ 
+ enumerations:
+     - name: Action
+-- 
+2.33.0
+

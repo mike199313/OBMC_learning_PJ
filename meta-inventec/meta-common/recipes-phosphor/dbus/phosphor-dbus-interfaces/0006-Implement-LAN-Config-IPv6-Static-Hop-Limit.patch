@@ -1,0 +1,29 @@
+From 1c42a9986a0de33c5df3e52aff2842340e26c14d Mon Sep 17 00:00:00 2001
+From: "Lin.TommySC" <lin.tommysc@inventec.com>
+Date: Tue, 23 Mar 2021 08:58:37 +0000
+Subject: [PATCH 06/20] Implement LAN Config IPv6 Static Hop Limit
+
+---
+ .../Network/EthernetInterface.interface.yaml                | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/yaml/xyz/openbmc_project/Network/EthernetInterface.interface.yaml b/yaml/xyz/openbmc_project/Network/EthernetInterface.interface.yaml
+index 096f5b5..2f7bba5 100644
+--- a/yaml/xyz/openbmc_project/Network/EthernetInterface.interface.yaml
++++ b/yaml/xyz/openbmc_project/Network/EthernetInterface.interface.yaml
+@@ -105,6 +105,12 @@ properties:
+           https://man7.org/linux/man-pages/man3/inet_pton.3.html
+       errors:
+           - xyz.openbmc_project.Common.Error.InvalidArgument
++    - name: IPv6HopLimit
++      type: byte
++      description: >
++          IPv6 header static hop limit.
++      errors:
++          - xyz.openbmc_project.Common.Error.InvalidArgument
+ 
+ enumerations:
+     - name: LinkLocalConf
+-- 
+2.33.0
+

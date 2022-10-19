@@ -1,0 +1,325 @@
+From 1b0ec05f72a9c1540772b8587ddee5878f5ce6db Mon Sep 17 00:00:00 2001
+From: "pj.chen" <chen.pj@inventec.com>
+Date: Wed, 12 Jan 2022 07:27:36 +0000
+Subject: [PATCH 10/25] Bug 755 - [SW][common][intel-ipmi-oem] - Add more
+ sensor type and event type
+
+Sympton/Reason:
+    Intel-ipmi-oem get sensor type from dbus path.
+    Inventec patch to get event reading type from dbus path also.
+    It didn't support all the types in spec.
+
+    Here should add more types we need.
+
+    sensor type
+        - processor
+        - power_supply
+        - power_unit
+        - memory
+        - system_event
+        - system_boot_initiated
+        - oem(with hex)
+        - all sensor type defined in ipmi 2.0
+
+    event type
+        - discrete(with hex)
+        - oem_event(with hex)
+
+    unit
+        - cfm
+
+Root Cause:
+    N/A
+
+Solution/Change:
+    Add more type and parsing rule.
+
+Entry Test:
+
+sysadmin@transformers:~# ipmitool sdr get BMC_health -vv
+--skip--
+Sensor ID              : BMC_health (0xb1)
+ Entity ID             : 7.0 (System Board)
+ Sensor Type (Discrete): Unknown (0xe0)
+ Event Type Code       : 0x70
+ Sensor Reading        : 0h
+ Event Message Control : Per-threshold
+ Event Status          : Event Messages Disabled
+ Event Enable          : Event Messages Disabled
+ OEM                   : 0
+---
+ include/sdrutils.hpp        | 194 +++++++++++++++++++++++++++++++++---
+ include/storagecommands.hpp |   1 +
+ src/sensorcommands.cpp      |   1 +
+ 3 files changed, 180 insertions(+), 16 deletions(-)
+
+diff --git a/include/sdrutils.hpp b/include/sdrutils.hpp
+index f5d4895..d6e6704 100644
+--- a/include/sdrutils.hpp
++++ b/include/sdrutils.hpp
+@@ -568,23 +568,108 @@ enum class SensorTypeCodes : uint8_t
+     voltage = 0x2,
+     current = 0x3,
+     fan = 0x4,
++    physical_security = 0x05,
++    platform_security = 0x06,
++    processor = 0x7,
++    power_supply = 0x8,
++    power_unit = 0x9,
++    cooling_device = 0x0a,
+     other = 0xB,
++    memory = 0x0C,
++    driver_slot = 0x0d,
++    post_memory_resize = 0x0e,
++    system_firmware_progress = 0x0f,
++    event_logging_disabled = 0x10,
++    watchdog1 = 0x11,
++    system_event = 0x12,
++    critical_interrupt = 0x13,
++    button_switch = 0x14,
++    module_board = 0x15,
++    microcontroller_coprocessor = 0x16,
++    addin_card = 0x17,
++    chassis = 0x18,
++    chip_set = 0x19,
++    other_fru = 0x1a,
++    cable_interconnect = 0x1b,
++    terminator = 0x1c,
++    system_boot_restart_initiated = 0x1D,
++    boot_error = 0x1e,
++    base_os_boot_installation_status = 0x1f,
++    os_stop_shutdown = 0x20,
++    slot_connector = 0x21,
++    system_acpi_power_state = 0x22,
++    watchdog2 = 0x23,
++    platform_alert = 0x24,
++    entity_presence = 0x25,
++    monitor_asic_ic = 0x26,
++    lan = 0x27,
++    battery = 0x29,
++    session_audit = 0x2a,
++    version_change = 0x2b,
++    fru_state = 0x2c,
++    management_subsystem_health = 0x28,
+     oem = 0xC0,
+ };
+ 
+ const static boost::container::flat_map<const char*, SensorTypeCodes, CmpStr>
+-    sensorTypes{{{"temperature", SensorTypeCodes::temperature},
+-                 {"voltage", SensorTypeCodes::voltage},
+-                 {"oem", SensorTypeCodes::oem},
+-                 {"current", SensorTypeCodes::current},
+-                 {"fan_tach", SensorTypeCodes::fan},
+-                 {"fan_pwm", SensorTypeCodes::fan},
+-                 {"power", SensorTypeCodes::other}}};
++    sensorTypes{{
++        {"reserved", SensorTypeCodes::reserved},
++        {"temperature", SensorTypeCodes::temperature},
++        {"voltage", SensorTypeCodes::voltage},
++        {"current", SensorTypeCodes::current},
++        {"fan_tach", SensorTypeCodes::fan},
++        {"fan_pwm", SensorTypeCodes::fan},
++        {"fan", SensorTypeCodes::fan},
++        {"physical_security", SensorTypeCodes::physical_security},
++        {"platform_security", SensorTypeCodes::platform_security},
++        {"processor", SensorTypeCodes::processor},
++        {"power_supply", SensorTypeCodes::power_supply},
++        {"power_unit", SensorTypeCodes::power_unit},
++        {"cooling_device", SensorTypeCodes::cooling_device},
++        {"other", SensorTypeCodes::other},
++        {"power", SensorTypeCodes::other},
++        {"cfm", SensorTypeCodes::other},
++        {"memory", SensorTypeCodes::memory},
++        {"driver_slot", SensorTypeCodes::driver_slot},
++        {"post_memory_resize", SensorTypeCodes::post_memory_resize},
++        {"system_firmware_progress", SensorTypeCodes::system_firmware_progress},
++        {"event_logging_disabled", SensorTypeCodes::event_logging_disabled},
++        {"watchdog1", SensorTypeCodes::watchdog1},
++        {"system_event", SensorTypeCodes::system_event},
++        {"critical_interrupt", SensorTypeCodes::critical_interrupt},
++        {"button_switch", SensorTypeCodes::button_switch},
++        {"module_board", SensorTypeCodes::module_board},
++        {"microcontroller_coprocessor", SensorTypeCodes::microcontroller_coprocessor},
++        {"addin_card", SensorTypeCodes::addin_card},
++        {"chassis", SensorTypeCodes::chassis},
++        {"chip_set", SensorTypeCodes::chip_set},
++        {"other_fru", SensorTypeCodes::other_fru},
++        {"cable_interconnect", SensorTypeCodes::cable_interconnect},
++        {"terminator", SensorTypeCodes::terminator},
++        {"system_boot_restart_initiated", SensorTypeCodes::system_boot_restart_initiated},
++        {"boot_error", SensorTypeCodes::boot_error},
++        {"base_os_boot_installation_status", SensorTypeCodes::base_os_boot_installation_status},
++        {"os_stop_shutdown", SensorTypeCodes::os_stop_shutdown},
++        {"slot_connector", SensorTypeCodes::slot_connector},
++        {"system_acpi_power_state", SensorTypeCodes::system_acpi_power_state},
++        {"watchdog2", SensorTypeCodes::watchdog2},
++        {"platform_alert", SensorTypeCodes::platform_alert},
++        {"entity_presence", SensorTypeCodes::entity_presence},
++        {"monitor_asic_ic", SensorTypeCodes::monitor_asic_ic},
++        {"lan", SensorTypeCodes::lan},
++        {"battery", SensorTypeCodes::battery},
++        {"session_audit", SensorTypeCodes::session_audit},
++        {"version_change", SensorTypeCodes::version_change},
++        {"fru_state", SensorTypeCodes::fru_state},
++        {"management_subsystem_health",SensorTypeCodes::management_subsystem_health},
++        {"oem", SensorTypeCodes::oem},
++    }};
+ 
+ inline static std::string getSensorTypeStringFromPath(const std::string& path)
+ {
+     // get sensor type string from path, path is defined as
+     // /xyz/openbmc_project/sensors/<type>/label
++    // /xyz/openbmc_project/sensors/<event>/<type>/label
+     size_t typeEnd = path.rfind("/");
+     if (typeEnd == std::string::npos)
+     {
+@@ -603,13 +688,41 @@ inline static std::string getSensorTypeStringFromPath(const std::string& path)
+ inline static uint8_t getSensorTypeFromPath(const std::string& path)
+ {
+     uint8_t sensorType = 0;
++    size_t hexStart;
+     std::string type = getSensorTypeStringFromPath(path);
+-    auto findSensor = sensorTypes.find(type.c_str());
+-    if (findSensor != sensorTypes.end())
+-    {
+-        sensorType = static_cast<uint8_t>(findSensor->second);
+-    } // else default 0x0 RESERVED
+ 
++    /* Inventec - Parsing exactly oem sensor type*/
++    if (path.find("oem") != std::string::npos)
++    {
++        /* parsing the path for exactly oem senspr type
++         * get sensor type string from path, path is defined as
++         * /xyz/openbmc_project/sensors/<event type>/<sensor type>/label
++         * And disctere should have format "oem_<hex>h",
++         * For example "oem_c0h~oem_ffh"
++         */
++
++        hexStart = type.find("_");
++        if(hexStart == std::string::npos)
++        {
++            /* "oem" only*/
++            sensorType = (uint8_t)SensorTypeCodes::oem;
++        }
++        else
++        {
++            /* oem_<hex_string>h, get the hex_string out*/
++            std::string hexString = type.substr(
++                hexStart+1, 2);
++            sensorType = std::stoi(hexString, 0, 16);
++        }
++    }
++    else
++    {
++        auto findSensor = sensorTypes.find(type.c_str());
++        if (findSensor != sensorTypes.end())
++        {
++            sensorType = static_cast<uint8_t>(findSensor->second);
++        } // else default 0x0 RESERVED
++    }
+     return sensorType;
+ }
+ 
+@@ -652,10 +765,35 @@ enum class EventTypeCodes : uint8_t
+ inline static uint8_t getEventTypeStringFromPath(const std::string& path)
+ {
+     uint8_t eventType = 0xFF;
++    size_t hexStart;
+ 
++    /* Add more path key words */
+     if (path.find("discrete") != std::string::npos)
+     {
+-        eventType = (uint8_t)EventTypeCodes::discrete;
++        /* parsing the path for exactly event type
++         * get sensor type string from path, path is defined as
++         * /xyz/openbmc_project/sensors/<event type>/<sensor type>/label
++         * And disctere should have format "discrete_<hex>h",
++         * For example "discrete_05h", "discrete_0ch"
++         */
++        size_t discreteStart = path.find("discrete");
++        size_t discreteEnd = path.find("/",discreteStart);
++        std::string discreteString = path.substr(
++            discreteStart, discreteEnd - discreteStart);
++
++        hexStart = discreteString.find("_");
++        if(hexStart == std::string::npos)
++        {
++            /* "discrete" only*/
++            eventType = (uint8_t)EventTypeCodes::discrete;
++        }
++        else
++        {
++            /* discrete_<hex_string>h, get the hex_string out*/
++            std::string hexString = discreteString.substr(
++                hexStart+1, 2);
++            eventType = std::stoi(hexString, 0, 16);
++        }
+     }
+     else if (path.find("unspecific") != std::string::npos)
+     {
+@@ -665,11 +803,35 @@ inline static uint8_t getEventTypeStringFromPath(const std::string& path)
+     {
+         eventType = (uint8_t)EventTypeCodes::specific;
+     }
+-    else if (path.find("oem") != std::string::npos)
++    else if (path.find("oem_event") != std::string::npos)
+     {
+-        eventType = (uint8_t)EventTypeCodes::oem;
++        /* To distinguish with senor string, oem event type should be oem_event
++         * parsing the path for exactly event type
++         * get sensor type string from path, path is defined as
++         * /xyz/openbmc_project/sensors/<event type>/<sensor type>/label
++         * And disctere should have format "oem_event_<hex>h",
++         * For example "oem_event_70h~oem_event_7fh"
++         */
++        size_t oemStart = path.find("oem_event");
++        size_t oemEnd = path.find("/",oemStart);
++        std::string oemString = path.substr(
++            oemStart, oemEnd - oemStart);
++
++        hexStart = oemString.find("event_");
++        if(hexStart == std::string::npos)
++        {
++            /* "oem_event" only*/
++            eventType = (uint8_t)EventTypeCodes::oem;
++        }
++        else
++        {
++            /* oem_event_<hex_string>h, get the hex_string out*/
++            std::string hexString = oemString.substr(
++                hexStart+6, 2);
++            eventType = std::stoi(hexString, 0, 16);
++        }
+     }
+-    
++
+     return eventType;
+ }
+ 
+diff --git a/include/storagecommands.hpp b/include/storagecommands.hpp
+index 5e2eccc..5bf3970 100644
+--- a/include/storagecommands.hpp
++++ b/include/storagecommands.hpp
+@@ -80,6 +80,7 @@ enum class SensorUnits : uint8_t
+     volts = 0x4,
+     amps = 0x5,
+     watts = 0x6,
++    cfm = 0x11,
+     rpm = 0x12,
+ };
+ 
+diff --git a/src/sensorcommands.cpp b/src/sensorcommands.cpp
+index 787d320..436eddb 100644
+--- a/src/sensorcommands.cpp
++++ b/src/sensorcommands.cpp
+@@ -90,6 +90,7 @@ const static boost::container::flat_map<const char*, SensorUnits, CmpStr>
+     sensorUnits{{{"temperature", SensorUnits::degreesC},
+                  {"voltage", SensorUnits::volts},
+                  {"current", SensorUnits::amps},
++                 {"cfm", SensorUnits::cfm},
+                  {"fan_tach", SensorUnits::rpm},
+                  {"power", SensorUnits::watts}}};
+ 
+-- 
+2.33.0
+

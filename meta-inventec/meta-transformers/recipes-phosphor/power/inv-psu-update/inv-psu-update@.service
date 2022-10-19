@@ -1,0 +1,13 @@
+[Unit]
+Description=Update PSU Inventory for PSU ID %I
+Wants=mapper-wait@-xyz-openbmc_project-inventory.service
+After=mapper-wait@-xyz-openbmc_project-inventory.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=no
+ExecStart=/usr/sbin/inv-psu-update.sh %i
+SyslogIdentifier=inv-psu-update
+
+[Install]
+WantedBy=multi-user.target

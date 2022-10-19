@@ -1,0 +1,299 @@
+From c0b8e6e64bc6bffecc0cc34fc18fed80689f8cda Mon Sep 17 00:00:00 2001
+From: Ashwini Udupa <udupa.ashwini@inventec.com>
+Date: Fri, 4 Feb 2022 16:47:06 -0800
+Subject: [PATCH 11/17] CollectionCapabilities
+
+---
+ redfish-core/include/redfish.hpp              |   1 +
+ redfish-core/lib/systems.hpp                  |  42 ++++
+ scripts/update_schemas.py                     |   1 +
+ .../v1/schema/CollectionCapabilities_v1.xml   | 193 ++++++++++++++++++
+ 4 files changed, 237 insertions(+)
+ create mode 100644 static/redfish/v1/schema/CollectionCapabilities_v1.xml
+
+diff --git a/redfish-core/include/redfish.hpp b/redfish-core/include/redfish.hpp
+index beb22754..90b17668 100644
+--- a/redfish-core/include/redfish.hpp
++++ b/redfish-core/include/redfish.hpp
+@@ -163,6 +163,7 @@ class RedfishService
+         requestRoutesMemory(app);
+ 
+         requestRoutesSystemsCollection(app);
++        requestRoutesSystemsCollectionCapabilities(app);
+         requestRoutesSystems(app);
+         requestRoutesSystemActionsReset(app);
+         requestRoutesSystemResetActionInfo(app);
+diff --git a/redfish-core/lib/systems.hpp b/redfish-core/lib/systems.hpp
+index 3ac81aba..97d956ad 100644
+--- a/redfish-core/lib/systems.hpp
++++ b/redfish-core/lib/systems.hpp
+@@ -2652,6 +2652,9 @@ inline void requestRoutesSystemsCollection(App& app)
+             "#ComputerSystemCollection.ComputerSystemCollection";
+         asyncResp->res.jsonValue["@odata.id"] = "/redfish/v1/Systems";
+         asyncResp->res.jsonValue["Name"] = "Computer System Collection";
++        asyncResp->res.jsonValue["@Redfish.CollectionCapabilities"] = {
++            {"@odata.type", "#CollectionCapabilities.v1_0_0.CollectionCapabilities"},
++            {"Capabilities",{{{"CapabilitiesObject",{{"@odata.id","/redfish/v1/Systems/Capabilities"}}},{"Links",{{"TargetCollection",{{"@odata.id","/redfish/v1/Systems"}}}}},{"UseCase", "ComputerSystemComposition"}}}}};
+ 
+         sdbusplus::asio::getProperty<std::string>(
+             *crow::connections::systemBus, "xyz.openbmc_project.Settings",
+@@ -2679,6 +2682,45 @@ inline void requestRoutesSystemsCollection(App& app)
+         });
+ }
+ 
++/**
++ * SystemsCollectionCapabilities class 
++ */
++inline void requestRoutesSystemsCollectionCapabilities(App& app)
++{
++    BMCWEB_ROUTE(app, "/redfish/v1/Systems/Capabilities")
++        .privileges(redfish::privileges::getComputerSystemCollection)
++        .methods(boost::beast::http::verb::get)(
++            [](const crow::Request& /*req*/,
++               const std::shared_ptr<bmcweb::AsyncResp>& asyncResp) {
++                asyncResp->res.jsonValue["@odata.context"] =
++                    "/redfish/v1/$metadata#ComputerSystem.ComputerSystem";
++                asyncResp->res.jsonValue["@odata.id"] = "/redfish/v1/Systems/Capabilities";
++                asyncResp->res.jsonValue["@odata.type"] = "#ComputerSystem.v1_7_0.ComputerSystem";
++                asyncResp->res.jsonValue["Boot"] = {
++                    {"BootSourceOverrideEnabled@Redfish.AllowableValues",nlohmann::json::array({"Disabled","Once","Continuous"})},
++                    {"BootSourceOverrideEnabled@Redfish.OptionalOnCreate",true},
++                    {"BootSourceOverrideEnabled@Redfish.UpdatableAfterCreate", true},
++                    {"BootSourceOverrideTarget@Redfish.AllowableValues", nlohmann::json::array({"None","Pxe","Hdd","Cd","Diags","BiosSetup","Usb"})},
++                    {"BootSourceOverrideTarget@Redfish.OptionalOnCreate",true},
++                    {"BootSourceOverrideTarget@Redfish.UpdatableAfterCreate",true}};
++                asyncResp->res.jsonValue["Boot@Redfish.OptionalOnCreate"] = true;
++                asyncResp->res.jsonValue["Description"] = "Zone Capabilities";
++                asyncResp->res.jsonValue["Description@Redfish.OptionalOnCreate"] = true;
++                asyncResp->res.jsonValue["Description@Redfish.SetOnlyOnCreate"] = true;
++                asyncResp->res.jsonValue["HostName@Redfish.OptionalOnCreate"] = true;
++                asyncResp->res.jsonValue["HostName@Redfish.UpdatableAfterCreate"] = true;
++                asyncResp->res.jsonValue["Id"] = "Capabilities";
++                asyncResp->res.jsonValue["Links"] = {
++                    {"ResourceBlocks@Redfish.RequiredOnCreate",true},
++                    {"ResourceBlocks@Redfish.UpdatableAfterCreate",true}};
++                asyncResp->res.jsonValue["Links@Redfish.RequiredOnCreate"] = true;
++                asyncResp->res.jsonValue["Name"] = "Capabilities for the Zone";
++                asyncResp->res.jsonValue["Name@Redfish.RequiredOnCreate"] = true;
++                asyncResp->res.jsonValue["Name@Redfish.SetOnlyOnCreate"] = true;
++            });
++}
++
++
+ /**
+  * Function transceives data with dbus directly.
+  */
+diff --git a/scripts/update_schemas.py b/scripts/update_schemas.py
+index d1c93bc7..26f51098 100755
+--- a/scripts/update_schemas.py
++++ b/scripts/update_schemas.py
+@@ -37,6 +37,7 @@ include_list = [
+     'CertificateService',
+     'Chassis',
+     'ChassisCollection',
++    'CollectionCapabilities',
+     'ComputerSystem',
+     'ComputerSystemCollection',
+     'Drive',
+diff --git a/static/redfish/v1/schema/CollectionCapabilities_v1.xml b/static/redfish/v1/schema/CollectionCapabilities_v1.xml
+new file mode 100644
+index 00000000..ec116b9d
+--- /dev/null
++++ b/static/redfish/v1/schema/CollectionCapabilities_v1.xml
+@@ -0,0 +1,193 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--  -->
++<!-- ################################################################################        -->
++<!-- # Redfish Schema:  CollectionCapabilities v1.3.0                                        -->
++<!-- #                                                                                       -->
++<!-- # For a detailed change log, see the README file contained in the DSP8010 bundle,       -->
++<!-- # available at http://www.dmtf.org/standards/redfish                                    -->
++<!-- # Copyright 2014-2021 DMTF.                                                             -->
++<!-- # For the full DMTF copyright policy, see http://www.dmtf.org/about/policies/copyright  -->
++<!-- ################################################################################        -->
++<!--  -->
++<edmx:Edmx xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx" Version="4.0">
++  <edmx:Reference Uri="http://docs.oasis-open.org/odata/odata/v4.0/errata03/csd01/complete/vocabularies/Org.OData.Core.V1.xml">
++    <edmx:Include Namespace="Org.OData.Core.V1" Alias="OData"/>
++  </edmx:Reference>
++  <edmx:Reference Uri="http://redfish.dmtf.org/schemas/v1/RedfishExtensions_v1.xml">
++    <edmx:Include Namespace="RedfishExtensions.v1_0_0" Alias="Redfish"/>
++    <edmx:Include Namespace="Validation.v1_0_0" Alias="Validation"/>
++  </edmx:Reference>
++  <edmx:Reference Uri="http://redfish.dmtf.org/schemas/v1/Resource_v1.xml">
++    <edmx:Include Namespace="Resource"/>
++  </edmx:Reference>
++  <edmx:DataServices>
++    <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="CollectionCapabilities">
++      <Annotation Term="Redfish.OwningEntity" String="DMTF"/>
++      <ComplexType Name="CollectionCapabilities" Abstract="true">
++        <Annotation Term="OData.AdditionalProperties" Bool="false"/>
++        <Annotation Term="OData.Description" String="This type describes the capabilities of a collection."/>
++        <Annotation Term="OData.LongDescription" String="This type shall describe any capabilities of a resource collection in terms of how a client can create resources within the resource collection."/>
++      </ComplexType>
++    </Schema>
++    <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="CollectionCapabilities.v1_0_0">
++      <Annotation Term="Redfish.OwningEntity" String="DMTF"/>
++      <Annotation Term="Redfish.Release" String="2017.1"/>
++      <ComplexType Name="CollectionCapabilities" BaseType="CollectionCapabilities.CollectionCapabilities">
++        <Property Name="Capabilities" Type="Collection(CollectionCapabilities.v1_0_0.Capability)" Nullable="false">
++          <Annotation Term="OData.Description" String="The list of capabilities supported by this resource."/>
++          <Annotation Term="OData.LongDescription" String="This property shall contain an array of objects that describe the capabilities of this resource collection."/>
++        </Property>
++      </ComplexType>
++      <ComplexType Name="Capability">
++        <Annotation Term="OData.AdditionalProperties" Bool="false"/>
++        <Annotation Term="OData.Description" String="This type describes a capability of a collection for a specific use case."/>
++        <Annotation Term="OData.LongDescription" String="This type shall describe a capability of a resource collection in terms of how a client can create resources within the collection for the specified use case."/>
++        <NavigationProperty Name="CapabilitiesObject" Type="Resource.Item" Nullable="false">
++          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
++          <Annotation Term="OData.Description" String="The link to the resource the client can issue a GET request against to understand how to form a POST request for a collection."/>
++          <Annotation Term="OData.LongDescription" String="This property shall contain a link to a resource that matches the type for a resource collection and shall contain annotations that describe the properties allowed in the POST request."/>
++          <Annotation Term="OData.AutoExpandReferences"/>
++          <Annotation Term="Redfish.Required"/>
++        </NavigationProperty>
++        <Property Name="UseCase" Type="CollectionCapabilities.v1_0_0.UseCase" Nullable="false">
++          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
++          <Annotation Term="OData.Description" String="The use case in which a client can issue a POST request to the collection."/>
++          <Annotation Term="OData.LongDescription" String="This property shall contain an enumerated value that describes the use case for this capability instance."/>
++          <Annotation Term="Redfish.Required"/>
++        </Property>
++        <Property Name="Links" Type="CollectionCapabilities.v1_0_0.Links" Nullable="false">
++          <Annotation Term="OData.Description" String="The links to other resources that are related to this resource."/>
++          <Annotation Term="OData.LongDescription" String="This property shall contain links to resources that are related to but are not contained by, or subordinate to, this resource."/>
++          <Annotation Term="Redfish.Required"/>
++        </Property>
++      </ComplexType>
++      <EnumType Name="UseCase">
++        <Member Name="ComputerSystemComposition">
++          <Annotation Term="OData.Description" String="This capability describes a client creating a new computer system resource from a set of disaggregated hardware."/>
++        </Member>
++        <Member Name="ComputerSystemConstrainedComposition">
++          <Annotation Term="OData.Description" String="This capability describes a client creating a new computer system resource from a set of constraints."/>
++          <Annotation Term="Redfish.Revisions">
++            <Collection>
++              <Record>
++                <PropertyValue Property="Kind" EnumMember="Redfish.RevisionKind/Added"/>
++                <PropertyValue Property="Version" String="v1_1_0"/>
++              </Record>
++            </Collection>
++          </Annotation>
++        </Member>
++        <Member Name="VolumeCreation">
++          <Annotation Term="OData.Description" String="This capability describes a client creating a new volume resource as part of an existing storage subsystem."/>
++        </Member>
++        <Member Name="ResourceBlockComposition">
++          <Annotation Term="OData.Description" String="This capability describes a client creating a new resource block from a set of other resource blocks."/>
++          <Annotation Term="Redfish.Revisions">
++            <Collection>
++              <Record>
++                <PropertyValue Property="Kind" EnumMember="Redfish.RevisionKind/Added"/>
++                <PropertyValue Property="Version" String="v1_3_0"/>
++              </Record>
++            </Collection>
++          </Annotation>
++        </Member>
++        <Member Name="ResourceBlockConstrainedComposition">
++          <Annotation Term="OData.Description" String="This capability describes a client creating a new resource block from a set of constraints."/>
++          <Annotation Term="Redfish.Revisions">
++            <Collection>
++              <Record>
++                <PropertyValue Property="Kind" EnumMember="Redfish.RevisionKind/Added"/>
++                <PropertyValue Property="Version" String="v1_3_0"/>
++              </Record>
++            </Collection>
++          </Annotation>
++        </Member>
++      </EnumType>
++      <ComplexType Name="Links" BaseType="Resource.Links">
++        <Annotation Term="OData.Description" String="The links to other resources that are related to this resource."/>
++        <Annotation Term="OData.LongDescription" String="This Redfish Specification-described type shall contain links to resources that are related to but are not contained by, or subordinate to, this resource."/>
++        <NavigationProperty Name="TargetCollection" Type="Resource.ResourceCollection" Nullable="false">
++          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
++          <Annotation Term="OData.Description" String="The link to the collection that this capabilities structure is describing."/>
++          <Annotation Term="OData.LongDescription" String="This property shall contain a link to a resource collection that this structure describes. A client can use this structure to understand how to form the POST request for the collection."/>
++          <Annotation Term="OData.AutoExpandReferences"/>
++          <Annotation Term="Redfish.Required"/>
++        </NavigationProperty>
++        <NavigationProperty Name="RelatedItem" Type="Collection(Resource.Item)">
++          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
++          <Annotation Term="OData.Description" String="An array of links to resources associated with this capability."/>
++          <Annotation Term="OData.LongDescription" String="This property shall contain an array of links to resources that are related to this capability."/>
++          <Annotation Term="OData.AutoExpandReferences"/>
++        </NavigationProperty>
++      </ComplexType>
++    </Schema>
++    <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="CollectionCapabilities.v1_0_1">
++      <Annotation Term="Redfish.OwningEntity" String="DMTF"/>
++      <Annotation Term="OData.Description" String="This version was created to force the regeneration of JSON Schema so that OData properties are marked as required, and integer properties are marked as integer rather than number."/>
++      <ComplexType Name="CollectionCapabilities" BaseType="CollectionCapabilities.v1_0_0.CollectionCapabilities"/>
++    </Schema>
++    <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="CollectionCapabilities.v1_0_2">
++      <Annotation Term="Redfish.OwningEntity" String="DMTF"/>
++      <Annotation Term="OData.Description" String="This version was created to use the new revisions annotation."/>
++      <ComplexType Name="CollectionCapabilities" BaseType="CollectionCapabilities.v1_0_1.CollectionCapabilities"/>
++    </Schema>
++    <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="CollectionCapabilities.v1_0_3">
++      <Annotation Term="Redfish.OwningEntity" String="DMTF"/>
++      <Annotation Term="OData.Description" String="This version was created to update descriptions that this schema defines."/>
++      <ComplexType Name="CollectionCapabilities" BaseType="CollectionCapabilities.v1_0_2.CollectionCapabilities"/>
++    </Schema>
++    <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="CollectionCapabilities.v1_0_4">
++      <Annotation Term="Redfish.OwningEntity" String="DMTF"/>
++      <Annotation Term="OData.Description" String="This version was created to correct various typographical errors."/>
++      <ComplexType Name="CollectionCapabilities" BaseType="CollectionCapabilities.v1_0_3.CollectionCapabilities"/>
++    </Schema>
++    <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="CollectionCapabilities.v1_1_0">
++      <Annotation Term="Redfish.OwningEntity" String="DMTF"/>
++      <Annotation Term="Redfish.Release" String="2018.2"/>
++      <Annotation Term="OData.Description" String="This version was created to add `ComputerSystemConstrainedComposition` to the UseCase enumeration."/>
++      <ComplexType Name="CollectionCapabilities" BaseType="CollectionCapabilities.v1_0_1.CollectionCapabilities"/>
++    </Schema>
++    <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="CollectionCapabilities.v1_1_1">
++      <Annotation Term="Redfish.OwningEntity" String="DMTF"/>
++      <Annotation Term="OData.Description" String="This version was created to use the new revisions annotation."/>
++      <ComplexType Name="CollectionCapabilities" BaseType="CollectionCapabilities.v1_1_0.CollectionCapabilities"/>
++    </Schema>
++    <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="CollectionCapabilities.v1_1_2">
++      <Annotation Term="Redfish.OwningEntity" String="DMTF"/>
++      <Annotation Term="OData.Description" String="This version was created to update descriptions that this schema defines."/>
++      <ComplexType Name="CollectionCapabilities" BaseType="CollectionCapabilities.v1_1_1.CollectionCapabilities"/>
++    </Schema>
++    <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="CollectionCapabilities.v1_1_3">
++      <Annotation Term="Redfish.OwningEntity" String="DMTF"/>
++      <Annotation Term="OData.Description" String="This version was created to correct various typographical errors."/>
++      <ComplexType Name="CollectionCapabilities" BaseType="CollectionCapabilities.v1_1_2.CollectionCapabilities"/>
++    </Schema>
++    <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="CollectionCapabilities.v1_2_0">
++      <Annotation Term="Redfish.OwningEntity" String="DMTF"/>
++      <Annotation Term="Redfish.Release" String="2019.2"/>
++      <ComplexType Name="CollectionCapabilities" BaseType="CollectionCapabilities.v1_1_2.CollectionCapabilities">
++        <Property Name="MaxMembers" Type="Edm.Int64" Nullable="false">
++          <Annotation Term="OData.Permissions" EnumMember="OData.Permission/Read"/>
++          <Annotation Term="OData.Description" String="The maximum number of members allowed in this collection."/>
++          <Annotation Term="OData.LongDescription" String="This property shall contain the maximum number of members allowed in this resource collection."/>
++          <Annotation Term="Validation.Minimum" Int="1"/>
++        </Property>
++      </ComplexType>
++    </Schema>
++    <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="CollectionCapabilities.v1_2_1">
++      <Annotation Term="Redfish.OwningEntity" String="DMTF"/>
++      <Annotation Term="OData.Description" String="This version was created to correct various typographical errors."/>
++      <ComplexType Name="CollectionCapabilities" BaseType="CollectionCapabilities.v1_2_0.CollectionCapabilities"/>
++    </Schema>
++    <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="CollectionCapabilities.v1_2_2">
++      <Annotation Term="Redfish.OwningEntity" String="DMTF"/>
++      <Annotation Term="OData.Description" String="This version was created specify 64-bit integers in OpenAPI."/>
++      <ComplexType Name="CollectionCapabilities" BaseType="CollectionCapabilities.v1_2_1.CollectionCapabilities"/>
++    </Schema>
++    <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="CollectionCapabilities.v1_3_0">
++      <Annotation Term="Redfish.OwningEntity" String="DMTF"/>
++      <Annotation Term="Redfish.Release" String="2020.4"/>
++      <Annotation Term="OData.Description" String="This version was created to add `ResourceBlockComposition` and `ResourceBlockConstrainedComposition` to the UseCase enumeration."/>
++      <ComplexType Name="CollectionCapabilities" BaseType="CollectionCapabilities.v1_2_2.CollectionCapabilities"/>
++    </Schema>
++  </edmx:DataServices>
++</edmx:Edmx>
+-- 
+2.33.0
+

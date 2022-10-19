@@ -1,0 +1,278 @@
+From ea9a0d2df52785fd94b3b379c60f213f333196bd Mon Sep 17 00:00:00 2001
+From: Tommy Lin <lin.tommysc@inventec.com>
+Date: Tue, 15 Mar 2022 01:30:46 +0000
+Subject: [PATCH] support mmap smbios table from video shared memory
+ automatically.
+
+Symptom/Reason :
+	- mmap smbios table from video shared memory
+
+Root Cause:
+	- Support SMBIOS table for RedFish.
+
+Solution/Change:
+	[smbios-mdr]
+	- Add a automatic mechanism to mmap video shared memory if it lacks of smbios2 file
+
+Entry Test:
+	# busctl tree xyz.openbmc_project.Smbios.MDR_V2
+	`-/xyz
+	  `-/xyz/openbmc_project
+		|-/xyz/openbmc_project/Smbios
+		| `-/xyz/openbmc_project/Smbios/MDR_V2
+		`-/xyz/openbmc_project/inventory
+		  `-/xyz/openbmc_project/inventory/system
+			`-/xyz/openbmc_project/inventory/system/chassis
+			  `-/xyz/openbmc_project/inventory/system/chassis/motherboard
+				|-/xyz/openbmc_project/inventory/system/chassis/motherboard/bios
+				|-/xyz/openbmc_project/inventory/system/chassis/motherboard/cpu0
+				|-/xyz/openbmc_project/inventory/system/chassis/motherboard/cpu1
+				|-/xyz/openbmc_project/inventory/system/chassis/motherboard/cpu2
+				|-/xyz/openbmc_project/inventory/system/chassis/motherboard/cpu3
+				|-/xyz/openbmc_project/inventory/system/chassis/motherboard/dimm0
+				|-/xyz/openbmc_project/inventory/system/chassis/motherboard/dimm1
+				|-/xyz/openbmc_project/inventory/system/chassis/motherboard/dimm10
+				|-/xyz/openbmc_project/inventory/system/chassis/motherboard/dimm11
+				|-/xyz/openbmc_project/inventory/system/chassis/motherboard/dimm12
+				|-/xyz/openbmc_project/inventory/system/chassis/motherboard/dimm13
+				|-/xyz/openbmc_project/inventory/system/chassis/motherboard/dimm14
+				|-/xyz/openbmc_project/inventory/system/chassis/motherboard/dimm15
+				|-/xyz/openbmc_project/inventory/system/chassis/motherboard/dimm2
+				|-/xyz/openbmc_project/inventory/system/chassis/motherboard/dimm3
+				|-/xyz/openbmc_project/inventory/system/chassis/motherboard/dimm4
+				|-/xyz/openbmc_project/inventory/system/chassis/motherboard/dimm5
+				|-/xyz/openbmc_project/inventory/system/chassis/motherboard/dimm6
+				|-/xyz/openbmc_project/inventory/system/chassis/motherboard/dimm7
+				|-/xyz/openbmc_project/inventory/system/chassis/motherboard/dimm8
+				`-/xyz/openbmc_project/inventory/system/chassis/motherboard/dimm9
+---
+ include/mdrv2.hpp        |  7 ++++
+ include/smbios_mdrv2.hpp | 58 ++++++++++++++++++++++++++++++-
+ src/mdrv2.cpp            | 73 ++++++++++++++++++++++++++++++++++++++--
+ 3 files changed, 135 insertions(+), 3 deletions(-)
+
+diff --git a/include/mdrv2.hpp b/include/mdrv2.hpp
+index baacd0c..b698155 100644
+--- a/include/mdrv2.hpp
++++ b/include/mdrv2.hpp
+@@ -50,6 +50,12 @@ static constexpr const char* smbiosInterfaceName =
+     "xyz.openbmc_project.Smbios.GetRecordType";
+ constexpr const int limitEntryLen = 0xff;
+ 
++//static constexpr const char* vgaMemPath = "/dev/mem";
++//static constexpr const uint32_t vgaMemPhyAddr = 0xbff00000;
++static constexpr const char* vgaMemPath = "/dev/vgasharedmem";
++static constexpr const uint32_t vgaMemPhyAddr = 0x0;
++static constexpr const uint32_t vgaMemPhySize = 64 * 1024;
++
+ class MDR_V2 :
+     sdbusplus::server::object::object<
+         sdbusplus::xyz::openbmc_project::Smbios::server::MDR_V2>
+@@ -124,6 +130,7 @@ class MDR_V2 :
+     Mdr2DirStruct smbiosDir;
+ 
+     bool readDataFromFlash(MDRSMBIOSHeader* mdrHdr, uint8_t* data);
++    bool readDataFromMem(MDRSMBIOSHeader* mdrHdr, uint8_t* data);
+ 
+     const std::array<uint8_t, 16> smbiosTableId{
+         40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 0x42};
+diff --git a/include/smbios_mdrv2.hpp b/include/smbios_mdrv2.hpp
+index 0d8ec30..774f057 100644
+--- a/include/smbios_mdrv2.hpp
++++ b/include/smbios_mdrv2.hpp
+@@ -20,6 +20,9 @@
+ 
+ #include <array>
+ 
++#define SMBIOS_MAGIC_WORD_V2 0x5F4D535F
++#define SMBIOS_MAGIC_WORD_V3 0x334D535F
++
+ static constexpr const char* mdrType2File = "/var/lib/smbios/smbios2";
+ static constexpr const char* smbiosPath = "/var/lib/smbios";
+ 
+@@ -153,6 +156,36 @@ typedef enum
+     memoryDeviceType = 17,
+ } SmbiosType;
+ 
++struct smbios_entry_point {
++    char anchor[4];
++    uint8_t ep_checksum;
++    uint8_t ep_length;
++    uint8_t major_version;
++    uint8_t minor_version;
++    uint16_t max_size_entry;
++    uint8_t ep_rev;
++    uint8_t reserved[5];
++    char int_anchor[5];
++    uint8_t int_checksum;
++    uint16_t st_length;
++    uint32_t st_address;
++    uint16_t number_of_entrys;
++    uint8_t bcd_rev;
++} __attribute__ ((packed));
++
++struct smbios_entry_point_v3 {
++    char anchor[5];
++    uint8_t ep_checksum;
++    uint8_t ep_length;
++    uint8_t major_version;
++    uint8_t minor_version;
++    uint8_t doc_rev;
++    uint8_t ep_rev;
++    uint8_t reserved;
++    uint32_t st_length;
++    uint64_t st_address;
++} __attribute__ ((packed));
++
+ static constexpr uint8_t separateLen = 2;
+ 
+ static inline uint8_t* smbiosNextPtr(uint8_t* smbiosDataIn)
+@@ -185,9 +218,32 @@ static inline uint8_t* getSMBIOSTypePtr(uint8_t* smbiosDataIn, uint8_t typeId,
+         return nullptr;
+     }
+     char* smbiosData = reinterpret_cast<char*>(smbiosDataIn);
++    uint32_t len = 0;
++    uint32_t mark = *(reinterpret_cast<uint32_t*>(smbiosData));
++    if(mark == SMBIOS_MAGIC_WORD_V2 || mark == SMBIOS_MAGIC_WORD_V3) {
++        if(mark == SMBIOS_MAGIC_WORD_V2) {
++            struct smbios_entry_point* header = reinterpret_cast<struct smbios_entry_point*>(smbiosDataIn);
++            len = header->ep_length;
++        }
++        if(mark == SMBIOS_MAGIC_WORD_V3) {
++            struct smbios_entry_point_v3* header = reinterpret_cast<struct smbios_entry_point_v3*>(smbiosDataIn);
++            len = header->ep_length;
++        }
++        smbiosData += len;
++        while ((*smbiosData == '\0') && (*(smbiosData + 1) == '\0'))
++        {
++            smbiosData++;
++            len++;
++            if (len >= mdrSMBIOSSize) // To avoid endless loop
++            {
++                return nullptr;
++            }
++        }
++    }
++
+     while ((*smbiosData != '\0') || (*(smbiosData + 1) != '\0'))
+     {
+-        uint32_t len = *(smbiosData + 1);
++        len = *(smbiosData + 1);
+         if (*smbiosData != typeId)
+         {
+ 
+diff --git a/src/mdrv2.cpp b/src/mdrv2.cpp
+index 75842fc..97094ea 100644
+--- a/src/mdrv2.cpp
++++ b/src/mdrv2.cpp
+@@ -19,6 +19,7 @@
+ #include "pcieslot.hpp"
+ 
+ #include <sys/mman.h>
++#include <unistd.h>
+ 
+ #include <phosphor-logging/elog-errors.hpp>
+ #include <sdbusplus/exception.hpp>
+@@ -212,7 +213,8 @@ bool MDR_V2::readDataFromFlash(MDRSMBIOSHeader* mdrHdr, uint8_t* data)
+     {
+         phosphor::logging::log<phosphor::logging::level::ERR>(
+             "Read data from flash error - Open MDRV2 table file failure");
+-        return false;
++        //return false;
++        return readDataFromMem(mdrHdr, data);
+     }
+     smbiosFile.clear();
+     smbiosFile.seekg(0, std::ios_base::end);
+@@ -222,7 +224,8 @@ bool MDR_V2::readDataFromFlash(MDRSMBIOSHeader* mdrHdr, uint8_t* data)
+     {
+         phosphor::logging::log<phosphor::logging::level::ERR>(
+             "MDR V2 file size is smaller than mdr header");
+-        return false;
++        //return false;
++        return readDataFromMem(mdrHdr, data);
+     }
+     smbiosFile.read(reinterpret_cast<char*>(mdrHdr), sizeof(MDRSMBIOSHeader));
+     if (mdrHdr->dataSize > smbiosTableStorageSize)
+@@ -245,6 +248,66 @@ bool MDR_V2::readDataFromFlash(MDRSMBIOSHeader* mdrHdr, uint8_t* data)
+     return true;
+ }
+ 
++bool MDR_V2::readDataFromMem(MDRSMBIOSHeader* mdrHdr, uint8_t* data)
++{
++    if (mdrHdr == nullptr)
++    {
++        phosphor::logging::log<phosphor::logging::level::ERR>(
++            "Read data from mem error - Invalid mdr header");
++        return false;
++    }
++    if (data == nullptr)
++    {
++        phosphor::logging::log<phosphor::logging::level::ERR>(
++            "Read data from mem error - Invalid data point");
++        return false;
++    }
++
++    mdrHdr->mdrType = mdrTypeII;
++    mdrHdr->dirVer = smbiosTableVersion;
++    mdrHdr->timestamp = smbiosTableTimestamp;
++    mdrHdr->dataSize = smbiosTableStorageSize;
++
++    int memDriver = 0;
++
++    // open mem driver for the system memory access
++    memDriver = open(vgaMemPath, O_RDONLY);
++    if (memDriver < 0)
++    {
++        phosphor::logging::log<phosphor::logging::level::ERR>(
++            "Cannot access mem driver");
++        return false;
++    }
++    unsigned int page_size = getpagesize();
++    // map the system memory
++    void* vPtr = mmap(NULL,                       // where to map to: don't mind
++                vgaMemPhySize,                   // how many bytes ?
++                PROT_READ,                  // want to read and write
++                MAP_SHARED,                 // no copy on write
++                memDriver,                  // handle to /dev/mem
++                vgaMemPhyAddr & ~(off_t)(page_size - 1)); // hopefully the Text-buffer :-)
++
++
++    if (vPtr == MAP_FAILED)
++    {
++        phosphor::logging::log<phosphor::logging::level::ERR>(
++            "Failed to map share memory");
++        close(memDriver);
++        return false;
++    }
++
++    uint8_t* destAddr = data;
++    uint8_t* sourceAddr = reinterpret_cast<uint8_t*>(vPtr);
++    std::copy(sourceAddr, sourceAddr + vgaMemPhySize, destAddr);
++    munmap(vPtr, vgaMemPhySize);
++    close(memDriver);
++
++    phosphor::logging::log<phosphor::logging::level::INFO>(
++            "Read data from mem success");
++
++    return true;
++}
++
+ bool MDR_V2::sendDirectoryInformation(uint8_t dirVersion, uint8_t dirIndex,
+                                       uint8_t returnedEntries,
+                                       uint8_t remainingEntries,
+@@ -575,6 +638,12 @@ bool MDR_V2::agentSynchronizeData()
+     }
+     else
+     {
++        uint32_t mark = *(reinterpret_cast<uint32_t*>(smbiosDir.dir[smbiosDirIndex].dataStorage));
++        if(mark != SMBIOS_MAGIC_WORD_V2 && mark != SMBIOS_MAGIC_WORD_V3) {
++            phosphor::logging::log<phosphor::logging::level::ERR>(
++                "agent data sync failed - smbios format error: not start from \"_SM_\" or \"_SM3_\".");
++            return false;
++        }
+         systemInfoUpdate();
+         smbiosDir.dir[smbiosDirIndex].common.dataVersion = mdr2SMBIOS.dirVer;
+         smbiosDir.dir[smbiosDirIndex].common.timestamp = mdr2SMBIOS.timestamp;
+-- 
+2.17.1
+

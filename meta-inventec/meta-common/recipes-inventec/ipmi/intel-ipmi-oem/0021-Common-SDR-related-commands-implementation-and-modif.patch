@@ -1,0 +1,1686 @@
+From fa845213de9aa19cd0fb41d7c34655590e38ebf8 Mon Sep 17 00:00:00 2001
+From: Wein <kuo.wein@inventec.com>
+Date: Tue, 16 Aug 2022 17:48:39 +0800
+Subject: [PATCH 21/25] Bug 1199 & 1120 - SDR free space showed unspecified
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Symptom/Reason：
+ SDR free space showed "unspecified"
+
+Root Cause：
+ The maximum valid value for SDR free space is 0xFFFE instead of 0xFFFF
+
+Solution/Change：
+ intel-ipmi-oem
+
+Entry Test：
+```
+admin@transformers:~# ipmitool sdr info
+SDR Version                         : 0x51
+Record Count                        : 92
+Free Space                          : > 64Kb - 2 bytes
+Most recent Addition                : NA
+Most recent Erase                   : Unspecified
+SDR overflow                        : yes
+SDR Repository Update Support       : non-modal
+Delete SDR supported                : yes
+Partial Add SDR supported           : no
+Reserve SDR repository supported    : yes
+SDR Repository Alloc info supported : yes
+
+admin@transformers:~# ipmitool raw 0x0a 0x24 0x40 0x00 0x51 0x01 0x3b 0x20 0x00 0xc8 0x07 0x00 0x00 0x68 0x01 0x01 0x85 0x32 0x85 0x32 0x1b 0x1b 0x80 0x01 0x00 0x00 0x01 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x24 0x23 0x00 0x05 0x0a 0x00 0x00 0x00 0x00 0x00 0x0a 0x54 0x48 0x45 0x52 0x4d 0x41 0x4c 0x5f 0x55 0x37 0x00 0x00 0x00 0x00 0x00 0x00
+ 5d 00
+
+admin@transformers:~# ipmitool sdr info
+SDR Version                         : 0x51
+Record Count                        : 93
+Free Space                          : 65470 bytes
+Most recent Addition                : NA
+Most recent Erase                   : Unspecified
+SDR overflow                        : yes
+SDR Repository Update Support       : non-modal
+Delete SDR supported                : yes
+Partial Add SDR supported           : no
+Reserve SDR repository supported    : yes
+SDR Repository Alloc info supported : yes
+```
+---
+ CMakeLists.txt          |   1 +
+ include/dynamic_sdr.hpp |  95 +++++++
+ include/features.hpp    |  20 ++
+ include/sdrutils.hpp    |  41 +++
+ src/dynamic_sdr.cpp     | 617 ++++++++++++++++++++++++++++++++++++++++
+ src/sensorcommands.cpp  | 577 +++++++++++++++++++++++++++++++------
+ 6 files changed, 1267 insertions(+), 84 deletions(-)
+ create mode 100755 include/dynamic_sdr.hpp
+ create mode 100755 include/features.hpp
+ create mode 100755 src/dynamic_sdr.cpp
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 4028c91..bd6fb83 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -98,6 +98,7 @@ add_custom_command(OUTPUT include/ipmi-whitelist.hpp
+ 
+ add_library (zinteloemcmds
+              SHARED src/sensorcommands.cpp src/biosconfigcommands.cpp
++             src/dynamic_sdr.cpp
+              src/storagecommands.cpp src/multinodecommands.cpp src/globalcommands.cpp
+              src/firmware-update.cpp src/appcommands.cpp src/smbioshandler.cpp
+              src/smbiosmdrv2handler.cpp src/manufacturingcommands.cpp
+diff --git a/include/dynamic_sdr.hpp b/include/dynamic_sdr.hpp
+new file mode 100755
+index 0000000..d65eaad
+--- /dev/null
++++ b/include/dynamic_sdr.hpp
+@@ -0,0 +1,95 @@
++#pragma once
++
++#include <boost/container/flat_map.hpp>
++#include <vector>
++#include <tuple>
++
++#include "types.hpp"
++
++
++namespace ipmi
++{
++    const static constexpr char* dynamicSdrDefaultDataFile = "/usr/share/ipmi-providers/dynamic_sdr_default.json";
++    class DynamicSDR {
++        private:
++            uint16_t Add(const std::vector<uint8_t> &sdr, const bool replace = false);
++            uint16_t Del(const uint16_t recordId);
++
++            void Save();
++            void Load();
++        public:
++            DynamicSDR(std::string storagePath = dynamicSdrDefaultDataFile):storageFile(storagePath) {Load();} 
++            ~DynamicSDR() { Save(); }
++            
++            uint16_t operator+(const std::vector<uint8_t> &sdr) { return Add(sdr);}
++            uint16_t operator+(const std::tuple<std::vector<uint8_t>> &tup) { return Add(std::get<0>(tup), true);}
++            uint16_t operator-(const uint16_t recordId) {return Del(recordId);}
++
++            uint16_t Next(const uint16_t recordId = 0);
++            uint16_t Last();
++            bool Fetch(const uint16_t recordId, std::vector<uint8_t> &record);
++            uint16_t Count() {return static_cast<uint16_t>(sensorDataRecords.size());}
++            uint16_t RepositorySize();
++
++            time_t GetRecentAddTimestamp() {return recentAddTime;}
++            time_t GetRecentEraseTimestamp() {return recentEraseTime;}
++
++            std::string GetPath(uint16_t recordId);
++            bool GetSensorMap(uint8_t sensnum, SensorMap& sensorMap);
++            uint16_t GetTotalUseinByte(void);
++            uint16_t GetFreeAllocUnits(void);
++            
++            uint16_t GetAllocUnitSize(void) const
++            {
++                return allocUnitSize;
++            }
++            
++            uint16_t GetNumAllocUnits(void) const 
++            {
++                return numAllocUints;
++            }
++
++            uint8_t GetMaxSDRinAllocUnit(void) const
++            {
++                return maxRecordSize;
++            }
++
++            void Check(size_t i, const std::string& msg);
++            int FindRecordId(uint8_t sensnum); 
++            uint8_t GetSensorNumber(uint16_t recordId); 
++            bool SetSensorThresholds(uint8_t sensorNum, bool lowerNonCriticalThreshMask,
++            bool lowerCriticalThreshMask, bool lowerNonRecovThreshMask,
++            bool upperNonCriticalThreshMask, bool upperCriticalThreshMask,
++            bool upperNonRecovThreshMask, uint2_t reserved,
++            uint8_t lowerNonCritical, uint8_t lowerCritical,
++            uint8_t lowerNonRecoverable, uint8_t upperNonCritical,
++            uint8_t upperCritical, uint8_t upperNonRecoverable); 
++            uint8_t GetSensorType(uint16_t recordId); 
++            uint8_t GetSensorEventType(uint16_t recordId);
++            bool SenSetSensorEventEnable(const uint8_t& sensorNumber,
++                                         const uint8_t& enabled,
++                                         const uint8_t& assertionEnabledLsb,
++                                         const uint8_t& assertionEnabledMsb,
++                                         const uint8_t& deassertionEnabledLsb,
++                                         const uint8_t& deassertionEnabledMsb);
++            bool GetSensorEventEnable(const uint8_t& sensorNumber,
++                                      uint8_t& enabled,
++                                      uint8_t& assertionEnabledLsb,
++                                      uint8_t& assertionEnabledMsb,
++                                      uint8_t& deassertionEnabledLsb,
++                                      uint8_t& deassertionEnabledMsb);
++
++          public:
++            static void SetRecordId(uint16_t recordId, std::vector<uint8_t>& sdr);
++
++          private:
++            std::string storageFile = dynamicSdrDefaultDataFile; 
++            time_t recentAddTime = 0xFFFFFFFF;
++            time_t recentEraseTime = 0xFFFFFFFF;
++            boost::container::flat_map<uint16_t, std::vector<uint8_t>> sensorDataRecords;
++            const uint16_t numAllocUints = 1024;
++            const uint16_t allocUnitSize = 16;
++            const uint8_t maxRecordSize = 8;
++        public:
++    };
++}
+\ No newline at end of file
+diff --git a/include/features.hpp b/include/features.hpp
+new file mode 100755
+index 0000000..06acc75
+--- /dev/null
++++ b/include/features.hpp
+@@ -0,0 +1,20 @@
++/*
++// Inventec features list.
++// Declare platform features.
++*/
++
++#pragma once
++
++
++namespace ipmi
++{
++static constexpr const bool featureSelfTestFruSupported = true;
++static constexpr const bool featureSelfTestSelSupported = true;
++static constexpr const bool featureSelfTestSDRSupported = true;
++static constexpr const bool featureSelfTestIpmbSupported = true;
++static constexpr const bool featureSelfTestBootBlockSupported = true;
++static constexpr const bool featureSelfTestOperationFWSupported = true;
++
++
++}
++
+diff --git a/include/sdrutils.hpp b/include/sdrutils.hpp
+index 5d88327..c4df474 100644
+--- a/include/sdrutils.hpp
++++ b/include/sdrutils.hpp
+@@ -889,6 +889,47 @@ inline static uint16_t getMappedSensorId(uint16_t recordId)
+     return 0;
+ }
+ 
++inline static int getMaxMappedStaticSensorNumber(void)
++{
++    std::shared_ptr<SensorNumMap> sensorNumMapPtr;
++    details::getSensorNumMap(sensorNumMapPtr);
++
++    auto m = sensorNumMapPtr->left;
++    int max = 0;
++    for (auto iter = m.begin(), iend = m.end(); iter != iend; ++iter)
++    {
++        if(iter->first > max) 
++        {
++            max = iter->first;
++        }
++    }
++    return max;
++}
++
++inline static int getMappedStaticRecordId(uint16_t sensnum)
++{
++    std::shared_ptr<SensorNumMap> sensorNumMapPtr;
++    details::getSensorNumMap(sensorNumMapPtr);
++
++    auto m = sensorNumMapPtr->left;
++    int index = 0;
++    for( auto iter = m.begin(), iend = m.end(); iter != iend; ++iter )
++    {
++        if constexpr (debug)
++        {
++            std::cerr << "RecordId[" << index << "] SensorNumMap.first: "
++                << iter->first << ", SensorNumMap.second: "
++                << iter->second << std::endl;
++        }
++        if(iter->first == sensnum) 
++        {
++            return index;
++        }
++        index++;
++    }
++    return -1;
++}
++
+ inline static std::string getPathFromSensorNumber(uint16_t sensorNum)
+ {
+     std::shared_ptr<SensorNumMap> sensorNumMapPtr;
+diff --git a/src/dynamic_sdr.cpp b/src/dynamic_sdr.cpp
+new file mode 100755
+index 0000000..d6f0e79
+--- /dev/null
++++ b/src/dynamic_sdr.cpp
+@@ -0,0 +1,617 @@
++#include <iostream>
++#include <fstream>
++#include <filesystem>
++#include <cmath>
++#include <nlohmann/json.hpp>
++
++#include <phosphor-ipmi-host/sensorhandler.hpp>
++#include "sdrutils.hpp"
++#include "sensorutils.hpp"
++#include "dynamic_sdr.hpp"
++
++//#define DEBUG_ONLY
++
++enum class ThresholdMasks : uint8_t
++{
++    nonRecoverableThreshold = (1 << 6),
++    criticalThreshold = (1 << 5),
++    nonCriticalThreshold = (1 << 4),
++    upperNonRecoverableGoingHigh = (1 << 3),
++    upperNonRecoverableGoingLow = (1 << 2),
++    upperCriticalGoingHigh = (1 << 1),
++    upperCriticalGoingLow = (1 << 0),
++    upperNonCriticalGoingHigh = (1 << 7),
++    upperNonCriticalGoingLow = (1 << 6),
++    lowerNonRecoverableGoingHigh = (1 << 5),
++    lowerNonRecoverableGoingLow = (1 << 4),
++    lowerCriticalGoingHigh = (1 << 3),
++    lowerCriticalGoingLow = (1 << 2),
++    lowerNonCriticalGoingHigh = (1 << 1),
++    lowerNonCriticalGoingLow = (1 << 0),
++};
++
++namespace ipmi 
++{
++    void DynamicSDR::SetRecordId(uint16_t recordId, std::vector<uint8_t>& sdr)
++    {
++        if (sdr.size() > 0)
++        {
++            sdr[1] = recordId >> 8;
++            sdr[0] = recordId;
++        }
++    }
++
++    uint16_t DynamicSDR::GetTotalUseinByte(void)
++    {
++        // Calculate the total use in bytes
++        uint16_t total = 0;
++        for (auto& sdr : sensorDataRecords)
++        {
++            total += sdr.second.size();
++        }
++        return total;
++    }
++
++    uint16_t DynamicSDR::GetFreeAllocUnits(void)
++    {
++        // Calculate the total use in bytes
++        uint16_t total = 0;
++        total = this->GetTotalUseinByte();
++        
++        if (total == 0)
++        {
++            return numAllocUints;
++        }
++        //Calculate the total use in allocation uints
++        uint16_t used = 0;
++        used = (total < allocUnitSize)
++                   ? 1
++                   : std::ceil(static_cast<float>(total) /
++                               static_cast<float>(allocUnitSize));
++        
++        return static_cast<uint16_t>(numAllocUints - used);
++    }
++
++    void DynamicSDR::Check(size_t i, const std::string &msg)
++    {
++        if (i >= sensorDataRecords.size())
++        {
++            throw std::out_of_range(msg);
++        }
++    }
++
++    int DynamicSDR::FindRecordId(uint8_t sensnum)
++    {
++        int recordId = 0;
++        for (auto& sdr : sensorDataRecords)
++        {
++            get_sdr::SensorDataFullRecord* fullRecord =
++                reinterpret_cast<get_sdr::SensorDataFullRecord*>(
++                    sdr.second.data());
++            if (fullRecord == nullptr)
++            {
++                return -1;
++            }
++
++            uint8_t tmp = static_cast<uint8_t>(fullRecord->key.sensor_number);
++            
++            if (tmp == sensnum)
++            {
++                recordId = sdr.first;
++                return recordId;
++            }
++        }
++        return -1;
++    }
++
++    uint8_t DynamicSDR::GetSensorType(uint16_t recordId)
++    {
++        if (!sensorDataRecords.contains(recordId))
++        {
++            return 0;
++        }
++
++        get_sdr::SensorDataFullRecord* fullRecord =
++            reinterpret_cast<get_sdr::SensorDataFullRecord*>(
++                sensorDataRecords[recordId].data());
++        if (fullRecord == nullptr)
++        {
++            return 0;
++        }
++
++        return static_cast<uint8_t>(fullRecord->body.sensor_type);
++    }
++
++    uint8_t DynamicSDR::GetSensorEventType(uint16_t recordId)
++    {
++        if (!sensorDataRecords.contains(recordId))
++        {
++            return 0;
++        }
++
++        get_sdr::SensorDataFullRecord* fullRecord =
++            reinterpret_cast<get_sdr::SensorDataFullRecord*>(
++                sensorDataRecords[recordId].data());
++        if (fullRecord == nullptr)
++        {
++            return 0;
++        }
++
++        return static_cast<uint8_t>(fullRecord->body.event_reading_type);
++    }
++
++    uint8_t DynamicSDR::GetSensorNumber(uint16_t recordId)
++    { 
++        if (!sensorDataRecords.contains(recordId))
++        {
++            return 0;
++        }
++
++        get_sdr::SensorDataFullRecord* fullRecord =
++            reinterpret_cast<get_sdr::SensorDataFullRecord*>(
++                sensorDataRecords[recordId].data());
++        if (fullRecord == nullptr)
++        {
++            return 0;
++        }
++
++        uint8_t sensnum = static_cast<uint8_t>(fullRecord->key.sensor_number);
++
++        return sensnum;
++    }
++
++    uint16_t DynamicSDR::Add(const std::vector<uint8_t> &sdr, const bool replace) 
++    {
++        uint16_t newRecordId = 0xFFFF;
++        size_t sdr_length = sdr.size();
++        
++        if(sdr_length > 0)
++        {
++            newRecordId = ((uint16_t)sdr.at(1) << 8) | sdr.at(0);
++            if(!replace && sensorDataRecords.contains(newRecordId)) 
++            {
++                newRecordId = 0xFFFF;
++            } 
++            else 
++            {
++                sensorDataRecords[newRecordId] = sdr;
++            }
++        }
++
++        if(newRecordId != 0xFFFF) 
++        { 
++            recentAddTime = std::chrono::duration_cast<std::chrono::seconds>(
++                            std::chrono::system_clock::now().time_since_epoch())
++                            .count();
++            Save();
++        }
++        return newRecordId;
++    }
++
++    uint16_t DynamicSDR::Del(const uint16_t recordId) 
++    {
++        uint16_t delRecordID = 0xFFFF;
++        if(sensorDataRecords.empty() || !sensorDataRecords.contains(recordId)) 
++        {
++            return delRecordID;
++        }
++        delRecordID = recordId;
++        sensorDataRecords.erase(delRecordID);
++        recentEraseTime = std::chrono::duration_cast<std::chrono::seconds>(
++                            std::chrono::system_clock::now().time_since_epoch())
++                            .count();
++        Save();
++        return delRecordID;
++    }
++
++    uint16_t DynamicSDR::Next(const uint16_t recordId) 
++    {
++        uint16_t nextRecordId = 0XFFFF;
++
++        if(!sensorDataRecords.empty()) 
++        {
++            if(recordId == 0) 
++            {
++                nextRecordId = sensorDataRecords.begin()->first;
++            }
++
++            for(auto it = sensorDataRecords.begin() ; it != sensorDataRecords.end() ; ++it) 
++            {
++                if(it->first == recordId) 
++                {
++                    ++it;
++                    nextRecordId = (sensorDataRecords.end() != it) ? it->first : 0XFFFF;
++                    break;
++                }
++            }
++        }
++
++        return nextRecordId;
++    }
++
++    uint16_t DynamicSDR::Last() 
++    {
++        uint16_t lastRecordId = 0XFFFF;
++        if(!sensorDataRecords.empty()) 
++        {
++            lastRecordId = sensorDataRecords.rbegin()->first;
++        }
++        return lastRecordId;
++    }
++
++    bool DynamicSDR::Fetch(const uint16_t recordId, std::vector<uint8_t> &record) 
++    {
++        if(sensorDataRecords.empty() || !sensorDataRecords.contains(recordId)) 
++        {
++            return false;
++        }
++        record = sensorDataRecords[recordId];
++        return true;
++    }
++
++    void DynamicSDR::Save() 
++    {
++        nlohmann::json data = {};
++        for(const auto& [key,value] : sensorDataRecords) 
++        {
++            data["SDR"][std::to_string(key)] = value;
++        }
++
++        data["Most recent Addition"] = static_cast<uint32_t>(recentAddTime);
++        data["Most recent Erase"] = static_cast<uint32_t>(recentEraseTime);
++
++        std::ofstream configStream(storageFile);
++        configStream << data << std::endl;
++        configStream.close();
++        return;
++    }
++
++    void DynamicSDR::Load() 
++    {
++        std::ifstream dataFile(storageFile);
++        if (!dataFile.is_open())
++        {
++            return;
++        }
++        nlohmann::json data = nlohmann::json::parse(dataFile, nullptr);
++        
++        for(const auto &element : data["SDR"].items()) 
++        {
++            uint16_t key = static_cast<uint16_t>(std::stoi(element.key()));
++            sensorDataRecords[key] = data["SDR"][element.key()].get<std::vector<uint8_t>>();
++        }
++
++        recentAddTime = data["Most recent Addition"].get<uint32_t>();
++        recentEraseTime = data["Most recent Erase"].get<uint32_t>();
++        return;
++    }
++
++    uint16_t DynamicSDR::RepositorySize() 
++    {
++        if (!std::filesystem::exists(storageFile))
++        {
++            std::cerr << "There are no " << storageFile << " exist!" << std::endl; 
++            return 0;
++        }
++        auto ret = std::filesystem::file_size(storageFile);
++        return static_cast<uint16_t>(ret);
++    }
++
++    std::string DynamicSDR::GetPath(uint16_t recordId) 
++    {
++        //  /xyz/openbmc_project/sensors/fan_pwm/FAN_PWM_1
++        std::fprintf(stderr, "ff<%s, %d> recordId = %d\n",__FILE__,__LINE__, recordId);
++        if(!sensorDataRecords.contains(recordId)) return std::string();
++        std::fprintf(stderr, "ff<%s, %d>\n",__FILE__,__LINE__);
++        get_sdr::SensorDataFullRecord *record = reinterpret_cast<get_sdr::SensorDataFullRecord*>(sensorDataRecords[recordId].data());
++        std::string result = "";
++        std::fprintf(stderr, "ff<%s, %d> sensorDataRecords = 0x%02X 0x%02X 0x%02X 0x%02X 0x%02X 0x%02X 0x%02X 0x%02X\n",__FILE__,__LINE__   , sensorDataRecords[recordId][0]
++                                                                                                                                            , sensorDataRecords[recordId][1]
++                                                                                                                                            , sensorDataRecords[recordId][2]
++                                                                                                                                            , sensorDataRecords[recordId][3]
++                                                                                                                                            , sensorDataRecords[recordId][4]
++                                                                                                                                            , sensorDataRecords[recordId][5]
++                                                                                                                                            , sensorDataRecords[recordId][6]
++                                                                                                                                            , sensorDataRecords[recordId][7]);
++        std::fprintf(stderr, "ff<%s, %d> sensor_type = %d\n",__FILE__,__LINE__, record->body.sensor_type);
++        std::fprintf(stderr, "ff<%s, %d> id_string = %s\n",__FILE__,__LINE__, record->body.id_string);
++        for(auto it = sensorTypes.begin() ; it != sensorTypes.end(); ++it) 
++        {
++            if(static_cast<SensorTypeCodes>(record->body.sensor_type) == it->second) 
++            {
++                result += "/xyz/openbmc_project/sensors/" + std::string(it->first) + "/" + record->body.id_string;
++                break;
++            }
++        }
++        return result;
++    }
++
++    bool DynamicSDR::SetSensorThresholds(uint8_t sensorNum, bool lowerNonCriticalThreshMask,
++        bool lowerCriticalThreshMask, bool lowerNonRecovThreshMask,
++        bool upperNonCriticalThreshMask, bool upperCriticalThreshMask,
++        bool upperNonRecovThreshMask, uint2_t reserved, uint8_t lowerNonCritical,
++        uint8_t lowerCritical, uint8_t lowerNonRecoverable,
++        uint8_t upperNonCritical, uint8_t upperCritical,
++        uint8_t upperNonRecoverable)
++    {
++        int recordId = this->FindRecordId(sensorNum);
++
++        if (recordId == -1)
++        {
++            return false;
++        }
++
++        get_sdr::SensorDataFullRecord* fullRecord =
++            reinterpret_cast<get_sdr::SensorDataFullRecord*>(
++                sensorDataRecords[recordId].data());
++        if (fullRecord == nullptr)
++        {
++            return false;
++        }
++
++        if (lowerCriticalThreshMask || upperCriticalThreshMask)
++        {
++            if (lowerCriticalThreshMask)
++            {
++                // lowerCritical
++                fullRecord->body.lower_critical_threshold = lowerCritical;
++            }
++            
++            if (upperCriticalThreshMask)
++            {
++                // upperCritical
++                fullRecord->body.upper_critical_threshold = upperCritical;
++            }
++        }
++        
++        if (lowerNonCriticalThreshMask || upperNonCriticalThreshMask)
++        {
++            if (lowerNonCriticalThreshMask)
++            {
++                // lowerNonCritical
++                fullRecord->body.lower_noncritical_threshold = lowerNonCritical;
++            }
++
++            if (upperNonCriticalThreshMask)
++            {
++                // upperNonCritical
++                fullRecord->body.upper_noncritical_threshold = upperNonCritical;
++            }
++        }
++
++        if (lowerNonRecovThreshMask || upperNonRecovThreshMask)
++        {
++            if (lowerNonRecovThreshMask)
++            {
++                // lowerNonRecoverable
++                fullRecord->body.lower_nonrecoverable_threshold = lowerNonRecoverable;
++            }
++
++            if (upperNonRecovThreshMask)
++            {
++                // upperNonRecoverable
++                fullRecord->body.upper_nonrecoverable_threshold = upperNonRecoverable;
++            }
++        }
++
++        Save();
++
++        return true;
++    }
++
++    bool DynamicSDR::GetSensorMap(uint8_t sensnum, SensorMap& sensorMap)
++    {
++        int recordId = this->FindRecordId(sensnum);
++
++        if (recordId == -1)
++        {
++            return false;
++        }
++
++        get_sdr::SensorDataFullRecord* fullRecord =
++            reinterpret_cast<get_sdr::SensorDataFullRecord*>(
++                sensorDataRecords[recordId].data());
++        if (fullRecord == nullptr)
++        {
++            return false;
++        }
++
++        {
++            // xyz.openbmc_project.Sensor.IpmiSensor
++            std::map<std::string, DbusVariant> valueMap;
++            valueMap["entityID"] =
++                static_cast<uint64_t>(fullRecord->body.entity_id);
++            valueMap["entityInstance"] =
++                static_cast<uint64_t>(fullRecord->body.entity_instance);
++            valueMap["sensorNumber"] =
++                static_cast<uint64_t>(fullRecord->key.sensor_number);
++            sensorMap["xyz.openbmc_project.Sensor.IpmiSensor"] = valueMap;
++        }
++
++        { 
++            // xyz.openbmc_project.Sensor.Value
++            std::map<std::string, DbusVariant> valueMap;
++            valueMap["MaxValue"] =
++                static_cast<double>(fullRecord->body.normal_max);
++            valueMap["MinValue"] =
++                static_cast<double>(fullRecord->body.normal_min);
++            valueMap["Value"] = static_cast<double>(fullRecord->body.nominal_reading);
++
++            switch (fullRecord->body.sensor_units_2_base)
++            {
++                case 1:
++                    valueMap["Unit"] =
++                        "xyz.openbmc_project.Sensor.Value.Unit.DegreesC";
++                    break;
++                case 4:
++                    valueMap["Unit"] =
++                        "xyz.openbmc_project.Sensor.Value.Unit.Volts";
++                    break;
++                case 5:
++                    valueMap["Unit"] =
++                        "xyz.openbmc_project.Sensor.Value.Unit.Amperes";
++                    break;
++                case 6:
++                    valueMap["Unit"] =
++                        "xyz.openbmc_project.Sensor.Value.Unit.Watts";
++                     break;
++                case 7:
++                    valueMap["Unit"] =
++                        "xyz.openbmc_project.Sensor.Value.Unit.Joules";
++                    break;
++                case 17:
++                    valueMap["Unit"] =
++                        "xyz.openbmc_project.Sensor.Value.Unit.CFM";
++                    break;
++                case 18:
++                    valueMap["Unit"] =
++                        "xyz.openbmc_project.Sensor.Value.Unit.RPMS";
++                    break;
++                default:
++                    valueMap["Unit"] =
++                        "xyz.openbmc_project.Sensor.Value.Unit.Unspecified";
++                    break;
++            }
++#ifdef DEBUG_ONLY
++            valueMap["MaxValue"] = static_cast<double>(127);
++            valueMap["MinValue"] = static_cast<double>(-128);
++#endif
++            sensorMap["xyz.openbmc_project.Sensor.Value"] = valueMap;
++        }
++
++        {   
++            //xyz.openbmc_project.Sensor.Threshold.Critical
++            uint8_t upperCritcalReturn =
++                fullRecord->body.supported_deassertions[1] & static_cast<uint8_t>(ThresholdMasks::criticalThreshold);
++            uint8_t lowerCritcalReturn =
++                fullRecord->body.supported_assertions[1] & static_cast<uint8_t>(ThresholdMasks::criticalThreshold);
++            std::map<std::string, DbusVariant> valueMap;
++
++            valueMap["CriticalHigh"] = static_cast<double>(fullRecord->body.upper_critical_threshold);
++
++            if (upperCritcalReturn)
++            {
++                valueMap["CriticalAlarmHigh"] = static_cast<bool>(
++                    (fullRecord->body.supported_assertions[1] &
++                     static_cast<uint8_t>(ThresholdMasks::upperCriticalGoingHigh)) |
++                    (fullRecord->body.supported_deassertions[1] &
++                     static_cast<uint8_t>(ThresholdMasks::upperCriticalGoingHigh)));
++            }
++
++            valueMap["CriticalLow"] = static_cast<double>(fullRecord->body.lower_critical_threshold);
++
++            if (lowerCritcalReturn)
++            {
++                valueMap["CriticalAlarmLow"] = static_cast<bool>(
++                    (fullRecord->body.supported_assertions[0] &
++                     static_cast<uint8_t>(ThresholdMasks::lowerCriticalGoingLow)) |
++                    (fullRecord->body.supported_deassertions[0] &
++                     static_cast<uint8_t>(ThresholdMasks::lowerCriticalGoingLow)));
++            }
++#ifdef DEBUG_ONLY
++            valueMap["CriticalAlarmHigh"] = static_cast<bool>(false);
++            valueMap["CriticalAlarmLow"] = static_cast<bool>(true);
++#endif
++            sensorMap["xyz.openbmc_project.Sensor.Threshold.Critical"] = valueMap;
++        }
++ 
++        {   
++            //xyz.openbmc_project.Sensor.Threshold.Warning
++            uint8_t upperWarningReturn = fullRecord->body.supported_deassertions[1] & static_cast<uint8_t>(ThresholdMasks::nonCriticalThreshold);
++            uint8_t lowerWarningReturn = fullRecord->body.supported_assertions[1] & static_cast<uint8_t>(ThresholdMasks::nonCriticalThreshold);
++            std::map<std::string, DbusVariant> valueMap;
++            valueMap["WarningHigh"] = static_cast<double>(fullRecord->body.upper_noncritical_threshold);
++
++            if (upperWarningReturn)
++            {
++                valueMap["WarningAlarmHigh"] = static_cast<bool>(
++                    (fullRecord->body.supported_assertions[0] &
++                     static_cast<uint8_t>(ThresholdMasks::upperNonCriticalGoingHigh)) |
++                    (fullRecord->body.supported_deassertions[0] &
++                     static_cast<uint8_t>(ThresholdMasks::upperNonCriticalGoingHigh)));
++            }
++
++            valueMap["WarningLow"] = static_cast<double>(fullRecord->body.lower_noncritical_threshold);
++
++            if (lowerWarningReturn)
++            {
++                valueMap["WarningAlarmLow"] = static_cast<bool>(
++                    (fullRecord->body.supported_assertions[0] &
++                     static_cast<uint8_t>(ThresholdMasks::lowerNonCriticalGoingLow)) |
++                    (fullRecord->body.supported_deassertions[0] &
++                     static_cast<uint8_t>(ThresholdMasks::lowerNonCriticalGoingLow)));
++            }
++
++#ifdef DEBUG_ONLY
++            valueMap["WarningAlarmHigh"] = static_cast<bool>(false);
++            valueMap["WarningAlarmLow"] = static_cast<bool>(true);
++#endif
++            sensorMap["xyz.openbmc_project.Sensor.Threshold.Warning"] = valueMap;
++        }
++
++        {   
++            //xyz.openbmc_project.State.Decorator.Availability
++            std::map<std::string, DbusVariant> valueMap;
++            valueMap["Available"] = static_cast<bool>(true);
++            sensorMap["xyz.openbmc_project.State.Decorator.Availability"] = valueMap;
++        }
++
++        return true;
++    }
++
++    bool DynamicSDR::SenSetSensorEventEnable(
++        const uint8_t& sensorNumber, const uint8_t& enabled,
++        const uint8_t& assertionEnabledLsb, const uint8_t& assertionEnabledMsb,
++        const uint8_t& deassertionEnabledLsb,
++        const uint8_t& deassertionEnabledMsb)
++    {
++        int recordId = this->FindRecordId(sensorNumber);
++        if (recordId == -1)
++        {
++            return false;
++        }
++        get_sdr::SensorDataFullRecord* fullRecord =
++            reinterpret_cast<get_sdr::SensorDataFullRecord*>(
++                sensorDataRecords[recordId].data());
++        if (fullRecord == nullptr)
++        {
++            return false;
++        }
++
++        fullRecord->body.sensor_initialization = enabled;
++        fullRecord->body.supported_assertions[0] = assertionEnabledLsb;
++        fullRecord->body.supported_assertions[1] = assertionEnabledMsb;
++        fullRecord->body.supported_deassertions[0] = deassertionEnabledLsb;
++        fullRecord->body.supported_deassertions[1] = deassertionEnabledMsb;
++        Save();
++        return true;
++    }
++
++    bool DynamicSDR::GetSensorEventEnable(const uint8_t& sensorNumber,
++                                          uint8_t& enabled,
++                                          uint8_t& assertionEnabledLsb,
++                                          uint8_t& assertionEnabledMsb,
++                                          uint8_t& deassertionEnabledLsb,
++                                          uint8_t& deassertionEnabledMsb)
++    {
++        int recordId = this->FindRecordId(sensorNumber);
++        if (recordId == -1)
++        {
++            return false;
++        }
++        get_sdr::SensorDataFullRecord* fullRecord =
++            reinterpret_cast<get_sdr::SensorDataFullRecord*>(
++                sensorDataRecords[recordId].data());
++        if (fullRecord == nullptr)
++        {
++            return false;
++        }
++        enabled = fullRecord->body.sensor_initialization;
++        assertionEnabledLsb = fullRecord->body.supported_assertions[0];
++        assertionEnabledMsb = fullRecord->body.supported_assertions[1];
++        deassertionEnabledLsb = fullRecord->body.supported_deassertions[0];
++        deassertionEnabledMsb = fullRecord->body.supported_deassertions[1];
++        return true;
++    }
++}
++
+diff --git a/src/sensorcommands.cpp b/src/sensorcommands.cpp
+index dfb2602..1c09189 100644
+--- a/src/sensorcommands.cpp
++++ b/src/sensorcommands.cpp
+@@ -18,6 +18,7 @@
+ #include "appcommands.hpp"
+ 
+ #include "commandutils.hpp"
++#include "dynamic_sdr.hpp"
+ #include "ipmi_to_redfish_hooks.hpp"
+ #include "sdrutils.hpp"
+ #include "sensorutils.hpp"
+@@ -75,8 +76,14 @@ static constexpr size_t lun1MaxSensorNum = 0x1fe;
+ static constexpr size_t lun3MaxSensorNum = 0x3fe;
+ static constexpr int GENERAL_ERROR = -1;
+ 
++static constexpr uint8_t EventEnableBit = 7;
++
+ SensorSubTree sensorTree;
+ 
++const static constexpr char* dynamicSdrDataFile =
++    "/usr/share/ipmi-providers/dynamic_sdr.json";
++DynamicSDR dynamicSdr(dynamicSdrDataFile);
++
+ static boost::container::flat_map<std::string, ManagedObjectType> SensorCache;
+ 
+ // Specify the comparison required to sort and find char* map objects
+@@ -96,6 +103,16 @@ const static boost::container::flat_map<const char*, SensorUnits, CmpStr>
+ 
+ void registerSensorFunctions() __attribute__((constructor));
+ 
++static void RequestReserveSdr()
++{
++    sdrReservationID++;
++}
++
++static void CancelReserveSdr()
++{
++    sdrReservationID++;
++}
++
+ static sdbusplus::bus::match::match sensorAdded(
+     *getSdBus(),
+     "type='signal',member='InterfacesAdded',arg0path='/xyz/openbmc_project/"
+@@ -282,6 +299,59 @@ static bool getSensorMap(boost::asio::yield_context yield,
+     return true;
+ }
+ 
++static bool getSensorMapEx(ipmi::Context::ptr ctx, const uint8_t sensorNumber,
++                           SensorMap& sensorMap, std::string& connection,
++                           std::string& path, int& recordId, bool& isStatic)
++{
++    recordId = getMappedStaticRecordId(sensorNumber);
++    if (recordId != -1)
++    {
++        // sensor tree sdr
++        auto status = getSensorConnection(ctx, sensorNumber, connection, path);
++        if (status)
++        {
++            return false;
++        }
++        
++        if (!getSensorMap(ctx->yield, connection, path, sensorMap))
++        {
++            return false;
++        }
++        isStatic = true;
++    }
++    else
++    {
++        recordId = dynamicSdr.FindRecordId(sensorNumber);
++        if (recordId != -1)
++        {
++            // dynamic sdr
++            if (!dynamicSdr.GetSensorMap(sensorNumber, sensorMap))
++            {
++                return false;
++            }
++        }
++        else
++        {
++            // fru, type12, nmDiscovery sdr
++            return false;
++        }
++        isStatic = false;
++    }
++    
++    return true;
++}
++
++static bool getSensorMapEx(ipmi::Context::ptr ctx, const uint8_t sensorNumber,
++                           SensorMap& sensorMap)
++{
++    std::string connection;
++    std::string path;
++    int recordId = -1;
++    bool isStatic = false;
++    return getSensorMapEx(ctx, sensorNumber, sensorMap, connection, path,
++                          recordId, isStatic);
++}
++
+ /* sensor commands */
+ namespace meHealth
+ {
+@@ -464,17 +534,9 @@ ipmi::RspType<uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t>
+ {
+     get_sdr::GetSensorReadingFactorsResponse resp{};
+     memset(&resp, 0, sizeof(get_sdr::GetSensorThresholdsResponse));
+-    std::string connection;
+-    std::string path;
+-
+-    auto status = getSensorConnection(ctx, sensnum, connection, path);
+-    if (status)
+-    {
+-        return ipmi::response(status);
+-    }
+ 
+     SensorMap sensorMap;
+-    if (!getSensorMap(ctx->yield, connection, path, sensorMap))
++    if (!getSensorMapEx(ctx, sensnum, sensorMap))
+     {
+         return ipmi::responseResponseError();
+     }
+@@ -534,25 +596,26 @@ ipmi::RspType<uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t>
+ ipmi::RspType<uint8_t, uint8_t, uint8_t, std::optional<uint8_t>>
+     ipmiSenGetSensorReading(ipmi::Context::ptr ctx, uint8_t sensnum)
+ {
++    SensorMap sensorMap;
++
+     std::string connection;
+     std::string path;
++    int recordId;
++    bool isStatic;
+ 
+-    if (sensnum == reservedSensorNumber)
++    if (!getSensorMapEx(ctx, sensnum, sensorMap, connection, path, recordId,
++                        isStatic))
+     {
+-        return ipmi::responseInvalidFieldRequest();
++        return ipmi::responseResponseError();
+     }
+ 
+-    auto status = getSensorConnection(ctx, sensnum, connection, path);
+-    if (status)
++    if (!isStatic)
+     {
+-        return ipmi::response(status);
++        // Dynamic SDR
++        return ipmi::responseInvalidFieldRequest();
+     }
+ 
+-    SensorMap sensorMap;
+-    if (!getSensorMap(ctx->yield, connection, path, sensorMap))
+-    {
+-        return ipmi::responseResponseError();
+-    }
++    // Static SDR
+     auto sensorObject = sensorMap.find("xyz.openbmc_project.Sensor.Value");
+ 
+     if (sensorObject == sensorMap.end() ||
+@@ -703,20 +766,28 @@ ipmi::RspType<uint8_t,      // sensor type
+     std::string connection;
+     std::string path;
+ 
+-    auto status = getSensorConnection(ctx, sensorNumber, connection, path);
+-    if (status)
+-    {
+-        return ipmi::response(status);
+-    }
+-
+     SensorMap sensorMap;
+-    if (!getSensorMap(ctx->yield, connection, path, sensorMap))
++
++    uint8_t sensorType;
++    uint8_t eventType;
++    int recordId;
++    bool isStatic;
++    if (!getSensorMapEx(ctx, sensorNumber, sensorMap, connection, path,
++                        recordId, isStatic))
+     {
+         return ipmi::responseResponseError();
+     }
+ 
+-    uint8_t sensorType = getSensorTypeFromPath(path);
+-    uint8_t eventType = getSensorEventTypeFromPath(path);
++    if (isStatic)
++    {
++        sensorType = getSensorTypeFromPath(path);
++        eventType = getSensorEventTypeFromPath(path);
++    }
++    else
++    {
++        sensorType = dynamicSdr.GetSensorType(recordId);
++        eventType = dynamicSdr.GetSensorEventType(recordId);
++    }
+ 
+     return ipmi::responseSuccess(sensorType, eventType);
+ }
+@@ -776,18 +847,30 @@ ipmi::RspType<> ipmiSenSetSensorThresholds(
+ 
+     std::string connection;
+     std::string path;
++    int recordId;
++    bool isStatic;
+ 
+-    ipmi::Cc status = getSensorConnection(ctx, sensorNum, connection, path);
+-    if (status)
+-    {
+-        return ipmi::response(status);
+-    }
+     SensorMap sensorMap;
+-    if (!getSensorMap(ctx->yield, connection, path, sensorMap))
++    if (!getSensorMapEx(ctx, sensorNum, sensorMap, connection, path, recordId,
++                        isStatic))
+     {
+         return ipmi::responseResponseError();
+     }
+ 
++    if (!isStatic)
++    {
++        if (!dynamicSdr.SetSensorThresholds(
++                sensorNum, lowerNonCriticalThreshMask, lowerCriticalThreshMask,
++                lowerNonRecovThreshMask, upperNonCriticalThreshMask,
++                upperCriticalThreshMask, upperNonRecovThreshMask, reserved,
++                lowerNonCritical, lowerCritical, lowerNonRecoverable,
++                upperNonCritical, upperCritical, upperNonRecoverable))
++        {
++            return ipmi::responseResponseError();
++        }
++        return ipmi::responseSuccess();
++    }
++
+     double max = 0;
+     double min = 0;
+     getSensorMaxMin(sensorMap, max, min);
+@@ -974,22 +1057,13 @@ ipmi::RspType<uint8_t, // readable
+               uint8_t> // upperNRecoverable
+     ipmiSenGetSensorThresholds(ipmi::Context::ptr ctx, uint8_t sensorNumber)
+ {
+-    std::string connection;
+-    std::string path;
+-
+     if (sensorNumber == reservedSensorNumber)
+     {
+         return ipmi::responseInvalidFieldRequest();
+     }
+ 
+-    auto status = getSensorConnection(ctx, sensorNumber, connection, path);
+-    if (status)
+-    {
+-        return ipmi::response(status);
+-    }
+-
+     SensorMap sensorMap;
+-    if (!getSensorMap(ctx->yield, connection, path, sensorMap))
++    if (!getSensorMapEx(ctx, sensorNumber, sensorMap))
+     {
+         return ipmi::responseResponseError();
+     }
+@@ -1061,9 +1135,6 @@ ipmi::RspType<uint8_t, // enabled
+               uint8_t> // deassertionEnabledMsb
+     ipmiSenGetSensorEventEnable(ipmi::Context::ptr ctx, uint8_t sensorNum)
+ {
+-    std::string connection;
+-    std::string path;
+-
+     uint8_t enabled = 0;
+     uint8_t assertionEnabledLsb = 0;
+     uint8_t assertionEnabledMsb = 0;
+@@ -1075,18 +1146,34 @@ ipmi::RspType<uint8_t, // enabled
+         return ipmi::responseInvalidFieldRequest();
+     }
+ 
+-    auto status = getSensorConnection(ctx, sensorNum, connection, path);
+-    if (status)
+-    {
+-        return ipmi::response(status);
+-    }
++    std::string connection;
++    std::string path;
+ 
+     SensorMap sensorMap;
+-    if (!getSensorMap(ctx->yield, connection, path, sensorMap))
++    uint8_t sensorType;
++    uint8_t eventType;
++    int recordId;
++    bool isStatic;
++    if (!getSensorMapEx(ctx, sensorNum, sensorMap, connection, path, recordId,
++                        isStatic))
+     {
+         return ipmi::responseResponseError();
+     }
+ 
++    if (!isStatic)
++    {
++        // Dynamic SDR
++        if (!dynamicSdr.GetSensorEventEnable(
++                sensorNum, enabled, assertionEnabledLsb, assertionEnabledMsb,
++                deassertionEnabledLsb, deassertionEnabledMsb))
++        {
++            return ipmi::responseResponseError();
++        }
++        return ipmi::responseSuccess(enabled, assertionEnabledLsb,
++                                     assertionEnabledMsb, deassertionEnabledLsb,
++                                     deassertionEnabledMsb);
++    }
++
+     auto warningInterface =
+         sensorMap.find("xyz.openbmc_project.Sensor.Threshold.Warning");
+     auto criticalInterface =
+@@ -1146,6 +1233,92 @@ ipmi::RspType<uint8_t, // enabled
+                                  deassertionEnabledMsb);
+ }
+ 
++static bool setProperty(const std::string& service, const std::string& path,
++                        const std::string& interface,
++                        const std::string& propertyName, ipmi::Value value)
++{
++    try
++    {
++        std::shared_ptr<sdbusplus::asio::connection> dbus = getSdBus();
++        ipmi::setDbusProperty(*dbus, service, path, interface, propertyName,
++                              value);
++    }
++    catch (const sdbusplus::exception::SdBusError& e)
++    {
++        phosphor::logging::log<phosphor::logging::level::INFO>(
++            "ERROR: setProperty");
++        return false;
++    }
++
++    return true;
++}
++
++// <Set Sensor Event Enable> bonnie
++ipmi::RspType<> ipmiSenSetSensorEventEnable(
++    ipmi::Context::ptr ctx, uint8_t sensorNumber, uint8_t enabled,
++    uint8_t assertionEnabledLsb, uint8_t assertionEnabledMsb,
++    uint8_t deassertionEnabledLsb, uint8_t deassertionEnabledMsb)
++{
++    std::string connection;
++    std::string path;
++
++    SensorMap sensorMap;
++
++    uint8_t sensorType;
++    uint8_t eventType;
++    int recordId;
++    bool isStatic;
++    if (!getSensorMapEx(ctx, sensorNumber, sensorMap, connection, path,
++                        recordId, isStatic))
++    {
++        return ipmi::responseResponseError();
++    }
++
++    if (!isStatic)
++    {
++        // Dynamic SDR
++        if (!dynamicSdr.SenSetSensorEventEnable(
++                sensorNumber, enabled, assertionEnabledLsb, assertionEnabledMsb,
++                deassertionEnabledLsb, deassertionEnabledMsb))
++        {
++            return ipmi::responseResponseError();
++        }
++        return ipmi::responseSuccess();
++    }
++
++    uint32_t SensorEventStatus = 0;
++
++    auto warningInterface =
++        sensorMap.find("xyz.openbmc_project.Sensor.Threshold.Warning");
++    auto criticalInterface =
++        sensorMap.find("xyz.openbmc_project.Sensor.Threshold.Critical");
++    if ((warningInterface != sensorMap.end()) ||
++        (criticalInterface != sensorMap.end()))
++    {
++        bool bEnable = false;
++        if (enabled & (1 << EventEnableBit)) // sensor event all open
++        {
++            bEnable = true;
++        }
++        if (!setProperty(connection, path, "xyz.openbmc_project.Sensor.Value",
++                         "SensorEventEnable", bEnable))
++        {
++            return ipmi::responseResponseError();
++        }
++        SensorEventStatus |= (assertionEnabledLsb << 24);
++        SensorEventStatus |= (assertionEnabledMsb << 16);
++        SensorEventStatus |= (deassertionEnabledLsb << 8);
++        SensorEventStatus |= deassertionEnabledMsb;
++        if (!setProperty(connection, path, "xyz.openbmc_project.Sensor.Value",
++                         "SensorEventStatus", SensorEventStatus))
++        {
++            return ipmi::responseResponseError();
++        }
++        return ipmi::responseSuccess();
++    }
++    return ipmi::responseResponseError();
++}
++
+ /** @brief implements the get Sensor event status command
+  *  @param sensorNumber - sensor number, FFh = reserved
+  *
+@@ -1167,23 +1340,22 @@ ipmi::RspType<uint8_t,         // sensorEventStatus
+ 
+     std::string connection;
+     std::string path;
+-    auto status = getSensorConnection(ctx, sensorNum, connection, path);
+-    if (status)
+-    {
+-        phosphor::logging::log<phosphor::logging::level::ERR>(
+-            "ipmiSenGetSensorEventStatus: Sensor connection Error",
+-            phosphor::logging::entry("SENSOR=%d", sensorNum));
+-        return ipmi::response(status);
+-    }
++    int recordId;
++    bool isStatic;
+ 
+     SensorMap sensorMap;
+-    if (!getSensorMap(ctx->yield, connection, path, sensorMap))
++    if (!getSensorMapEx(ctx, sensorNum, sensorMap, connection, path, recordId,
++                        isStatic))
+     {
+-        phosphor::logging::log<phosphor::logging::level::ERR>(
+-            "ipmiSenGetSensorEventStatus: Sensor Mapping Error",
+-            phosphor::logging::entry("SENSOR=%s", path.c_str()));
+         return ipmi::responseResponseError();
+     }
++
++    if (!isStatic)
++    {
++        // Dynamic SDR
++        return ipmi::responseInvalidFieldRequest();
++    }
++
+     auto warningInterface =
+         sensorMap.find("xyz.openbmc_project.Sensor.Threshold.Warning");
+     auto criticalInterface =
+@@ -1303,6 +1475,11 @@ static int getSensorDataRecord(ipmi::Context::ptr ctx,
+                                std::vector<uint8_t>& recordData,
+                                uint16_t recordID)
+ {
++    if (!getSensorSubtree(sensorTree) && sensorTree.empty())
++    {
++        return GENERAL_ERROR;
++    }
++
+     size_t fruCount = 0;
+     ipmi::Cc ret = ipmi::storage::getFruSdrCount(ctx, fruCount);
+     if (ret != ipmi::ccSuccess)
+@@ -1312,9 +1489,16 @@ static int getSensorDataRecord(ipmi::Context::ptr ctx,
+         return GENERAL_ERROR;
+     }
+ 
+-    size_t lastRecord = getNumberOfSensors() + fruCount +
+-                        ipmi::storage::getType12Count(fruCount) +
+-                        ipmi::storage::getNmDiscoverySDRCount(fruCount) - 1;
++    size_t staticLastRecord =
++        getNumberOfSensors() + fruCount + ipmi::storage::getType12Count(fruCount) +
++        ipmi::storage::getNmDiscoverySDRCount(fruCount) - 1;
++    size_t lastRecord = dynamicSdr.Last();
++
++    if (lastRecord == lastRecordIndex)
++    {
++        lastRecord = staticLastRecord;
++    }
++
+     if (recordID == lastRecordIndex)
+     {
+         recordID = lastRecord;
+@@ -1326,7 +1510,7 @@ static int getSensorDataRecord(ipmi::Context::ptr ctx,
+         return GENERAL_ERROR;
+     }
+ 
+-    if (recordID >= getNumberOfSensors())
++    if (recordID >= getNumberOfSensors() && recordID <= staticLastRecord)
+     {
+         size_t fruIndex = recordID - getNumberOfSensors();
+         size_t type12End = fruCount + ipmi::storage::getType12Count(fruCount);
+@@ -1373,6 +1557,19 @@ static int getSensorDataRecord(ipmi::Context::ptr ctx,
+ 
+         return 0;
+     }
++    else if (recordID > staticLastRecord)
++    {
++        // handle dynamic records
++        if (!dynamicSdr.Fetch(recordID, recordData))
++        {
++            phosphor::logging::log<phosphor::logging::level::ERR>(
++                "getSensorDataRecord: error - no dynamic SDR");
++            return GENERAL_ERROR;
++        }
++
++        return 0;
++    }
++
+ 
+     // Perform a incremental scan of the SDR Record ID's and translate the
+     // first 765 SDR records (i.e. maxIPMISensors) into IPMI Sensor
+@@ -1781,6 +1978,8 @@ ipmi::RspType<uint8_t,  // sdr version
+     ipmiStorageGetSDRRepositoryInfo(ipmi::Context::ptr ctx)
+ {
+     constexpr const uint16_t unspecifiedFreeSpace = 0xFFFF;
++    constexpr const uint16_t moreAvailableFreeSpace = 0xFFFE;
++
+     if (!getSensorSubtree(sensorTree) && sensorTree.empty())
+     {
+         return ipmi::responseResponseError();
+@@ -1795,7 +1994,11 @@ ipmi::RspType<uint8_t,  // sdr version
+ 
+     uint16_t recordCount = getNumberOfSensors() + fruCount +
+                            ipmi::storage::getType12Count(fruCount) +
+-                           ipmi::storage::getNmDiscoverySDRCount(fruCount);
++                           ipmi::storage::getNmDiscoverySDRCount(fruCount) - 1 +
++                           dynamicSdr.Count();
++
++    sdrLastAdd = dynamicSdr.GetRecentAddTimestamp();
++    sdrLastRemove = dynamicSdr.GetRecentEraseTimestamp();
+ 
+     uint8_t operationSupport = static_cast<uint8_t>(
+         SdrRepositoryInfoOps::overflow); // write not supported
+@@ -1804,9 +2007,23 @@ ipmi::RspType<uint8_t,  // sdr version
+         static_cast<uint8_t>(SdrRepositoryInfoOps::allocCommandSupported);
+     operationSupport |= static_cast<uint8_t>(
+         SdrRepositoryInfoOps::reserveSDRRepositoryCommandSupported);
+-    return ipmi::responseSuccess(ipmiSdrVersion, recordCount,
+-                                 unspecifiedFreeSpace, sdrLastAdd,
+-                                 sdrLastRemove, operationSupport);
++    operationSupport |= static_cast<uint8_t>(
++        SdrRepositoryInfoOps::modalLSB);
++    operationSupport |=
++        static_cast<uint8_t>(SdrRepositoryInfoOps::deleteSDRSupported);
++    
++    uint16_t free_space = dynamicSdr.GetTotalUseinByte();
++    if (free_space < moreAvailableFreeSpace)
++    {
++        free_space = moreAvailableFreeSpace - free_space;
++    }
++    else
++    {
++        free_space = 0;
++    }
++    
++    return ipmi::responseSuccess(ipmiSdrVersion, recordCount, free_space,
++                                 sdrLastAdd, sdrLastRemove, operationSupport);
+ }
+ 
+ /** @brief implements the get SDR allocation info command
+@@ -1827,14 +2044,19 @@ ipmi::RspType<uint16_t, // allocUnits
+     ipmiStorageGetSDRAllocationInfo()
+ {
+     // 0000h unspecified number of alloc units
+-    constexpr uint16_t allocUnits = 0;
++    uint16_t allocUnits = 0;
++    uint16_t allocUnitSize = 0;
++    allocUnits = dynamicSdr.GetNumAllocUnits();
++    allocUnitSize = dynamicSdr.GetAllocUnitSize();
++    uint16_t allocUnitFree = 0;
++    uint16_t allocUnitLargestFree = 0;
++    allocUnitFree = allocUnitLargestFree = dynamicSdr.GetFreeAllocUnits();
+ 
+-    constexpr uint16_t allocUnitFree = 0;
+-    constexpr uint16_t allocUnitLargestFree = 0;
+     // only allow one block at a time
+-    constexpr uint8_t maxRecordSize = 1;
++    uint8_t maxRecordSize = 0;
++    maxRecordSize = dynamicSdr.GetMaxSDRinAllocUnit();
+ 
+-    return ipmi::responseSuccess(allocUnits, maxSDRTotalSize, allocUnitFree,
++    return ipmi::responseSuccess(allocUnits, allocUnitSize, allocUnitFree,
+                                  allocUnitLargestFree, maxRecordSize);
+ }
+ 
+@@ -1844,10 +2066,10 @@ ipmi::RspType<uint16_t, // allocUnits
+  */
+ ipmi::RspType<uint16_t> ipmiStorageReserveSDR()
+ {
+-    sdrReservationID++;
++    RequestReserveSdr();
+     if (sdrReservationID == 0)
+     {
+-        sdrReservationID++;
++        RequestReserveSdr();
+     }
+ 
+     return ipmi::responseSuccess(sdrReservationID);
+@@ -1892,10 +2114,24 @@ ipmi::RspType<uint16_t,            // next record ID
+     }
+ 
+     /* Inventec - Fix set sensor threshold command fail issue */
+-    size_t lastRecord = sensorTree.size() + fruCount +
+-                        ipmi::storage::getType12Count(fruCount) +
+-                        ipmi::storage::getNmDiscoverySDRCount(fruCount) - 1;
+-    uint16_t nextRecordId = lastRecord > recordID ? recordID + 1 : 0XFFFF;
++    size_t staticLastRecord =
++        sensorTree.size() + fruCount + ipmi::storage::getType12Count(fruCount) +
++        ipmi::storage::getNmDiscoverySDRCount(fruCount) - 1;
++
++    uint16_t nextRecordId = staticLastRecord > recordID ? recordID + 1 : 0XFFFF;
++
++    if (recordID >= staticLastRecord)
++    {
++        if (recordID == staticLastRecord)
++        {
++            nextRecordId = dynamicSdr.Next();
++        }
++        else
++        {
++            nextRecordId = dynamicSdr.Next(recordID);
++        }
++    }
++
+ 
+     std::vector<uint8_t> record;
+     if (getSensorDataRecord(ctx, record, recordID))
+@@ -1931,6 +2167,165 @@ ipmi::RspType<uint16_t,            // next record ID
+ 
+     return ipmi::responseSuccess(nextRecordId, recordData);
+ }
++
++
++/** @brief implements the Add SDR command
++ *   Privilege Level: Operator
++ *   IPMI v2.0 #33.2 Modal & non-modal SDR Repository
++ *   1. Get SDR Repository Info
++ *      - check update type is supported.
++ *      - if returns "unspecified", software should try a modal update
++ *        by issuing "Enter SDR Update Mode" command
++ *      - However, if that is not accepted, software should perform a non-modal
++ * update
++ *  @param SDR Data (1:N byte)
++ *
++ *  @returns IPMI completion code plus response data
++ *   - recordID - ID for added record, LSB+MSB
++ */
++ipmi::RspType<uint16_t>
++    ipmiStorageAddSDR(ipmi::Context::ptr ctx,
++                      std::vector<uint8_t> sensorDataRecords)
++{
++    if (sensorDataRecords.size() <= 0)
++    {
++        std::cout << "[Add SDR] ERROR: Invalid sdr_length ="
++                  << sensorDataRecords.size() << std::endl;
++
++        return ipmi::responseResponseError();
++    }
++
++    if (!getSensorSubtree(sensorTree) && sensorTree.empty())
++    {
++        return ipmi::responseResponseError();
++    }
++
++    // Add new sensor to the SDR repo
++    size_t newRecordId = 0;
++    size_t fruCount = 0;
++
++    ipmi::Cc ret = ipmi::storage::getFruSdrCount(ctx, fruCount);
++    if (ret != ipmi::ccSuccess)
++    {
++        std::cout << "[Add SDR] ERROR: Failed to getFruSdrCount" << std::endl;
++        return ipmi::responseResponseError();
++    }
++
++    size_t staticLastRecord =
++        sensorTree.size() + fruCount + ipmi::storage::getType12Count(fruCount) +
++        ipmi::storage::getNmDiscoverySDRCount(fruCount) - 1;
++
++    if (dynamicSdr.Count() == 0)
++    {
++        newRecordId = staticLastRecord + 1;
++    }
++    else
++    {
++        newRecordId = dynamicSdr.Last() + 1;
++    }
++
++    std::cout << "[Add SDR] INFO: RecordID = " << newRecordId << std::endl;
++    if (newRecordId == lastRecordIndex)
++    {
++        std::cout << "[Add SDR] ERROR: recordID is not found." << std::endl;
++        return ipmi::responseResponseError();
++    }
++
++    if (newRecordId < staticLastRecord)
++    {
++        std::cout << "[Add SDR] ERROR: newRecordID < staticLastRecord: "
++                  << std::hex << newRecordId << " < " << std::hex
++                  << staticLastRecord << std::endl;
++        return ipmi::responseResponseError();
++    }
++
++    uint16_t freeAllocUnits = dynamicSdr.GetFreeAllocUnits();
++    uint16_t allocUnitSize = dynamicSdr.GetAllocUnitSize();
++    uint8_t maxAllocUnits = dynamicSdr.GetMaxSDRinAllocUnit();
++    uint16_t sdrSize = sensorDataRecords.size();
++    uint16_t needAllocUnits = (sdrSize < allocUnitSize)
++                                ? 1
++                                : std::ceil(static_cast<float>(sdrSize) /
++                                            static_cast<float>(allocUnitSize));
++    if (needAllocUnits > maxAllocUnits)
++    {
++        std::cout << "[Add SDR] ERROR: Exceeded maximum allocation unit." << std::endl;
++        return ipmi::responseResponseError();
++    }
++
++    if (needAllocUnits > freeAllocUnits)
++    {
++        std::cout << "[Add SDR] ERROR: No free allocation unit." << std::endl;
++        return ipmi::responseResponseError();
++    }
++
++    uint16_t tmp = newRecordId;
++    DynamicSDR::SetRecordId(newRecordId, sensorDataRecords);
++    newRecordId = dynamicSdr + sensorDataRecords;
++    if (newRecordId == lastRecordIndex)
++    {
++        std::cout << "[Add SDR] ERROR: Can't Add." << std::endl;
++        return ipmi::responseResponseError();
++    }
++
++    return ipmi::responseSuccess(newRecordId);
++}
++
++/** @brief implements the Delete SDR command
++ *   Privilege Level: Operator
++ *  @param reservationID - LSB+MSB
++ *  @param recordID - ID of record to delete, LSB+MSB
++ *
++ *  @returns IPMI completion code plus response data
++ *   - record ID - ID for deleted record, LSB+MSB
++ */
++ipmi::RspType<uint16_t> ipmiStorageDeleteSDR(ipmi::Context::ptr ctx,
++                                             uint16_t reservationID,
++                                             uint16_t recordID)
++{
++    if (!getSensorSubtree(sensorTree) && sensorTree.empty())
++    {
++        return ipmi::responseResponseError();
++    }
++
++    size_t fruCount = 0;
++    if (sdrReservationID == 0 || reservationID != sdrReservationID)
++    {
++        std::cout << "[Del SDR] ERROR: reservationID" << reservationID
++                  << " != sdrReservationID" << sdrReservationID << std::endl;
++
++        return ipmi::responseInvalidReservationId();
++    }
++
++    ipmi::Cc ret = ipmi::storage::getFruSdrCount(ctx, fruCount);
++    if (ret != ipmi::ccSuccess)
++    {
++        phosphor::logging::log<phosphor::logging::level::ERR>(
++            "[Del SDR] ERROR: Failed to getFruSdrCount");
++        return ipmi::response(ret);
++    }
++
++    size_t staticLastRecord =
++        sensorTree.size() + fruCount + ipmi::storage::getType12Count(fruCount) +
++        ipmi::storage::getNmDiscoverySDRCount(fruCount) - 1;
++
++    if (recordID < staticLastRecord)
++    {
++        std::cout << "[Del SDR] ERROR: recordID < staticLastRecord" << std::hex
++                  << recordID << std::hex << staticLastRecord << std::endl;
++        return ipmi::responseResponseError();
++    }
++    recordID = dynamicSdr - recordID;
++    if (recordID == lastRecordIndex)
++    {
++        std::cout << "[Del SDR] ERROR: The record Id of deleting is not found."
++                  << std::endl;
++        return ipmi::responseResponseError();
++    }
++
++    CancelReserveSdr();
++    return ipmi::responseSuccess(recordID);
++}
+ /* end storage commands */
+ 
+ uint8_t sdrSelfTest(ipmi::Context::ptr ctx) {
+@@ -1994,6 +2389,11 @@ void registerSensorFunctions()
+                           ipmi::sensor_event::cmdGetSensorEventEnable,
+                           ipmi::Privilege::User, ipmiSenGetSensorEventEnable);
+ 
++    // <Set Sensor Event Enable>
++    ipmi::registerHandler(ipmi::prioOemBase, ipmi::netFnSensor,
++                          ipmi::sensor_event::cmdSetSensorEventEnable,
++                          ipmi::Privilege::User, ipmiSenSetSensorEventEnable);
++
+     // <Get Sensor Event Status>
+     ipmi::registerHandler(ipmi::prioOemBase, ipmi::netFnSensor,
+                           ipmi::sensor_event::cmdGetSensorEventStatus,
+@@ -2036,5 +2436,14 @@ void registerSensorFunctions()
+     ipmi::registerHandler(ipmi::prioOemBase, ipmi::netFnStorage,
+                           ipmi::storage::cmdGetSdr, ipmi::Privilege::User,
+                           ipmiStorageGetSDR);
++    // <Add SDR>
++    ipmi::registerHandler(ipmi::prioOemBase, ipmi::netFnStorage,
++                          ipmi::storage::cmdAddSdr, ipmi::Privilege::Operator,
++                          ipmiStorageAddSDR);
++
++    // <Delete SDR>
++    ipmi::registerHandler(ipmi::prioOemBase, ipmi::netFnStorage,
++                          ipmi::storage::cmdDeleteSdr,
++                          ipmi::Privilege::Operator, ipmiStorageDeleteSDR);
+ }
+ } // namespace ipmi
+-- 
+2.33.0
+

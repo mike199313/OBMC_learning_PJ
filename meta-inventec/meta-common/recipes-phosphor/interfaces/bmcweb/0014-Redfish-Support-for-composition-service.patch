@@ -1,0 +1,1838 @@
+From d89caaa7a4f293f80f9ab7a0b0373c289236cd98 Mon Sep 17 00:00:00 2001
+From: cynthia <wu.cynthia@inventec.com>
+Date: Mon, 16 May 2022 14:39:13 +0800
+Subject: [PATCH] Redfish Support for composition service
+
+    Symptom/Reason:
+        composition service commands not support
+
+    Root Cause:
+        N/A
+
+    Solution/Change:
+	1. Add new header file (composition.hpp)
+        2. Modify related header files
+
+    Entry Test:
+        curl basic -u root:0penBmc -X GET https://${IP}/redfish/v1/CompositionService/ResourceBlocks -k
+
+[comment for 2.12 upgrade]
+1.Modification for dbus_utility.hpp in original patch is added in commit d1a648140
+Remove the change in this patch
+2.Update code in composition service based on official code change
+3.Update the call function of Notify for variable type changed
+---
+ bmcweb.service.in                 |   1 +
+ include/dbus_utility.hpp          |   1 +
+ redfish-core/include/redfish.hpp  |  14 +
+ redfish-core/lib/composition.hpp  | 757 ++++++++++++++++++++++++++++++
+ redfish-core/lib/memory.hpp       |  71 +++
+ redfish-core/lib/processor.hpp    |  65 +++
+ redfish-core/lib/service_root.hpp |   1 +
+ redfish-core/lib/storage.hpp      |  68 +++
+ redfish-core/lib/systems.hpp      | 682 ++++++++++++++++++++++++++-
+ 9 files changed, 1659 insertions(+), 1 deletion(-)
+ create mode 100644 redfish-core/lib/composition.hpp
+
+diff --git a/bmcweb.service.in b/bmcweb.service.in
+index a0b6777c..cd73a1fa 100644
+--- a/bmcweb.service.in
++++ b/bmcweb.service.in
+@@ -3,6 +3,7 @@ Description=Start bmcweb server
+ 
+ Wants=network.target
+ After=network.target
++After=smbios-mdrv2.service
+ 
+ [Service]
+ ExecReload=kill -s HUP $MAINPID
+diff --git a/include/dbus_utility.hpp b/include/dbus_utility.hpp
+index 4ee7eaf7..624b9445 100644
+--- a/include/dbus_utility.hpp
++++ b/include/dbus_utility.hpp
+@@ -69,6 +69,7 @@ using DbusVariantType = std::variant<
+                            std::string, std::string>>
+  >;
+ 
++
+ // clang-format on
+ using DBusPropertiesMap = std::vector<std::pair<std::string, DbusVariantType>>;
+ using DBusInteracesMap = std::vector<std::pair<std::string, DBusPropertiesMap>>;
+diff --git a/redfish-core/include/redfish.hpp b/redfish-core/include/redfish.hpp
+index beb22754..cec26fdb 100644
+--- a/redfish-core/include/redfish.hpp
++++ b/redfish-core/include/redfish.hpp
+@@ -48,6 +48,7 @@
+ #include "../lib/trigger.hpp"
+ #include "../lib/update_service.hpp"
+ #include "../lib/virtual_media.hpp"
++#include "../lib/composition.hpp"
+ 
+ namespace redfish
+ {
+@@ -96,6 +97,7 @@ class RedfishService
+         requestRoutesUpdateService(app);
+         requestRoutesStorageCollection(app);
+         requestRoutesStorage(app);
++        requestRoutesComposedSystemStorage(app);
+         requestRoutesDrive(app);
+         requestRoutesCable(app);
+         requestRoutesCableCollection(app);
+@@ -157,10 +159,12 @@ class RedfishService
+ 
+         requestRoutesProcessorCollection(app);
+         requestRoutesProcessor(app);
++        requestRoutesComposedSystemProcessor(app);
+         requestRoutesOperatingConfigCollection(app);
+         requestRoutesOperatingConfig(app);
+         requestRoutesMemoryCollection(app);
+         requestRoutesMemory(app);
++        requestRoutesComposedSystemMemory(app);
+ 
+         requestRoutesSystemsCollection(app);
+         requestRoutesSystems(app);
+@@ -228,6 +232,16 @@ class RedfishService
+         requestRoutesTriggerCollection(app);
+         requestRoutesTrigger(app);
+ 
++        init_composition();
++        requestRoutesCompositionCollection(app);
++        requestRoutesResourceBlocksCollection(app);
++        requestRoutesResourceBlocks(app);
++        requestRoutesResourceZonesCollection(app);
++        requestRoutesResourceZones(app);
++        requestRoutesCompositionProcessorSub(app);
++        requestRoutesCompositionMemorySub(app);
++        requestRoutesCompositionStorageSub(app);
++
+         // Note, this must be the last route registered
+         requestRoutesRedfish(app);
+     }
+diff --git a/redfish-core/lib/composition.hpp b/redfish-core/lib/composition.hpp
+new file mode 100644
+index 00000000..9be48f4a
+--- /dev/null
++++ b/redfish-core/lib/composition.hpp
+@@ -0,0 +1,757 @@
++#pragma once
++
++#include <app.hpp>
++#include <boost/container/flat_map.hpp>
++#include <registries/privilege_registry.hpp>
++#include <utils/collection.hpp>
++#include <error_messages.hpp>
++#include <dbus_utility.hpp>
++
++#include <variant>
++
++#include "processor.hpp"
++#include "memory.hpp"
++#include "storage.hpp"
++
++namespace redfish
++{
++
++const std::string INVENTORY_RESOURCEZONE_INTERFACE  = "xyz.openbmc_project.Inventory.Composition.ResourceZone";
++
++inline void notifyResourceBlock(std::string name, std::string type, std::vector<std::string> chassis_list){
++        using interfaces = std::map<std::string, dbus::utility::DBusPropertiesMap>;
++        using obj = std::map<sdbusplus::message::object_path, interfaces>;  
++            dbus::utility::DBusPropertiesMap property_list;
++            interfaces interface_list;
++            obj object_list;    
++            std::vector<uint16_t> zoneid {0x0};
++            std::string source_type = "xyz.openbmc_project.Inventory.Composition.ResourceBlock.BlockType."+type;
++            std::string path = "/xyz/openbmc_project/inventory/CompositionService/ResourceBlocks/"+name;
++            std::string route = "/CompositionService/ResourceBlocks/"+name;
++                            
++            property_list.push_back(std::make_pair("Reserved", true));
++            property_list.push_back(std::make_pair("Type", source_type));
++            property_list.push_back(std::make_pair("ZoneId", zoneid) );
++            property_list.push_back(std::make_pair("Chassis", chassis_list) );
++            interface_list.emplace("xyz.openbmc_project.Inventory.Composition.ResourceBlock", std::move(property_list) );
++            object_list.emplace( route, std::move(interface_list));    
++
++            auto readyMsg = crow::connections::systemBus->new_method_call( 
++                "xyz.openbmc_project.Inventory.Manager", "/xyz/openbmc_project/inventory",
++                "xyz.openbmc_project.Inventory.Manager", "Notify"  );
++                readyMsg.append(  std::move(object_list)  ); 
++            try
++            {
++                auto intMsg = crow::connections::systemBus->call(readyMsg);
++            }catch (const sdbusplus::exception::SdBusError& e)
++            {
++                BMCWEB_LOG_ERROR << "Error: " << e.what();
++            }
++
++}
++
++inline void setResourceBlock(
++                            const std::vector<const char*>& interfaces,
++                            const std::string type,
++                            const char* subtree = "/xyz/openbmc_project/inventory"){
++    crow::connections::systemBus->async_method_call(
++    [type](const boost::system::error_code ec,
++        const std::vector<std::string>& objects ) {
++       if (ec)
++        {
++            BMCWEB_LOG_ERROR << ec;
++            return;
++        }
++
++        for (const auto& item : objects)
++        {
++            std::string s= item.substr( item.find_last_of("/")+1, item.length()-1 );
++            
++            size_t it = item.find("chassis/")+8;
++
++            std::string chassis = item.substr(it);
++            chassis.erase( chassis.begin()+static_cast<int>(chassis.find("/")), chassis.end() );
++            std::vector<std::string> chassis_list;
++            chassis_list.push_back(chassis);
++            notifyResourceBlock(s, type, chassis_list);
++        }
++
++    },
++    "xyz.openbmc_project.ObjectMapper",
++    "/xyz/openbmc_project/object_mapper",
++    "xyz.openbmc_project.ObjectMapper", "GetSubTreePaths", subtree , 0,
++    interfaces );
++
++}
++
++inline void init_composition(){
++    using interfaces = std::map<std::string, dbus::utility::DBusPropertiesMap>;
++    using obj = std::map<sdbusplus::message::object_path, interfaces>;     
++    dbus::utility::DBusPropertiesMap property_list, property_list2;
++    interfaces interface_list;
++    obj object_list;   
++    std::vector<uint16_t> zone_list = {0x0};
++
++    notifyResourceBlock("Storage1", "Storage", {"None"} );
++
++    property_list.push_back(std::make_pair("Health", true) );
++    property_list.push_back(std::make_pair("ZoneId", zone_list));
++    interface_list.emplace("xyz.openbmc_project.Inventory.Composition.ResourceZone", property_list );
++    property_list2.push_back(std::make_pair("Health", true));
++    interface_list.emplace("xyz.openbmc_project.Inventory.CompositionService", property_list2 );
++    object_list.emplace( "/CompositionService/ResourceBlocks", std::move(interface_list));   
++
++    auto readyMsg = crow::connections::systemBus->new_method_call( 
++        "xyz.openbmc_project.Inventory.Manager", "/xyz/openbmc_project/inventory",
++        "xyz.openbmc_project.Inventory.Manager", "Notify"  );
++        readyMsg.append(  std::move(object_list)  ); 
++    try
++    {
++        auto intMsg = crow::connections::systemBus->call(readyMsg);
++    }catch (const sdbusplus::exception::SdBusError& e)
++    {
++        BMCWEB_LOG_ERROR << "Error: " << e.what();
++    }
++    
++    setResourceBlock(   /*Get processors*/
++    {
++    "xyz.openbmc_project.Inventory.Item.Cpu",
++    "xyz.openbmc_project.Inventory.Item.Accelerator"
++    },
++    "Processor");
++    /*Get memories*/
++    setResourceBlock( {"xyz.openbmc_project.Inventory.Item.Dimm"}, "Memory" );
++
++}
++
++inline void requestRoutesCompositionCollection(App& app)
++{
++    BMCWEB_ROUTE(app, "/redfish/v1/CompositionService/")
++        .privileges(redfish::privileges::getChassisCollection)
++        .methods(boost::beast::http::verb::get)(
++            [&app](const crow::Request& req,
++               const std::shared_ptr<bmcweb::AsyncResp>& asyncResp) {
++
++                if (!redfish::setUpRedfishRoute(app, req, asyncResp))
++                {
++                    return;
++                }
++
++                asyncResp->res.jsonValue["@odata.type"] = "#CompositionService.v1_1_0.CompositionService"; 
++                asyncResp->res.jsonValue["@odata.id"] = "/redfish/v1/CompositionService";
++                asyncResp->res.jsonValue["Name"] = "Composition Service";
++                asyncResp->res.jsonValue["ResourceBlocks"] = { {"@odata.id", "/redfish/v1/CompositionService/ResourceBlocks"} };
++                asyncResp->res.jsonValue["ResourceZones"] = { {"@odata.id", "/redfish/v1/CompositionService/ResourceZones"} };
++                crow::connections::systemBus->async_method_call(
++                [asyncResp](const boost::system::error_code ec,
++                             const std::variant<bool>& health) {
++                    if(ec){
++                        BMCWEB_LOG_ERROR << ec;
++                        return;
++                    }
++                    if( *(std::get_if<bool>(&health)) ){
++                        asyncResp->res.jsonValue["Status"]["Health"] = "OK";
++                    }else{
++                        asyncResp->res.jsonValue["Status"]["Health"] = "Warning";
++                    }
++                },
++                "xyz.openbmc_project.Inventory.Manager", 
++                "/xyz/openbmc_project/inventory/CompositionService/ResourceBlocks",
++                "org.freedesktop.DBus.Properties", "Get" ,
++                "xyz.openbmc_project.Inventory.CompositionService", "Health"
++                );
++
++                 crow::connections::systemBus->async_method_call(
++                [asyncResp](const boost::system::error_code ec,
++                             const std::variant<bool>& stateenable) {
++                    if(ec){
++                        BMCWEB_LOG_ERROR << ec;
++                        return;
++                    }
++                    if( *(std::get_if<bool>(&stateenable)) ){
++                        asyncResp->res.jsonValue["Status"]["State"] = "Enabled";
++                    }else{
++                        asyncResp->res.jsonValue["Status"]["State"] = "Disabled";
++                    }
++                },
++                "xyz.openbmc_project.Inventory.Manager",
++                "/xyz/openbmc_project/inventory/CompositionService/ResourceBlocks",
++                "org.freedesktop.DBus.Properties", "Get" ,
++                "xyz.openbmc_project.Inventory.CompositionService", "State"
++                );               
++             });
++}
++
++inline void requestRoutesResourceBlocksCollection(App& app)
++{
++    BMCWEB_ROUTE(app, "/redfish/v1/CompositionService/ResourceBlocks")
++        .privileges(redfish::privileges::getChassisCollection)
++        .methods(boost::beast::http::verb::get)(
++            [&app](const crow::Request& req,
++               const std::shared_ptr<bmcweb::AsyncResp>& asyncResp) {
++
++                if (!redfish::setUpRedfishRoute(app, req, asyncResp))
++                {
++                    return;
++                }
++
++                asyncResp->res.jsonValue["@odata.type"] = "#ResourceBlock.v1_3_0.ResourceBlock"; 
++                asyncResp->res.jsonValue["@odata.id"] = "/redfish/v1/CompositionService/ResourceBlocks";
++                asyncResp->res.jsonValue["Name"] = "Composition Service Blocks";
++
++                const std::vector<const char*>& interfaces = { "xyz.openbmc_project.Inventory.Composition.ResourceBlock" };
++
++                crow::connections::systemBus->async_method_call(
++                    [asyncResp](const boost::system::error_code ec,
++                                const std::vector<std::string>& objects ) {
++                        if (ec)
++                        {
++                            asyncResp->res.jsonValue["Members"] = nlohmann::json::array();
++                            asyncResp->res.jsonValue["Members@odata.count"] = 0;
++                            BMCWEB_LOG_ERROR << ec;
++                            return;
++                        }
++
++                        for (const auto& item : objects)
++                        {
++                            std::string s= item.substr( item.find_last_of("/")+1, item.length()-1 );
++                            s = "/redfish/v1/CompositionService/ResourceBlocks/"+s;
++                            asyncResp->res.jsonValue["Members"] += { {"@odata.id",s} };
++                        }
++
++                    },
++                    "xyz.openbmc_project.ObjectMapper",
++                    "/xyz/openbmc_project/object_mapper",
++                    "xyz.openbmc_project.ObjectMapper", "GetSubTreePaths", 
++                    "/xyz/openbmc_project/inventory/CompositionService/ResourceBlocks/" , 1,
++                    interfaces);
++
++             });
++}
++
++inline void requestRoutesResourceBlocks(App& app)
++{
++    BMCWEB_ROUTE(app, "/redfish/v1/CompositionService/ResourceBlocks/<str>")
++        .privileges(redfish::privileges::getChassisCollection)
++        .methods(boost::beast::http::verb::get)(
++            [&app](const crow::Request& req,
++               const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
++               const std::string& compositionid) {
++                std::string path = "/xyz/openbmc_project/inventory/CompositionService/ResourceBlocks/"+compositionid;
++                std::variant<bool> reserved;
++                std::variant<uint16_t> compositions;
++                std::variant<std::vector<uint16_t>> zone;
++                std::variant<std::vector<std::string>> systems;
++                std::array<const char*, 2> interfaces = {"xyz.openbmc_project.Inventory.Item.Board",
++                "xyz.openbmc_project.Inventory.Item.Chassis"};
++
++                if (!redfish::setUpRedfishRoute(app, req, asyncResp))
++                {
++                    return;
++                } 
++
++                asyncResp->res.jsonValue["@odata.type"] = "#ResourceBlock.v1_3_0.ResourceBlock"; 
++                asyncResp->res.jsonValue["@odata.id"] = "/redfish/v1/CompositionService/ResourceBlocks/"+compositionid;
++                asyncResp->res.jsonValue["Name"] = "Composition Service Blocks";
++                asyncResp->res.jsonValue["ResourceBlockType"]=  nlohmann::json::array();
++                asyncResp->res.jsonValue["Link"]["ComputerSystems"] =  nlohmann::json::array();
++                asyncResp->res.jsonValue["Link"]["Chassis"] = nlohmann::json::array();
++                asyncResp->res.jsonValue["Link"]["Zones"] = nlohmann::json::array();
++                asyncResp->res.jsonValue["Processors"] = nlohmann::json::array();
++                asyncResp->res.jsonValue["Memory"] = nlohmann::json::array();
++                asyncResp->res.jsonValue["Storage"] = nlohmann::json::array();
++                asyncResp->res.jsonValue["Oem"] = {};
++
++                auto readyMsg = crow::connections::systemBus->new_method_call( 
++        			"xyz.openbmc_project.Inventory.Manager", path.c_str(),
++        			"org.freedesktop.DBus.Properties", "Get"  );
++                readyMsg.append( "xyz.openbmc_project.Inventory.Composition.ResourceBlock", "Reserved" );   
++                try
++                {
++                    auto intMsg = crow::connections::systemBus->call(readyMsg);
++                    intMsg.read(reserved);
++                    asyncResp->res.jsonValue["CompositionStatus"]["Reserved"] = std::get<bool>(reserved);
++                }catch (const sdbusplus::exception::SdBusError& e)
++                {
++                    BMCWEB_LOG_ERROR << "Error: " << e.what();
++                }
++
++                readyMsg = crow::connections::systemBus->new_method_call( 
++                    "xyz.openbmc_project.Inventory.Manager", path.c_str(),
++                    "org.freedesktop.DBus.Properties", "Get"  );
++                readyMsg.append( "xyz.openbmc_project.Inventory.Composition.ResourceBlock", "SharingCapable" );   
++                try
++                {
++                    auto intMsg = crow::connections::systemBus->call(readyMsg);
++                    intMsg.read(reserved);
++                    asyncResp->res.jsonValue["CompositionStatus"]["SharingCapable"] = std::get<bool>(reserved);
++                }catch (const sdbusplus::exception::SdBusError& e)
++                {
++                    BMCWEB_LOG_ERROR << "Error: " << e.what();
++                }
++
++                readyMsg = crow::connections::systemBus->new_method_call( 
++                    "xyz.openbmc_project.Inventory.Manager", path.c_str(),
++                    "org.freedesktop.DBus.Properties", "Get"  );
++                readyMsg.append( "xyz.openbmc_project.Inventory.Composition.ResourceBlock", "SharingEnabled" );   
++                try
++                {
++                    auto intMsg = crow::connections::systemBus->call(readyMsg);
++                    intMsg.read(reserved);
++                    asyncResp->res.jsonValue["CompositionStatus"]["SharingEnabled"] = std::get<bool>(reserved);
++                }catch (const sdbusplus::exception::SdBusError& e)
++                {
++                    BMCWEB_LOG_ERROR << "Error: " << e.what();
++                }   
++
++                readyMsg = crow::connections::systemBus->new_method_call( 
++                    "xyz.openbmc_project.Inventory.Manager", path.c_str(),
++                    "org.freedesktop.DBus.Properties", "Get"  );
++                readyMsg.append( "xyz.openbmc_project.Inventory.Composition.ResourceBlock", "MaxComposition" );   
++                try
++                {
++                    auto intMsg = crow::connections::systemBus->call(readyMsg);
++                    intMsg.read(compositions);
++                    asyncResp->res.jsonValue["CompositionStatus"]["MaxComposition"] = std::get<uint16_t>(compositions);
++                }catch (const sdbusplus::exception::SdBusError& e)
++                {
++                    BMCWEB_LOG_ERROR << "Error: " << e.what();
++                } 
++                
++                readyMsg = crow::connections::systemBus->new_method_call( 
++                    "xyz.openbmc_project.Inventory.Manager", path.c_str(),
++                    "org.freedesktop.DBus.Properties", "Get"  );
++                readyMsg.append( "xyz.openbmc_project.Inventory.Composition.ResourceBlock", "NumberOfCompositions" );   
++                try
++                {
++                    auto intMsg = crow::connections::systemBus->call(readyMsg);
++                    intMsg.read(compositions);
++                    asyncResp->res.jsonValue["CompositionStatus"]["NumberOfCompositions"] = std::get<uint16_t>(compositions);
++                }catch (const sdbusplus::exception::SdBusError& e)
++                {
++                    BMCWEB_LOG_ERROR << "Error: " << e.what();
++                } 
++
++                 crow::connections::systemBus->async_method_call(
++                [asyncResp, compositionid](const boost::system::error_code ec,
++                             const std::variant<std::string>& state) {
++                    if(ec){
++                        BMCWEB_LOG_ERROR << ec;
++                        return;
++                    }
++                    std::string s = *(std::get_if<std::string>(&state));
++                    s = s.substr( s.find_last_of(".")+1, s.length()-1 );
++                    asyncResp->res.jsonValue["CompositionStatus"]["CompositionState"] = s;
++                },
++                "xyz.openbmc_project.Inventory.Manager", path.c_str(),
++                "org.freedesktop.DBus.Properties", "Get" ,
++                "xyz.openbmc_project.Inventory.Composition.ResourceBlock", "CompositionState"
++                );
++
++                readyMsg = crow::connections::systemBus->new_method_call( 
++                    "xyz.openbmc_project.Inventory.Manager", path.c_str(),
++                    "org.freedesktop.DBus.Properties", "Get"  );
++                readyMsg.append( "xyz.openbmc_project.Inventory.Composition.ResourceBlock", "ZoneId" );   
++                try
++                {
++                    auto intMsg = crow::connections::systemBus->call(readyMsg);
++                    intMsg.read(zone);
++                    std::vector<uint16_t> zone_list = std::get<std::vector<uint16_t>>(zone);
++                    for(uint16_t& item : zone_list){
++                        std::string s = "/redfish/v1/CompositionService/ResourceZones/"+std::to_string(item);
++                        asyncResp->res.jsonValue["Link"]["Zones"] += { {"@odata.id", s} };
++                    }
++                }catch (const sdbusplus::exception::SdBusError& e)
++                {
++                    BMCWEB_LOG_ERROR << "Error: " << e.what();
++                }
++
++                readyMsg = crow::connections::systemBus->new_method_call( 
++                    "xyz.openbmc_project.Inventory.Manager", path.c_str(),
++                    "org.freedesktop.DBus.Properties", "Get"  );
++                readyMsg.append( "xyz.openbmc_project.Inventory.Composition.ResourceBlock", "ComputerSystems" );   
++                try
++                {
++                    auto intMsg = crow::connections::systemBus->call(readyMsg);
++                    intMsg.read(systems);
++                    std::vector<std::string> system_list = std::get<std::vector<std::string>>(systems);
++                    for(std::string& item : system_list){
++                        asyncResp->res.jsonValue["Link"]["ComputerSystems"] += { {"@odata.id", item} };
++                    }
++                }catch (const sdbusplus::exception::SdBusError& e)
++                {
++                    BMCWEB_LOG_ERROR << "Error: " << e.what();
++                }
++
++                 crow::connections::systemBus->async_method_call(
++                [asyncResp](const boost::system::error_code ec,
++                             const std::variant<bool>& health) {
++                    if(ec){
++                        BMCWEB_LOG_ERROR << ec;
++                        return;
++                    }
++                    if( *(std::get_if<bool>(&health)) ){
++                        asyncResp->res.jsonValue["Status"]["Health"] = "OK";
++                    }else{
++                        asyncResp->res.jsonValue["Status"]["Health"] = "Warning";
++                    }
++                },
++                "xyz.openbmc_project.Inventory.Manager", path.c_str(),
++                "org.freedesktop.DBus.Properties", "Get" ,
++                "xyz.openbmc_project.Inventory.Composition.ResourceBlock", "Health"
++                );
++
++                 crow::connections::systemBus->async_method_call(
++                [asyncResp](const boost::system::error_code ec,
++                             const std::variant<bool>& stateenable) {
++                    if(ec){
++                        BMCWEB_LOG_ERROR << ec;
++                        return;
++                    }
++                    if( *(std::get_if<bool>(&stateenable)) ){
++                        asyncResp->res.jsonValue["Status"]["State"] = "Enabled";
++                    }else{
++                        asyncResp->res.jsonValue["Status"]["State"] = "Disabled";
++                    }
++                },
++                "xyz.openbmc_project.Inventory.Manager", path.c_str(),
++                "org.freedesktop.DBus.Properties", "Get" ,
++                "xyz.openbmc_project.Inventory.Composition.ResourceBlock", "State"
++                );
++
++                 crow::connections::systemBus->async_method_call(
++                [asyncResp, compositionid](const boost::system::error_code ec,
++                             const std::variant<std::string>& type) {
++                    if(ec){
++                        BMCWEB_LOG_ERROR << ec;
++                        return;
++                    }
++                    std::string s = *(std::get_if<std::string>(&type));
++                    s = s.substr( s.find_last_of(".")+1, s.length()-1 );
++
++                    if((s=="Processor")||(s=="Memory")||(s=="Storage")){
++                        asyncResp->res.jsonValue["ResourceBlockType"] += s;
++                        asyncResp->res.jsonValue[s] += 
++                            { {"@odata.id", "/redfish/v1/CompositionService/ResourceBlocks/"+compositionid+"/"+s+"/"+compositionid} };
++                    }else{
++                            BMCWEB_LOG_ERROR << "Type string not correct";
++                    }
++                },
++                "xyz.openbmc_project.Inventory.Manager", path.c_str(),
++                "org.freedesktop.DBus.Properties", "Get" ,
++                "xyz.openbmc_project.Inventory.Composition.ResourceBlock", "Type"
++                );
++
++                std::variant<std::vector<std::string>> chassis;
++                std::vector<std::string> chassis_list;
++                std::variant<std::vector<std::string>> objects;
++                std::vector<std::string> object_list;
++                readyMsg = crow::connections::systemBus->new_method_call( 
++                   "xyz.openbmc_project.Inventory.Manager", path.c_str() ,
++                    "org.freedesktop.DBus.Properties", "Get"  );
++                readyMsg.append( "xyz.openbmc_project.Inventory.Composition.ResourceBlock", "Chassis" );   
++                try
++                {
++                    auto intMsg = crow::connections::systemBus->call(readyMsg);
++                    intMsg.read(chassis);
++                    std::vector<std::string>& list = std::get<std::vector<std::string>>(chassis);
++                    if(list.size()!=0){
++                        chassis_list = std::move(list);
++                    }else{
++                        return;
++                    }
++                    crow::connections::systemBus->async_method_call(
++                        [asyncResp, chassis_list](const boost::system::error_code ec,
++                                                  const std::vector<std::string>& objects_list) {
++                            if(ec){
++                                return;
++                            }
++                            for(const std::string& s1: objects_list){
++                                for(const std::string& s2 : chassis_list){
++                                    std::string s = std::move(s1);
++                                    std::transform(s.begin(), s.end(), s.begin(),
++                                        [](unsigned char c){ return std::tolower(c); });
++                                    if( s.find(s2) != std::string::npos ){
++                                        std::string uri = s1.substr(s1.find_last_of("/")+1,s1.length()-1);
++                                        uri = "/redfish/v1/Chassis/"+uri;
++                                        asyncResp->res.jsonValue["Link"]["Chassis"] += {{"@odata.id",uri}};
++                                    }                                    
++                                }
++                            }       
++                         },
++                    "xyz.openbmc_project.ObjectMapper",
++                    "/xyz/openbmc_project/object_mapper",
++                    "xyz.openbmc_project.ObjectMapper", "GetSubTreePaths", 
++                    "/xyz/openbmc_project/inventory", 0,
++                    interfaces);
++
++                }catch (const sdbusplus::exception::SdBusError& e)
++                {
++                    BMCWEB_LOG_ERROR << "Error: " << e.what();
++                }
++            });
++}
++
++inline void requestRoutesResourceZonesCollection(App& app)
++{
++    BMCWEB_ROUTE(app, "/redfish/v1/CompositionService/ResourceZones")
++        .privileges(redfish::privileges::getChassisCollection)
++        .methods(boost::beast::http::verb::get)(
++            [&app](const crow::Request& req,
++               const std::shared_ptr<bmcweb::AsyncResp>& asyncResp) {
++
++                if (!redfish::setUpRedfishRoute(app, req, asyncResp))
++                {
++                    return;
++                }
++
++                asyncResp->res.jsonValue["@odata.type"] = "#Zone.v1_1_0.Zone"; 
++                asyncResp->res.jsonValue["@odata.id"] = "/redfish/v1/CompositionService/ResourceZones";
++                asyncResp->res.jsonValue["Name"] = "Composition Service Zones";
++                std::variant<std::vector<uint16_t>> zone;
++
++                auto readyMsg = crow::connections::systemBus->new_method_call( 
++                    "xyz.openbmc_project.Inventory.Manager", "/xyz/openbmc_project/inventory/CompositionService/ResourceBlocks" ,
++                    "org.freedesktop.DBus.Properties", "Get"  );
++                readyMsg.append( "xyz.openbmc_project.Inventory.Composition.ResourceZone", "ZoneId" );   
++                try
++                {
++                    auto intMsg = crow::connections::systemBus->call(readyMsg);
++                    intMsg.read(zone);
++                    std::vector<uint16_t> zone_list = std::get<std::vector<uint16_t>>(zone);
++                    for(uint16_t& item : zone_list){
++                        std::string s = "/redfish/v1/CompositionService/ResourceZones/"+std::to_string(item);
++                        asyncResp->res.jsonValue["Members"]+={ {"@odata.id", s} };                        
++                    }
++                }catch (const sdbusplus::exception::SdBusError& e)
++                {
++                    BMCWEB_LOG_ERROR << "Error: " << e.what();
++                }
++             });
++}                   
++
++inline void requestRoutesResourceZones(App& app)
++{
++    BMCWEB_ROUTE(app, "/redfish/v1/CompositionService/ResourceZones/<str>")
++        .privileges(redfish::privileges::getChassisCollection)
++        .methods(boost::beast::http::verb::get)(
++            [&app](const crow::Request& req,
++               const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
++               const std::string zoneid) {
++                const std::array<const char*, 1> interface = { "xyz.openbmc_project.Inventory.Composition.ResourceBlock" };      
++
++                if (!redfish::setUpRedfishRoute(app, req, asyncResp))
++                {
++                    return;
++                }
++
++                asyncResp->res.jsonValue["@odata.type"] = "#Zone.v1_1_0.Zone"; 
++                asyncResp->res.jsonValue["@odata.id"] = "/redfish/v1/CompositionService/ResourceZones";
++                asyncResp->res.jsonValue["Name"] = "Composition Service Zones";
++                asyncResp->res.jsonValue["Id"] = zoneid;                   
++                asyncResp->res.jsonValue["@Redfish.CollectionCapabilities"] = {
++                    {"@odata.type", "#CollectionCapabilities.v1_0_0.CollectionCapabilities"},
++                    {"Capabilities",{{{"CapabilitiesObject",{{"@odata.id","/redfish/v1/Systems/Capabilities"}}},{"Links",{{"TargetCollection",{{"@odata.id","/redfish/v1/Systems"}}}}},{"UseCase", "ComputerSystemComposition"}}}}};
++
++                auto readyMsg = crow::connections::systemBus->new_method_call( 
++                    "xyz.openbmc_project.Inventory.Manager", "/xyz/openbmc_project/inventory/CompositionService/ResourceBlocks" ,
++                    "org.freedesktop.DBus.Properties", "Get"  );
++                readyMsg.append( "xyz.openbmc_project.Inventory.Composition.ResourceZone", "ZoneId" );   
++                try
++                {
++                    std::variant<std::vector<uint16_t>> zone;
++                    auto intMsg = crow::connections::systemBus->call(readyMsg);
++                    intMsg.read(zone);
++                    std::vector<uint16_t>& zone_list = std::get<std::vector<uint16_t>>(zone);
++                    if(zone_list.size()!=0){
++                        if( std::find( zone_list.begin(), zone_list.end(), std::stoi(zoneid) ) == zone_list.end() ){
++                            BMCWEB_LOG_ERROR << "Zone id " << zoneid << " not exist in list.";
++                            messages::internalError(asyncResp->res);
++                            return;
++                        }
++                    }else{
++                        BMCWEB_LOG_ERROR << "Empty zone list";
++                        messages::internalError(asyncResp->res);
++                        return;
++                    }
++                }catch (const sdbusplus::exception::SdBusError& e)
++                {
++                    BMCWEB_LOG_ERROR << "Error: " << e.what();
++                    messages::internalError(asyncResp->res);
++                    return;
++                }
++                
++                crow::connections::systemBus->async_method_call(
++                [asyncResp, zoneid](const boost::system::error_code ec,
++                const std::vector<std::string>& objects ) {
++                    if(ec){
++                        return;
++                    }
++                    for (const auto& item : objects)
++                    {
++                        std::variant<std::vector<uint16_t>> zone;
++                        auto response = crow::connections::systemBus->new_method_call( 
++                            "xyz.openbmc_project.Inventory.Manager", item.c_str(),
++                            "org.freedesktop.DBus.Properties", "Get"  );
++                        response.append( "xyz.openbmc_project.Inventory.Composition.ResourceBlock", "ZoneId" );   
++                        try
++                        {
++                            auto intMsg = crow::connections::systemBus->call(response);
++                            intMsg.read(zone);
++                            std::vector<uint16_t>& zone_list = std::get<std::vector<uint16_t>>(zone);
++                            if(zone_list.size()!=0){
++                                if( std::find( zone_list.begin(), zone_list.end(), std::stoi(zoneid) ) != zone_list.end() ){
++                                    std::string s = item.substr( item.find_last_of("/")+1, item.length()-1 );
++                                    s = "/redfish/v1/CompositionService/ResourceBlocks/"+s;
++                                    asyncResp->res.jsonValue["Links"]["RessourceBlocks"] += { {"@odata.id", s} };
++                                }
++                            }
++                        }catch (const sdbusplus::exception::SdBusError& e)
++                        {
++                            BMCWEB_LOG_ERROR << "Error: " << e.what();
++                        }    
++                    }          
++                },
++                "xyz.openbmc_project.ObjectMapper",
++                "/xyz/openbmc_project/object_mapper",
++                "xyz.openbmc_project.ObjectMapper", "GetSubTreePaths", 
++                "/xyz/openbmc_project/inventory/CompositionService/ResourceBlocks/" , 0,
++                interface
++                );
++
++
++                crow::connections::systemBus->async_method_call(
++                [asyncResp](const boost::system::error_code ec,
++                             const std::variant<bool>& health) {
++                    if(ec){
++                        BMCWEB_LOG_ERROR << ec;
++                        return;
++                    }
++                    if( *(std::get_if<bool>(&health)) ){
++                        asyncResp->res.jsonValue["Status"]["Health"] = "OK";
++                    }else{
++                        asyncResp->res.jsonValue["Status"]["Health"] = "Warning";
++                    }
++                },
++                "xyz.openbmc_project.Inventory.Manager", "/xyz/openbmc_project/inventory/CompositionService/ResourceBlocks",
++                "org.freedesktop.DBus.Properties", "Get" ,
++                "xyz.openbmc_project.Inventory.Composition.ResourceZone", "Health"
++                );
++
++                 crow::connections::systemBus->async_method_call(
++                [asyncResp](const boost::system::error_code ec,
++                             const std::variant<bool>& stateenable) {
++                    if(ec){
++                        BMCWEB_LOG_ERROR << ec;
++                        return;
++                    }
++                    if( *(std::get_if<bool>(&stateenable)) ){
++                        asyncResp->res.jsonValue["Status"]["State"] = "Enabled";
++                    }else{
++                        asyncResp->res.jsonValue["Status"]["State"] = "Disabled";
++                    }
++                },
++                "xyz.openbmc_project.Inventory.Manager", "/xyz/openbmc_project/inventory/CompositionService/ResourceBlocks",
++                "org.freedesktop.DBus.Properties", "Get" ,
++                "xyz.openbmc_project.Inventory.Composition.ResourceZone", "State"
++                );
++
++             });
++}       
++
++inline void requestRoutesCompositionProcessorSub(App& app)
++{
++    /**
++     * Functions triggers appropriate requests on DBus
++     */
++
++    BMCWEB_ROUTE(app, "/redfish/v1/CompositionService/ResourceBlocks/<str>/Processor/<str>/")
++        .privileges(redfish::privileges::getProcessor)
++        .methods(boost::beast::http::verb::get)(
++            [&app](const crow::Request& req,
++               const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
++               const std::string& processorId1,
++               const std::string& processorId2) {
++
++                if (!redfish::setUpRedfishRoute(app, req, asyncResp))
++                {
++                    return;
++                }
++
++                asyncResp->res.jsonValue["@odata.type"] =
++                    "#Processor.v1_11_0.Processor";
++                asyncResp->res.jsonValue["@odata.id"] =
++                    "/redfish/v1/Systems/system/Processors/" + processorId1;
++
++                if(processorId1!=processorId2){
++                    BMCWEB_LOG_ERROR << "Wrong uri, processor ids not match";
++                    messages::internalError(asyncResp->res);
++                }
++
++                getProcessorObject(
++                    asyncResp, processorId1,
++                    std::bind_front(getProcessorData, asyncResp, processorId1));
++            });
++}
++
++inline void requestRoutesCompositionMemorySub(App& app)
++{
++    /**
++     * Functions triggers appropriate requests on DBus
++     */
++
++    BMCWEB_ROUTE(app, "/redfish/v1/CompositionService/ResourceBlocks/<str>/Memory/<str>/")
++        .privileges(redfish::privileges::getProcessor)
++        .methods(boost::beast::http::verb::get)(
++            [&app](const crow::Request& req,
++               const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
++               const std::string& dimmId1,
++               const std::string& dimmId2) {
++                
++                if (!redfish::setUpRedfishRoute(app, req, asyncResp))
++                {
++                    return;
++                }
++
++                asyncResp->res.jsonValue["@odata.type"] =
++                    "#Memory.v1_11_0.Memory";
++                asyncResp->res.jsonValue["@odata.id"] =
++                    "/redfish/v1/Systems/system/Memory/" + dimmId1;
++
++                if(dimmId1!=dimmId2){
++                    BMCWEB_LOG_ERROR << "Wrong uri, dimm ids not match";
++                    messages::internalError(asyncResp->res);
++                }
++                getDimmData(asyncResp, dimmId1);
++            });
++}
++
++inline void requestRoutesCompositionStorageSub(App& app)
++{
++    BMCWEB_ROUTE(app, "/redfish/v1/CompositionService/ResourceBlocks/Storage1/Storage/Storage1/")
++        .privileges(redfish::privileges::getStorage)
++        .methods(
++            boost::beast::http::verb::
++                get)([&app](const crow::Request& req,
++                        const std::shared_ptr<bmcweb::AsyncResp>& asyncResp) {
++            
++            if (!redfish::setUpRedfishRoute(app, req, asyncResp))
++            {
++                return;
++            }
++
++            asyncResp->res.jsonValue["@odata.type"] = "#Storage.v1_7_1.Storage";
++            asyncResp->res.jsonValue["@odata.id"] =
++                "/redfish/v1/Systems/system/Storage/1";
++            asyncResp->res.jsonValue["Name"] = "Storage";
++            asyncResp->res.jsonValue["Id"] = "1";
++            asyncResp->res.jsonValue["Status"]["State"] = "Enabled";
++
++            auto health = std::make_shared<HealthPopulate>(asyncResp);
++            health->populate();
++
++            getDrives(asyncResp, health);
++            getStorageControllers(asyncResp, health);
++            });
++}
++}
+diff --git a/redfish-core/lib/memory.hpp b/redfish-core/lib/memory.hpp
+index 3c10130e..f5c2782d 100644
+--- a/redfish-core/lib/memory.hpp
++++ b/redfish-core/lib/memory.hpp
+@@ -927,4 +927,75 @@ inline void requestRoutesMemory(App& app)
+         });
+ }
+ 
++inline void requestRoutesComposedSystemMemory(App& app)
++{
++    /**
++     * Functions triggers appropriate requests on DBus
++     */
++    BMCWEB_ROUTE(app, "/redfish/v1/Systems/<str>/Memory")
++        .privileges(redfish::privileges::getMemory)
++        .methods(boost::beast::http::verb::get)(
++            [&app](const crow::Request& req,
++               const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
++               const std::string systemid) {
++
++                if (!redfish::setUpRedfishRoute(app, req, asyncResp))
++                {
++                    return;
++                }
++                
++                asyncResp->res.jsonValue["@odata.type"] =
++                    "#Memory.v1_11_0.Memory";
++                asyncResp->res.jsonValue["@odata.id"] =
++                    "/redfish/v1/Systems/"+systemid+"/Memory";
++                asyncResp->res.jsonValue["Members"] = nlohmann::json::array();
++                BMCWEB_LOG_ERROR << systemid;
++                crow::connections::systemBus->async_method_call(
++                    [asyncResp](
++                        const boost::system::error_code ec,
++                        std::variant<std::vector<std::string>>& link) {
++                        if (ec)
++                        {
++                            BMCWEB_LOG_DEBUG << "DBUS response error";
++                            messages::internalError(asyncResp->res);
++
++                            return;
++                        } 
++                        std::vector<std::string>* data =
++                                        std::get_if<std::vector<std::string>>(&link);
++                        for(const std::string& item : *data){
++                            BMCWEB_LOG_DEBUG << item;
++                            std::string s= item.substr( item.find_last_of("/")+1, item.length()-1 );
++                            s = "/xyz/openbmc_project/inventory/CompositionService/ResourceBlocks/"+s;
++                            BMCWEB_LOG_DEBUG << s;
++                            std::variant<std::string> t;
++                            std::string type;
++                            auto readyMsg = crow::connections::systemBus->new_method_call( 
++                                "xyz.openbmc_project.Inventory.Manager", s.c_str(),
++                                "org.freedesktop.DBus.Properties", "Get" );
++                                readyMsg.append(  "xyz.openbmc_project.Inventory.Composition.ResourceBlock", "Type"  ); 
++                            try
++                            {
++                                auto intMsg = crow::connections::systemBus->call(readyMsg);
++                                intMsg.read(t);
++                                BMCWEB_LOG_ERROR << "test";
++                                type = std::get<std::string>(t);
++                            }catch (const sdbusplus::exception::SdBusError& e)
++                            {
++                                BMCWEB_LOG_ERROR << "Error: " << e.what();
++                            }  
++                            BMCWEB_LOG_ERROR << type;
++                            if(type == "xyz.openbmc_project.Inventory.Composition.ResourceBlock.BlockType.Memory"){
++                                asyncResp->res.jsonValue["Members"] += { {"@odata.id", item} };
++                            }                            
++                        }                                       
++                },
++                "xyz.openbmc_project.Inventory.Manager",
++                "/xyz/openbmc_project/inventory/CompositionService/Systems/"+systemid,
++                "org.freedesktop.DBus.Properties", "Get",
++                "xyz.openbmc_project.Inventory.Composition.System", "Link"
++                );       
++            });
++}
++
+ } // namespace redfish
+diff --git a/redfish-core/lib/processor.hpp b/redfish-core/lib/processor.hpp
+index becb7949..97612a16 100644
+--- a/redfish-core/lib/processor.hpp
++++ b/redfish-core/lib/processor.hpp
+@@ -1258,4 +1258,69 @@ inline void requestRoutesProcessor(App& app)
+         });
+ }
+ 
++inline void requestRoutesComposedSystemProcessor(App& app)
++{
++    BMCWEB_ROUTE(app, "/redfish/v1/Systems/<str>/Processors")
++        .privileges(redfish::privileges::getProcessorCollection)
++        .methods(boost::beast::http::verb::get)(
++            [&app](const crow::Request& req,
++               const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
++               const std::string systemid ) {
++                
++                if (!redfish::setUpRedfishRoute(app, req, asyncResp))
++                {
++                    return;
++                }      
++
++                asyncResp->res.jsonValue["@odata.type"] =
++                    "#ProcessorCollection.ProcessorCollection";
++                asyncResp->res.jsonValue["Name"] = systemid+" Processor";
++                asyncResp->res.jsonValue["@odata.id"] =
++                    "/redfish/v1/Systems/"+systemid+"/Processors";    
++
++                crow::connections::systemBus->async_method_call(
++                    [asyncResp](
++                        const boost::system::error_code ec,
++                        std::variant<std::vector<std::string>>& link) {
++                        if (ec)
++                        {
++                            BMCWEB_LOG_DEBUG << "DBUS response error";
++                            messages::internalError(asyncResp->res);
++
++                            return;
++                        } 
++                        std::vector<std::string>* data =
++                                        std::get_if<std::vector<std::string>>(&link);
++                        for(const std::string& item : *data){
++                            std::string s= item.substr( item.find_last_of("/")+1, item.length()-1 );
++                            s = "/xyz/openbmc_project/inventory/CompositionService/ResourceBlocks/"+s;
++                            std::variant<std::string> t;
++                            std::string type;
++                            auto readyMsg = crow::connections::systemBus->new_method_call( 
++                                "xyz.openbmc_project.Inventory.Manager", s.c_str(),
++                                "org.freedesktop.DBus.Properties", "Get" );
++                                readyMsg.append(  "xyz.openbmc_project.Inventory.Composition.ResourceBlock", "Type"  ); 
++                            try
++                            {
++                                auto intMsg = crow::connections::systemBus->call(readyMsg);
++                                intMsg.read(t);
++                                type = std::get<std::string>(t);
++                            }catch (const sdbusplus::exception::SdBusError& e)
++                            {
++                                BMCWEB_LOG_ERROR << "Error: " << e.what();
++                            }  
++                            BMCWEB_LOG_ERROR << type;
++                            if(type == "xyz.openbmc_project.Inventory.Composition.ResourceBlock.BlockType.Processor"){
++                                asyncResp->res.jsonValue["Members"] += { {"@odata.id", item} };
++                            }                            
++                        }                                       
++                },
++                "xyz.openbmc_project.Inventory.Manager",
++                "/xyz/openbmc_project/inventory/CompositionService/Systems/"+systemid,
++                "org.freedesktop.DBus.Properties", "Get",
++                "xyz.openbmc_project.Inventory.Composition.System", "Link"
++                );                     
++    });
++}
++
+ } // namespace redfish
+diff --git a/redfish-core/lib/service_root.hpp b/redfish-core/lib/service_root.hpp
+index 4afd6507..de3f6ceb 100644
+--- a/redfish-core/lib/service_root.hpp
++++ b/redfish-core/lib/service_root.hpp
+@@ -58,6 +58,7 @@ inline void handleServiceRootGetImpl(
+     asyncResp->res.jsonValue["AccountService"]["@odata.id"] =
+         "/redfish/v1/AccountService";
+     asyncResp->res.jsonValue["Chassis"]["@odata.id"] = "/redfish/v1/Chassis";
++    asyncResp->res.jsonValue["CompositionService"]["@odata.id"] = "/redfish/v1/CompositionService";
+     asyncResp->res.jsonValue["JsonSchemas"]["@odata.id"] =
+         "/redfish/v1/JsonSchemas";
+     asyncResp->res.jsonValue["Managers"]["@odata.id"] = "/redfish/v1/Managers";
+diff --git a/redfish-core/lib/storage.hpp b/redfish-core/lib/storage.hpp
+index cab23a23..5bf56a37 100644
+--- a/redfish-core/lib/storage.hpp
++++ b/redfish-core/lib/storage.hpp
+@@ -258,6 +258,74 @@ inline void requestRoutesStorage(App& app)
+         });
+ }
+ 
++inline void requestRoutesComposedSystemStorage(App& app)
++{
++    BMCWEB_ROUTE(app, "/redfish/v1/Systems/<str>/Storage/")
++        .privileges(redfish::privileges::getStorage)
++        .methods(
++            boost::beast::http::verb::
++                get)([&app](const crow::Request& req,
++                        const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
++                        const std::string& systemid) {
++                    
++            if (!redfish::setUpRedfishRoute(app, req, asyncResp))
++            {
++                return;
++            }            
++
++            asyncResp->res.jsonValue["@odata.type"] = "#Storage.v1_7_1.Storage";
++            asyncResp->res.jsonValue["@odata.id"] =
++                "/redfish/v1/Systems/"+systemid+"/Storage";
++            BMCWEB_LOG_ERROR <<  asyncResp->res.jsonValue["@odata.id"];
++            asyncResp->res.jsonValue["Name"] = "Storage";
++
++                crow::connections::systemBus->async_method_call(
++                    [asyncResp](
++                        const boost::system::error_code ec,
++                        std::variant<std::vector<std::string>>& link) {
++                        if (ec)
++                        {
++                            BMCWEB_LOG_DEBUG << "DBUS response error";
++                            messages::internalError(asyncResp->res);
++
++                            return;
++                        } 
++                        std::vector<std::string>* data =
++                                        std::get_if<std::vector<std::string>>(&link);
++                        for(const std::string& item : *data){
++                            std::string s= item.substr( item.find_last_of("/")+1, item.length()-1 );
++                            s = "/xyz/openbmc_project/inventory/CompositionService/ResourceBlocks/"+s;
++                            std::variant<std::string> t;
++                            std::string type;
++                            auto readyMsg = crow::connections::systemBus->new_method_call( 
++                                "xyz.openbmc_project.Inventory.Manager", s.c_str(),
++                                "org.freedesktop.DBus.Properties", "Get" );
++                                readyMsg.append(  "xyz.openbmc_project.Inventory.Composition.ResourceBlock", "Type"  ); 
++                            try
++                            {
++                                auto intMsg = crow::connections::systemBus->call(readyMsg);
++                                intMsg.read(t);
++                                type = std::get<std::string>(t);
++                            }catch (const sdbusplus::exception::SdBusError& e)
++                            {
++                                BMCWEB_LOG_ERROR << "Error: " << e.what();
++                            }  
++                            BMCWEB_LOG_ERROR << type;
++                            if(type == "xyz.openbmc_project.Inventory.Composition.ResourceBlock.BlockType.Storage"){
++                                asyncResp->res.jsonValue["Members"] += { {"@odata.id", item} };
++                            }                            
++                        }                                       
++                },
++                "xyz.openbmc_project.Inventory.Manager",
++                "/xyz/openbmc_project/inventory/CompositionService/Systems/"+systemid,
++                "org.freedesktop.DBus.Properties", "Get",
++                "xyz.openbmc_project.Inventory.Composition.System", "Link"
++                );                     
++
++        });
++}
++
++
+ inline void getDriveAsset(const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
+                           const std::string& connectionName,
+                           const std::string& path)
+diff --git a/redfish-core/lib/systems.hpp b/redfish-core/lib/systems.hpp
+index 3ac81aba..59580ed6 100644
+--- a/redfish-core/lib/systems.hpp
++++ b/redfish-core/lib/systems.hpp
+@@ -31,9 +31,15 @@
+ #include <utils/sw_utils.hpp>
+ 
+ #include <variant>
++#include <map>
+ 
+ namespace redfish
+ {
++const std::string INVENTORY_CACHE_PATH_BASE = "/var/lib/phosphor-inventory-manager/xyz/openbmc_project/inventory";
++const std::string INVENTORY_MANAGER_SERVICE = "xyz.openbmc_project.Inventory.Manager";
++const std::string INVENTORY_MANAGER_OBJECT = "/xyz/openbmc_project/inventory";
++const std::string INVENTORY_MANAGER_INTERFACE = "xyz.openbmc_project.Inventory.Manager";
++const std::string INVENTORY_SYSTEM_OBJECT_BASE = "/xyz/openbmc_project/inventory/CompositionService/Systems";
+ 
+ /**
+  * @brief Updates the Functional State of DIMMs
+@@ -2633,6 +2639,85 @@ inline void setIdlePowerSaver(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
+     BMCWEB_LOG_DEBUG << "EXIT: Set idle power saver parameters";
+ }
+ 
++inline std::string genUUID(){
++    std::string uuid;
++    std::array<char, 50> buffer;
++    FILE* pipe = popen("cat /proc/sys/kernel/random/uuid", "r");
++    if(!pipe){
++        BMCWEB_LOG_DEBUG << "fail to gen uuid";
++        return "";
++    }
++    while( fgets(buffer.data(),buffer.size(),pipe) !=nullptr ){
++        uuid.append(buffer.data());
++    }
++    std::string::size_type i = uuid.find('\n');
++    if(i!=std::string::npos){
++        uuid.erase(i);
++    }
++
++    return uuid;
++}
++
++inline bool checkZoneId(std::vector<std::string> link_list){
++    std::string item=link_list[0];
++    bool rv = false;
++    std::string path = item.substr( item.find_last_of("/")+1, item.length() );
++    std::vector<uint16_t> zone_list;
++
++    path = "/xyz/openbmc_project/inventory/CompositionService/ResourceBlocks/"+path;
++    auto readyMsg = crow::connections::systemBus->new_method_call( 
++        "xyz.openbmc_project.Inventory.Manager", path.c_str() ,
++        "org.freedesktop.DBus.Properties", "Get"  );
++    readyMsg.append( "xyz.openbmc_project.Inventory.Composition.ResourceBlock", "ZoneId" );   
++    try
++    {
++        std::variant<std::vector<uint16_t>> zone;
++        auto intMsg = crow::connections::systemBus->call(readyMsg);
++        intMsg.read(zone);
++        std::vector<uint16_t>& z_list = std::get<std::vector<uint16_t>>(zone);
++        zone_list = std::move(z_list);
++
++    }catch (const sdbusplus::exception::SdBusError& e)
++    {
++        BMCWEB_LOG_ERROR << "Error: " << e.what();
++        return false;
++    }    
++
++    for(unsigned int i =1;i<link_list.size(); i++){
++        std::string item2 = link_list[i];
++        std::string path2 = item2.substr( item2.find_last_of("/")+1, item2.length() );
++        path2 = "/xyz/openbmc_project/inventory/CompositionService/ResourceBlocks/"+path2;
++        auto response = crow::connections::systemBus->new_method_call( 
++            "xyz.openbmc_project.Inventory.Manager", path2.c_str() ,
++            "org.freedesktop.DBus.Properties", "Get"  );
++        response.append( "xyz.openbmc_project.Inventory.Composition.ResourceBlock", "ZoneId" );   
++        try
++        {
++            std::variant<std::vector<uint16_t>> zone;
++            auto intMsg = crow::connections::systemBus->call(response);
++            intMsg.read(zone);
++            std::vector<uint16_t>& z_list = std::get<std::vector<uint16_t>>(zone);
++            for(const auto z : zone_list){
++                if( std::find( z_list.begin(), z_list.end(), z ) != z_list.end() ){
++                    rv = true;
++                    break;
++                }else{
++                    rv = false;
++                }                
++            }
++            if(!rv){
++                BMCWEB_LOG_ERROR <<"Can't find same id of " <<item << ", " << item2;
++                return rv;
++            }
++        }catch (const sdbusplus::exception::SdBusError& e)
++        {
++            BMCWEB_LOG_ERROR << "Error: " << e.what();
++            return false;
++        }    
++    }
++    return rv;
++}
++
+ /**
+  * SystemsCollection derived class for delivering ComputerSystems Collection
+  * Schema
+@@ -2676,7 +2761,260 @@ inline void requestRoutesSystemsCollection(App& app)
+                 count = ifaceArray.size();
+             }
+             });
+-        });
++
++        const std::vector<const char*>& interfaces = { "xyz.openbmc_project.Inventory.Composition.System" };
++            crow::connections::systemBus->async_method_call(
++            [asyncResp](const boost::system::error_code ec,
++                        const std::vector<std::string>& objects ) {
++                if (ec)
++                {
++                    BMCWEB_LOG_ERROR << ec;
++                    return;
++                }
++
++                for (const auto& item : objects)
++                {
++                    std::variant<bool> enable;
++                    auto readyMsg = crow::connections::systemBus->new_method_call( 
++                        "xyz.openbmc_project.Inventory.Manager", item.c_str(),
++                        "org.freedesktop.DBus.Properties", "Get"  );
++                    readyMsg.append("xyz.openbmc_project.Object.Enable", "Enabled" );   
++                    try
++                    {
++                        auto intMsg = crow::connections::systemBus->call(readyMsg);
++                        intMsg.read(enable);
++                        if( std::get<bool>(enable) ){
++                            std::string s = item.substr( item.find_last_of("/")+1, item.length()-1 );
++                            s = "/redfish/v1/Systems/"+s;
++                            asyncResp->res.jsonValue["Members"] += { {"@odata.id",s} };
++                        }
++                    }
++                     catch (const sdbusplus::exception::SdBusError& e)
++                    {
++                        BMCWEB_LOG_ERROR << "Error: " << e.what();
++                    }
++                }
++            },
++            "xyz.openbmc_project.ObjectMapper",
++            "/xyz/openbmc_project/object_mapper",
++            "xyz.openbmc_project.ObjectMapper", "GetSubTreePaths", 
++            "/xyz/openbmc_project/inventory/CompositionService/Systems/" , 0,
++            interfaces);
++
++    });
++    BMCWEB_ROUTE(app, "/redfish/v1/Systems/")
++        .privileges(redfish::privileges::postComputerSystemCollection)
++        .methods(boost::beast::http::verb::post)(
++            [&app](const crow::Request& req,
++               const std::shared_ptr<bmcweb::AsyncResp>& asyncResp) {
++                using interfaces = std::map<std::string, dbus::utility::DBusPropertiesMap>;
++                using objects = std::map<sdbusplus::message::object_path, interfaces>;
++                const std::vector<const char*>& intf = { "xyz.openbmc_project.Inventory.Composition.System" };
++                std::string system_path = "";
++                std::string name;
++                std::string boot_source = "xyz.openbmc_project.Control.Boot.Source.Sources.Default";
++                bool boot_enable = true;
++                nlohmann::json links, request;
++                std::vector<nlohmann::json> blocks;
++                std::optional<nlohmann::json> bootProps;
++
++                int systemid=0;
++
++                if (!redfish::setUpRedfishRoute(app, req, asyncResp))
++                {
++                    return;
++                }
++                
++                if (!json_util::readJson(request, asyncResp->res, "Name", name, "Links", links, "Boot", bootProps) )
++                {
++                    BMCWEB_LOG_DEBUG << "Missing parameter";
++                    return;
++                }          
++                if (!json_util::readJson(links, asyncResp->res,
++                                         "ResourceBlocks",
++                                         blocks))
++                {
++                    BMCWEB_LOG_DEBUG << "Missing parameter";
++                    return;
++                }
++
++                if (bootProps)
++                {
++                    std::optional<std::string> bootSource;
++                    std::optional<std::string> bootEnable;
++
++                    if (!json_util::readJson(
++                            *bootProps, asyncResp->res,
++                            "BootSourceOverrideTarget", bootSource,
++                            "BootSourceOverrideEnabled", bootEnable ))
++                    {
++                        return;
++                    }
++                    if(*bootEnable=="Disabled"){
++                        boot_enable = false;
++                    }
++                    if(bootSource){
++                        std::string temp;
++                        assignBootParameters(asyncResp, *bootSource, boot_source, temp);
++                    }
++                }
++
++                dbus::utility::DBusPropertiesMap property1, property2, property3, property4, property5, property6;
++                interfaces interface1, interface2, interface3, interface4;
++                objects object1, object2, object3,object4;
++
++                std::vector<std::string> link_list;
++                for(unsigned int i=0;i<blocks.size();i++){
++                    link_list.push_back(blocks[i]["@odata.id"]);
++                }
++		        if( (link_list.size()>1)&&(!checkZoneId(link_list)) ){
++                    messages::internalError(asyncResp->res);
++                    return;
++                }
++
++                std::variant<uint16_t> num;
++                uint16_t system_num=0;
++                auto readyMsg = crow::connections::systemBus->new_method_call( 
++                "xyz.openbmc_project.Inventory.Manager", 
++                "/xyz/openbmc_project/inventory/CompositionService/ResourceBlocks",
++                "org.freedesktop.DBus.Properties", "Get");
++                readyMsg.append("xyz.openbmc_project.Inventory.CompositionService", "SystemNum");
++                try
++                {
++                    auto intMsg = crow::connections::systemBus->call(readyMsg);
++                    intMsg.read(num);
++                    system_num =  std::get<uint16_t>(num);
++                    systemid = static_cast<int>(system_num);
++                    system_num += 1;
++                }catch (const sdbusplus::exception::SdBusError& e)
++                {
++                    BMCWEB_LOG_ERROR << "Error: " << e.what();
++                    return;
++                }   
++
++                property6.push_back(std::make_pair("SystemNum", system_num));
++                interface4.emplace("xyz.openbmc_project.Inventory.CompositionService", std::move(property6));
++                object4.emplace("/CompositionService/ResourceBlocks", std::move(interface4));
++                readyMsg = crow::connections::systemBus->new_method_call( 
++                    "xyz.openbmc_project.Inventory.Manager", "/xyz/openbmc_project/inventory",
++                    "xyz.openbmc_project.Inventory.Manager", "Notify"  );
++                readyMsg.append( std::move(object4) ); 
++                try
++                {
++                    auto intMsg = crow::connections::systemBus->call(readyMsg);
++                }catch (const sdbusplus::exception::SdBusError& e)
++                {
++                    BMCWEB_LOG_ERROR << "Error: " << e.what();
++                } 
++
++                system_path = "/xyz/openbmc_project/inventory/CompositionService/Systems/NewSystem";
++                std::string sub_path = "/CompositionService/Systems/NewSystem";
++                if(systemid!=0){
++                   system_path  = system_path  + std::to_string(systemid);
++                   sub_path = sub_path + std::to_string(systemid);
++                }
++
++                property1.push_back(std::make_pair("Name",name));
++                property4.push_back(std::make_pair("UUID", genUUID()) );
++                interface1.emplace( "xyz.openbmc_project.Common.UUID", std::move(property4) );                
++                interface1.emplace("xyz.openbmc_project.Inventory.Composition.System", std::move(property1) );
++                property5.push_back(std::make_pair("Enabled", true));
++                interface1.emplace("xyz.openbmc_project.Object.Enable",std::move(property5) );                
++                object1.emplace(sub_path, std::move(interface1));
++
++                readyMsg = crow::connections::systemBus->new_method_call( 
++                    "xyz.openbmc_project.Inventory.Manager", "/xyz/openbmc_project/inventory",
++                    "xyz.openbmc_project.Inventory.Manager", "Notify"  );
++                readyMsg.append( std::move(object1) ); 
++                try
++                {
++                    auto intMsg = crow::connections::systemBus->call(readyMsg);
++                }catch (const sdbusplus::exception::SdBusError& e)
++                {
++                    BMCWEB_LOG_ERROR << "Error: " << e.what();
++                }   
++
++                property2.push_back(std::make_pair("Enabled", boot_enable));
++                interface2.emplace("xyz.openbmc_project.Object.Enable", std::move(property2) );
++                property3.push_back(std::make_pair("BootSource", boot_source)  );
++                interface2.emplace( "xyz.openbmc_project.Control.Boot.Source", property3 );          
++                object2.emplace(sub_path+"/boot", std::move(interface2));
++                readyMsg = crow::connections::systemBus->new_method_call( 
++                    "xyz.openbmc_project.Inventory.Manager", "/xyz/openbmc_project/inventory",
++                    "xyz.openbmc_project.Inventory.Manager", "Notify"  );
++                readyMsg.append( std::move(object2) ); 
++                try
++                {
++                    auto intMsg = crow::connections::systemBus->call(readyMsg);
++                }catch (const sdbusplus::exception::SdBusError& e)
++                {
++                    BMCWEB_LOG_ERROR << "Error: " << e.what();
++                }                                             
++
++                readyMsg = crow::connections::systemBus->new_method_call( 
++                    "xyz.openbmc_project.Inventory.Manager", system_path.c_str(),
++                    "org.freedesktop.DBus.Properties", "Set"
++                      );
++                readyMsg.append( "xyz.openbmc_project.Inventory.Composition.System", "Link", 
++                    std::variant<std::vector<std::string>>(link_list) ); 
++                try
++                {
++                    auto intMsg = crow::connections::systemBus->call(readyMsg);
++                }catch (const sdbusplus::exception::SdBusError& e)
++                {
++                    BMCWEB_LOG_ERROR << "Error: " << e.what();
++                }          
++
++                for(unsigned int i=0;i<link_list.size(); i++){
++                    std::string s = link_list[i].substr(link_list[i].find_last_of("/")+1,link_list[i].length()-1);
++                    std::string path = "/xyz/openbmc_project/inventory/CompositionService/ResourceBlocks/"+s;
++                    std::variant<std::vector<std::string>> sys;
++                    std::vector<std::string> system_list;
++                    std::string system_redfish = "/redfish/v1/Systems/NewSystem";
++                    if(systemid!=0){
++                        system_redfish = system_redfish +std::to_string(systemid);
++                    }
++                    readyMsg = crow::connections::systemBus->new_method_call( 
++                    "xyz.openbmc_project.Inventory.Manager", path.c_str(),
++                    "org.freedesktop.DBus.Properties", "Get"  );
++                    readyMsg.append( "xyz.openbmc_project.Inventory.Composition.ResourceBlock", "ComputerSystems" );   
++                    try
++                    {
++                        auto intMsg = crow::connections::systemBus->call(readyMsg);
++                        intMsg.read(sys);
++                        std::vector<std::string>& list = std::get<std::vector<std::string>>(sys);
++                        if(list.size()!=0){
++                            if( std::find( list.begin(), list.end(), system_redfish ) != list.end() ){
++                                BMCWEB_LOG_DEBUG << "System '" << name << "' already in list.";
++                                return;
++                            }else{
++                                system_list = std::move(list);
++                            }
++                        }
++                    }catch (const sdbusplus::exception::SdBusError& e)
++                    {
++                        BMCWEB_LOG_ERROR << "Can't set computersystems " << path  <<"\nError: " << e.what();
++                        return;
++                    }
++                    system_list.push_back(system_redfish);
++                    readyMsg = crow::connections::systemBus->new_method_call( 
++                        "xyz.openbmc_project.Inventory.Manager", path.c_str(),
++                        "org.freedesktop.DBus.Properties", "Set"
++                          );
++                    readyMsg.append( "xyz.openbmc_project.Inventory.Composition.ResourceBlock", "ComputerSystems", std::variant<std::vector<std::string>>(system_list) ); 
++                    try
++                    {
++                        auto intMsg = crow::connections::systemBus->call(readyMsg);
++                    }catch (const sdbusplus::exception::SdBusError& e)
++                    {
++                        BMCWEB_LOG_ERROR << "Error: " << e.what();
++                    }                     
++
++
++                }
++
++            });
++
+ }
+ 
+ /**
+@@ -3077,6 +3415,348 @@ inline void requestRoutesSystems(App& app)
+                               ipsExitUtil, ipsExitTime);
+         }
+         });
++
++    BMCWEB_ROUTE(app, "/redfish/v1/Systems/<str>")
++        .privileges(redfish::privileges::getComputerSystemCollection)
++        .methods(boost::beast::http::verb::get)(
++            [&app](const crow::Request& req,
++               const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
++               const std::string systemid) {
++
++                if (!redfish::setUpRedfishRoute(app, req, asyncResp))
++                {
++                    return;
++                }
++
++                std::variant<bool> enable;
++                std::string path = "/xyz/openbmc_project/inventory/CompositionService/Systems/"+systemid;
++
++                auto readyMsg = crow::connections::systemBus->new_method_call( 
++                    "xyz.openbmc_project.Inventory.Manager", path.c_str(),
++                    "org.freedesktop.DBus.Properties", "Get"  );
++                readyMsg.append("xyz.openbmc_project.Object.Enable", "Enabled" );   
++                try
++                {
++                    auto intMsg = crow::connections::systemBus->call(readyMsg);
++                    intMsg.read(enable);
++                    if( !(std::get<bool>(enable)) ){
++                        BMCWEB_LOG_DEBUG << "System deleted.";
++                        messages::internalError(asyncResp->res);
++                        return;
++                    }
++                }catch (const sdbusplus::exception::SdBusError& e)
++                {
++                    BMCWEB_LOG_ERROR << "Error: " << e.what();
++                    messages::internalError(asyncResp->res);
++                    return;
++                }                
++
++                asyncResp->res.jsonValue["Id"] = systemid;
++                asyncResp->res.jsonValue["SystemType"] = "Composed";
++                asyncResp->res.jsonValue["@odata.context"] =
++                    "/redfish/v1/$metadata#ComputerSystem.ComputerSystem";
++                asyncResp->res.jsonValue["@odata.type"] = "#ComputerSystem.v1_7_0.ComputerSystem";
++                asyncResp->res.jsonValue["@odata.id"] = "/redfish/v1/Systems/"+systemid;
++                asyncResp->res.jsonValue["Boot"]["BootSourceOverrideTarget@Redfish.AllowableValues"] =
++                {"None", "Pxe", "Hdd", "Cd", "Diags", "BiosSetup", "Usb"};
++                asyncResp->res.jsonValue["Processors"] = { {"@odata.id","/redfish/v1/Systems/"+systemid+"/Processors"} };
++                asyncResp->res.jsonValue["Memory"] = { {"@odata.id","/redfish/v1/Systems/"+systemid+"/Memory"} };
++                asyncResp->res.jsonValue["EthernetInterfaces"] = { {"@odata.id","/redfish/v1/Systems/"+systemid+"/EthernetInterfaces"} };
++                asyncResp->res.jsonValue["Storage"] = { {"@odata.id","/redfish/v1/Systems/"+systemid+"/Storage"} };
++
++                crow::connections::systemBus->async_method_call(
++                [asyncResp](const boost::system::error_code ec,
++                            const std::variant<std::string>& name) {
++
++                    if(ec){
++                        BMCWEB_LOG_ERROR << ec;
++                    }
++                    asyncResp->res.jsonValue["Name"] = *(std::get_if<std::string>(&name));
++                },
++                INVENTORY_MANAGER_SERVICE, 
++                INVENTORY_SYSTEM_OBJECT_BASE+"/"+systemid,
++                "org.freedesktop.DBus.Properties", "Get",
++                "xyz.openbmc_project.Inventory.Composition.System", "Name"
++                );
++                crow::connections::systemBus->async_method_call(
++                [asyncResp](const boost::system::error_code ec,
++                            std::variant<std::vector<std::string>>& link) {
++
++                    if(ec){
++                        BMCWEB_LOG_ERROR << ec;
++                    }
++                    std::vector<std::string>* data =
++                                    std::get_if<std::vector<std::string>>(
++                                        &link);
++                    for(const std::string& item : *data){
++                        asyncResp->res.jsonValue["Links"]["ResourceBlocks"] += { {"@odata.id", item} };
++                    }
++                },
++                INVENTORY_MANAGER_SERVICE, 
++                INVENTORY_SYSTEM_OBJECT_BASE+"/"+systemid,
++                "org.freedesktop.DBus.Properties", "Get",
++                "xyz.openbmc_project.Inventory.Composition.System", "Link"
++                );         
++
++                crow::connections::systemBus->async_method_call(
++                [asyncResp](const boost::system::error_code ec,
++                            const std::variant<bool>& boot_enable) {
++
++                    if(ec){
++                        BMCWEB_LOG_ERROR << ec;
++                    }
++                    asyncResp->res.jsonValue["Boot"]["BootSourceOverrideEnabled"] = *(std::get_if<bool>(&boot_enable));
++                },
++                INVENTORY_MANAGER_SERVICE, 
++                INVENTORY_SYSTEM_OBJECT_BASE+"/"+systemid+"/boot",
++                "org.freedesktop.DBus.Properties", "Get",
++                "xyz.openbmc_project.Object.Enable", "Enabled"
++                ); 
++
++                crow::connections::systemBus->async_method_call(
++                [asyncResp](const boost::system::error_code ec,
++                            const std::variant<std::string>& source) {
++
++                    if(ec){
++                        BMCWEB_LOG_ERROR << ec;
++                    }
++                    std::string bootsource = dbusToRfBootSource( *(std::get_if<std::string>(&source)) );
++
++                    asyncResp->res.jsonValue["Boot"]["BootSourceOverrideTarget"] = bootsource;
++                },
++                INVENTORY_MANAGER_SERVICE, 
++                INVENTORY_SYSTEM_OBJECT_BASE+"/"+systemid+"/boot",
++                "org.freedesktop.DBus.Properties", "Get",
++                "xyz.openbmc_project.Control.Boot.Source", "BootSource"
++                );                     
++
++                crow::connections::systemBus->async_method_call(
++                [asyncResp](const boost::system::error_code ec,
++                            const std::variant<std::string>& id) {
++
++                    if(ec){
++                        BMCWEB_LOG_ERROR << ec;
++                    }
++
++                    asyncResp->res.jsonValue["UUID"] = *(std::get_if<std::string>(&id));
++                },
++                INVENTORY_MANAGER_SERVICE, 
++                INVENTORY_SYSTEM_OBJECT_BASE+"/"+systemid,
++                "org.freedesktop.DBus.Properties", "Get",
++                "xyz.openbmc_project.Common.UUID", "UUID"
++                ); 
++            });  
++
++    BMCWEB_ROUTE(app, "/redfish/v1/Systems/<str>/")
++        .privileges(redfish::privileges::patchComputerSystem)
++        .methods(boost::beast::http::verb::delete_)(
++            [](const crow::Request&,
++               const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
++               const std::string systemid) {          
++                std::string path = "/xyz/openbmc_project/inventory/CompositionService/Systems/"+systemid;
++                std::string cmd = "rm -rf "+INVENTORY_CACHE_PATH_BASE+"/CompositionService/Systems/"+systemid;
++                std::string system_redfish = "/redfish/v1/Systems/"+systemid;
++
++                crow::connections::systemBus->async_method_call(
++                [asyncResp, cmd, path, systemid, system_redfish](const boost::system::error_code ec) {
++                    std::variant<std::vector<std::string>> link;    
++                    std::vector<std::string> link_list; 
++                    if(ec){
++                        BMCWEB_LOG_ERROR << ec;
++                        messages::internalError(asyncResp->res);
++                        return;
++                    }
++                    int result = system(cmd.c_str());
++                    if(result < 0){
++                        BMCWEB_LOG_ERROR << "Command error";
++                        messages::internalError(asyncResp->res);
++                        return;
++                    }
++                    auto readyMsg = crow::connections::systemBus->new_method_call( 
++                        "xyz.openbmc_project.Inventory.Manager", path.c_str(),
++                        "org.freedesktop.DBus.Properties", "Get"  );
++                    readyMsg.append( "xyz.openbmc_project.Inventory.Composition.System", "Link" );   
++                    try
++                    {
++                        auto intMsg = crow::connections::systemBus->call(readyMsg);
++                        intMsg.read(link);
++                        std::vector<std::string>& temp = std::get<std::vector<std::string>>(link);
++                        link_list = std::move(temp);
++                    }catch (const sdbusplus::exception::SdBusError& e)
++                    {
++                        BMCWEB_LOG_ERROR << "Error: " << e.what();
++                    }
++                    BMCWEB_LOG_ERROR << link_list.size();
++                    for(std::string& item : link_list){
++                        std::variant<std::vector<std::string>> sys;    
++                        std::vector<std::string> system_list;       
++
++                        std::string s = item.substr( item.find_last_of("/")+1, item.length()-1 );
++                        s = "/xyz/openbmc_project/inventory/CompositionService/ResourceBlocks/"+s;
++                        auto response = crow::connections::systemBus->new_method_call( 
++                        "xyz.openbmc_project.Inventory.Manager", s.c_str(),
++                        "org.freedesktop.DBus.Properties", "Get"  );
++                        response.append( "xyz.openbmc_project.Inventory.Composition.ResourceBlock", "ComputerSystems" );   
++                        try
++                        {
++                            auto intMsg = crow::connections::systemBus->call(response);
++                            intMsg.read(sys);
++                            std::vector<std::string>& list = std::get<std::vector<std::string>>(sys);
++                            BMCWEB_LOG_DEBUG << list.size();    
++                            if(list.size()!=0){
++                                std::vector<std::string>::iterator it = std::find( list.begin(), list.end(), system_redfish );
++                                if( it != list.end() ){
++                                    list.erase(it);
++                                    system_list = std::move(list);
++                                }else{
++                                    return;
++                                }
++                            }
++                        }catch (const sdbusplus::exception::SdBusError& e)
++                        {
++                            BMCWEB_LOG_ERROR << "Can't set computersystems " << path  <<"\nError: " << e.what();
++                            return;
++                        }  
++
++                        readyMsg = crow::connections::systemBus->new_method_call( 
++                            "xyz.openbmc_project.Inventory.Manager", s.c_str(),
++                            "org.freedesktop.DBus.Properties", "Set"
++                              );
++                        readyMsg.append( "xyz.openbmc_project.Inventory.Composition.ResourceBlock", "ComputerSystems", std::variant<std::vector<std::string>>(system_list) ); 
++                        try
++                        {
++                            auto intMsg = crow::connections::systemBus->call(readyMsg);
++                        }catch (const sdbusplus::exception::SdBusError& e)
++                        {
++                            BMCWEB_LOG_ERROR << "Error: " << e.what();
++                        }                                                 
++                    }                    
++                },
++                "xyz.openbmc_project.Inventory.Manager", path.c_str(),
++                "org.freedesktop.DBus.Properties", "Set" ,
++                "xyz.openbmc_project.Object.Enable", "Enabled",
++                std::variant<bool>(false)
++                );                
++        });   
++    BMCWEB_ROUTE(app, "/redfish/v1/Systems/<str>/")
++        .privileges(redfish::privileges::patchComputerSystem)
++        .methods(boost::beast::http::verb::patch)(
++            [&app](const crow::Request& req,
++               const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
++               const std::string systemid) {   
++                std::string path = "/xyz/openbmc_project/inventory/CompositionService/Systems/"+systemid;
++                std::string boot_path = path + "/boot";
++                std::optional<std::string> name; 
++                std::optional<nlohmann::json> links;
++                std::optional<std::vector<nlohmann::json>> blocks;
++                std::optional<nlohmann::json> bootProps;
++                nlohmann::json request;
++
++                if (!redfish::setUpRedfishRoute(app, req, asyncResp))
++                {
++                    return;
++                }
++                
++                if (!json_util::readJson(request, asyncResp->res, "Name", name, "Links", links, "Boot", bootProps) )
++                {
++                    return;
++                }
++                if(links){        
++                    if (!json_util::readJson(*links, asyncResp->res,
++                                             "ResourceBlocks",
++                                             blocks))
++                    {
++                        return;
++                    }
++                }
++
++                if(name){
++                    crow::connections::systemBus->async_method_call(
++                    [asyncResp](const boost::system::error_code ec) {
++
++                        if(ec){
++                            BMCWEB_LOG_ERROR << ec;
++                        }
++                    },
++                    "xyz.openbmc_project.Inventory.Manager", path.c_str() ,
++                    "org.freedesktop.DBus.Properties", "Set",
++                    "xyz.openbmc_project.Inventory.Composition.System", "Name",
++                    std::variant<std::string>(*name)
++                    );
++
++                }
++
++                if(blocks){
++                    std::vector<std::string> link_list;
++                    for(const auto& i : *blocks){
++                        link_list.push_back(i["@odata.id"]);
++                    }
++                    crow::connections::systemBus->async_method_call(
++                    [asyncResp](const boost::system::error_code ec) {
++
++                        if(ec){
++                            BMCWEB_LOG_ERROR << ec;
++                        }
++                    },
++                    "xyz.openbmc_project.Inventory.Manager", path.c_str() ,
++                    "org.freedesktop.DBus.Properties", "Set",
++                    "xyz.openbmc_project.Inventory.Composition.System", "Link",
++                    std::variant<std::vector<std::string>>(link_list)
++                    );                    
++                }
++
++                if (bootProps)
++                {
++                    std::optional<std::string> bootSource;
++                    std::optional<std::string> bootEnable;
++
++                    if (!json_util::readJson(
++                            *bootProps, asyncResp->res,
++                            "BootSourceOverrideTarget", bootSource,
++                            "BootSourceOverrideEnabled", bootEnable ))
++                    {
++                        return;
++                    }
++
++                    if(bootEnable){
++                        bool enable;
++                        if(*bootEnable=="Disabled"){
++                            enable = false;
++                        }else{
++                            enable = true;
++                        }
++                        crow::connections::systemBus->async_method_call(
++                        [asyncResp](const boost::system::error_code ec) {
++
++                            if(ec){
++                                BMCWEB_LOG_ERROR << ec;
++                            }
++                        },
++                        "xyz.openbmc_project.Inventory.Manager", boot_path.c_str() ,
++                        "org.freedesktop.DBus.Properties", "Set",
++                        "xyz.openbmc_project.Object.Enable", "Enabled",
++                        std::variant<bool>(enable)
++                        ); 
++                    }
++
++                    if(bootSource){
++                        std::string boot_source, temp;
++                        assignBootParameters(asyncResp, *bootSource, boot_source, temp);
++                        crow::connections::systemBus->async_method_call(
++                        [asyncResp](const boost::system::error_code ec) {
++
++                            if(ec){
++                                BMCWEB_LOG_ERROR << ec;
++                            }
++                        },
++                        "xyz.openbmc_project.Inventory.Manager", boot_path.c_str() ,
++                        "org.freedesktop.DBus.Properties", "Set",
++                        "xyz.openbmc_project.Control.Boot.Source", "BootSource",
++                        std::variant<std::string>(boot_source)
++                        );   
++                    }
++                }
++     });      
+ }
+ 
+ /**
+-- 
+2.33.0
+

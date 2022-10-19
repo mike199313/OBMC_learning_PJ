@@ -1,0 +1,29 @@
+From bdeb6e086477841f6fefd7c02055f52bec988c3a Mon Sep 17 00:00:00 2001
+From: Jason Lin <lin.jasonyy@inventec.com>
+Date: Thu, 23 Jun 2022 10:28:12 +0800
+Subject: [PATCH 5/6] bug 1073, 1074 - [Transformers][OpenBMC][WebUI][log]error
+ message "Successfully deleted 1 log" while delete all logs with selection.
+
+---
+ src/views/Logs/EventLogs/EventLogs.vue | 5 +----
+ 1 file changed, 1 insertion(+), 4 deletions(-)
+
+diff --git a/src/views/Logs/EventLogs/EventLogs.vue b/src/views/Logs/EventLogs/EventLogs.vue
+index 5b8ca11..986c6ba 100644
+--- a/src/views/Logs/EventLogs/EventLogs.vue
++++ b/src/views/Logs/EventLogs/EventLogs.vue
+@@ -534,10 +534,7 @@ export default {
+             if (deleteConfirmed) {
+               if (this.selectedRows.length === this.allLogs.length) {
+                 this.$store
+-                  .dispatch(
+-                    'eventLog/deleteAllEventLogs',
+-                    this.selectedRows.length
+-                  )
++                  .dispatch('eventLog/deleteAllEventLogs', this.selectedRows)
+                   .then(() => {
+                     this.successToast(
+                       this.$tc('pageEventLogs.toast.successDelete', uris.length)
+-- 
+2.33.0
+

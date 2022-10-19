@@ -1,0 +1,90 @@
+{
+  "RIS":{
+    "1":{
+      "Servicetype":"CD Media",
+      "Imagename":"",
+      "Sourcepath":"",
+      "Destpath":"",
+      "IPaddress":"0.0.0.0",
+      "Port":9753,
+      "Username":"",
+      "Password":"",
+      "Sharetype":"NBD",
+      "Domainname":"",
+      "Startmount":0,
+      "Mountstatus":1,
+      "Nbdclient":"/dev/nbd1",
+      "RISstate":0
+    }, 
+    "2":{
+      "Servicetype":"FD Media",
+      "Imagename":"",
+      "Sourcepath":"",
+      "Destpath":"",
+      "IPaddress":"0.0.0.0",
+      "Port":9753,
+      "Username":"",
+      "Password":"",
+      "Sharetype":"NBD",
+      "Domainname":"",
+      "Startmount":0,
+      "Mountstatus":1,
+      "Nbdclient":"/dev/nbd2",
+      "RISstate":0
+    }, 
+    "4":{
+      "Servicetype":"HD Media",
+      "Imagename":"",
+      "Sourcepath":"",
+      "Destpath":"",
+      "IPaddress":"0.0.0.0",
+      "Port":9753,
+      "Username":"",
+      "Password":"",
+      "Sharetype":"NBD",
+      "Domainname":"",
+      "Startmount":1,
+      "Mountstatus":1,
+      "Nbdclient":"/dev/nbd4",
+      "RISstate":0
+    },
+    "8":{
+      "Servicetype":"Remote Image Service",
+      "Imagename":"image.iso",
+      "Sourcepath":"/usr/srvroot/nfsexport",
+      "Destpath":"/mnt/nfsexport",
+      "IPaddress":"0.0.0.0",
+      "Port":9753,
+      "Username":"",
+      "Password":"",
+      "Sharetype":"NFS",
+      "Domainname":"",
+      "Startmount":1,
+      "Mountstatus":1,
+      "Nbdclient":"/dev/nbd8",
+      "RISstate":1
+    }
+  },
+  
+  "MEDIARedirect":[
+    {
+     
+      "Mediatype":"1",
+      "Imagetype":"4",
+      "Redirectionstate":0,
+      "Imageindex":"4",
+      "Gadgetnum":5
+    },
+    {
+     
+      "Mediatype":"1",
+      "Imagetype":"4",
+      "Redirectionstate":0,
+      "Imageindex":"8",
+      "Gadgetnum":7
+    }
+  ]
+}
+
+
+

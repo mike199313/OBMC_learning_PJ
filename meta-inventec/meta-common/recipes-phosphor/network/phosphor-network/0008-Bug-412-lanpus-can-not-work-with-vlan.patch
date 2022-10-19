@@ -1,0 +1,220 @@
+From 273012444c21246b40d6e787312a1f4758ecf20a Mon Sep 17 00:00:00 2001
+From: Tommy Lin <lin.tommysc@inventec.com>
+Date: Tue, 8 Mar 2022 07:20:35 +0000
+Subject: [PATCH 08/10] Bug 412 [Transformers][OpenBMC][IPMI] lanpus can not
+ work with vlan tag
+
+    Symptom/Reason :
+        - ipmitool can not connect to BMC box after setting up vlan in bmc box
+
+    Root Cause:
+        - the netipmid process should be restarted to re-binding the vlan interface
+
+    Solution/Change:
+        [phosphor-network]
+            - arrange a timer to restart the netipmid process to re-bind the vlan interface
+                after the vlan interface on bmcbox is created or be destroyed.
+            - The network manager will get the vlan parent interface name which creating vlan object and delete vlan object. Manger will save the interface name in manager. Then Manager will restart the netipmid by using the stored interface name.
+
+    Entry Test:
+        - in bmcbox
+            -- setup vlan
+                -- ipmitool lan set 1 vlan id 2
+            -- ensure the netipmid restart
+                -- ps | grep netipmid
+                -- the pid of netipmid will change
+
+        -- in clinet, testing by ipmitool command
+            -- ipmitool -I lanplus -C17 -H 10.6.141.170 -p 623 -U root -P 0penBmc shell
+            -- it will connect to bmcbox
+            -- ipmitool> lan print
+                Set in Progress         : Set Complete
+                Auth Type Support       :
+                Auth Type Enable        : Callback :
+                                        : User     :
+                                        : Operator :
+                                        : Admin    :
+                                        : OEM      :
+                IP Address Source       : Static Address
+                IP Address              : 192.168.2.20
+                Subnet Mask             : 255.255.255.0
+                MAC Address             : 00:03:ff:00:00:cc
+                SNMP Community String   : public
+                Default Gateway IP      : 10.0.2.2
+                Default Gateway MAC     : 00:00:00:00:00:00
+                802.1q VLAN ID          : 2
+                802.1q VLAN Priority    : 0
+                RMCP+ Cipher Suites     : 17
+---
+ src/ethernet_interface.cpp   |  2 ++
+ src/network_manager.cpp      | 42 ++++++++++++++++++++++++++++++++++++
+ src/network_manager.hpp      |  9 ++++++++
+ src/network_manager_main.cpp | 12 +++++++++++
+ src/types.hpp                |  2 ++
+ 5 files changed, 67 insertions(+)
+
+diff --git a/src/ethernet_interface.cpp b/src/ethernet_interface.cpp
+index 9fafc01..5bfd9f2 100644
+--- a/src/ethernet_interface.cpp
++++ b/src/ethernet_interface.cpp
+@@ -538,6 +538,7 @@ void EthernetInterface::deleteVLANObject(const std::string& interface)
+ 
+     writeConfigurationFile();
+     manager.reloadConfigs();
++    manager.startNetipmidTimer();
+ }
+ 
+ std::string EthernetInterface::generateObjectPath(
+@@ -1020,6 +1021,7 @@ ObjectPath EthernetInterface::createVLAN(VlanId id)
+ 
+     writeConfigurationFile();
+     manager.reloadConfigs();
++    manager.startNetipmidTimer();
+ 
+     return path;
+ }
+diff --git a/src/network_manager.cpp b/src/network_manager.cpp
+index 2a206d9..cf0dbd8 100644
+--- a/src/network_manager.cpp
++++ b/src/network_manager.cpp
+@@ -37,6 +37,7 @@ namespace network
+ 
+ extern std::unique_ptr<Timer> reloadTimer;
+ extern std::unique_ptr<Timer> restartNicTimer;
++extern std::unique_ptr<Timer> restartNetipmidTimer;
+ using namespace phosphor::logging;
+ using namespace sdbusplus::xyz::openbmc_project::Common::Error;
+ 
+@@ -296,6 +297,38 @@ void Manager::startNicResetTimer()
+     restartNicTimer->restartOnce(restartNicTimeout);
+ }
+ 
++void Manager::restartSystemdUnit(const std::string& unit)
++{
++    try
++    {
++        auto method = bus.new_method_call(SYSTEMD_BUSNAME, SYSTEMD_PATH,
++                                          SYSTEMD_INTERFACE, "ResetFailedUnit");
++        method.append(unit);
++        bus.call_noreply(method);
++    }
++    catch (const sdbusplus::exception::SdBusError& ex)
++    {
++        log<level::ERR>("Failed to reset failed unit",
++                        entry("UNIT=%s", unit.c_str()),
++                        entry("ERR=%s", ex.what()));
++        elog<InternalFailure>();
++    }
++
++    try
++    {
++        auto method = bus.new_method_call(SYSTEMD_BUSNAME, SYSTEMD_PATH,
++                                          SYSTEMD_INTERFACE, "RestartUnit");
++        method.append(unit.c_str(), "replace");
++        bus.call_noreply(method);
++    }
++    catch (const sdbusplus::exception::SdBusError& ex)
++    {
++        log<level::ERR>("Failed to restart service", entry("ERR=%s", ex.what()),
++                        entry("UNIT=%s", unit.c_str()));
++        elog<InternalFailure>();
++    }
++}
++
+ void Manager::restartNIC(const std::string& interface)
+ {
+     for (const auto& intf : interfaces)
+@@ -310,5 +343,14 @@ void Manager::restartNIC(const std::string& interface)
+     }
+ }
+ 
++void Manager::startNetipmidTimer(void)
++{
++    using namespace std::chrono;
++    if (restartNetipmidTimer)
++    {
++        restartNetipmidTimer->restartOnce(restartNetipmidTimeout);
++    }
++}
++
+ } // namespace network
+ } // namespace phosphor
+diff --git a/src/network_manager.hpp b/src/network_manager.hpp
+index 20f2d5e..4fd9426 100644
+--- a/src/network_manager.hpp
++++ b/src/network_manager.hpp
+@@ -137,12 +137,21 @@ class Manager : public details::VLANCreateIface
+     /** @brief restart the NIC timer. */
+     void startNicResetTimer();
+ 
++    /** @brief Restart the systemd unit
++     *  @param[in] unit - systemd unit name which needs to be
++     *                    restarted.
++     */
++    virtual void restartSystemdUnit(const std::string& unit);
++
+     /** @brief Restart the NIC card
+      *  @param[in] interface - NIC interface which needs to be
+      *                         restarted.
+      */
+     virtual void restartNIC(const std::string& interface);
+ 
++    /** @brief restart the netipmid timer */
++    void startNetipmidTimer(void);
++
+     /** @brief Returns the number of interfaces under this manager.
+      *
+      * @return the number of interfaces managed by this manager.
+diff --git a/src/network_manager_main.cpp b/src/network_manager_main.cpp
+index 0a3cae4..f4e1059 100644
+--- a/src/network_manager_main.cpp
++++ b/src/network_manager_main.cpp
+@@ -50,6 +50,7 @@ std::unique_ptr<phosphor::network::Manager> manager = nullptr;
+ std::unique_ptr<Timer> refreshObjectTimer = nullptr;
+ std::unique_ptr<Timer> reloadTimer = nullptr;
+ std::unique_ptr<Timer> restartNicTimer = nullptr;
++std::unique_ptr<Timer> restartNetipmidTimer = nullptr;
+ 
+ #ifdef SYNC_MAC_FROM_INVENTORY
+ std::unique_ptr<sdbusplus::bus::match::match> EthInterfaceMatch = nullptr;
+@@ -264,6 +265,16 @@ void reloadNetworkd()
+     }
+ }
+ 
++void restartNetipmid(void)
++{
++    if (manager)
++    {
++        log<level::INFO>("Sending ipmi-net reload");
++        manager->restartSystemdUnit("phosphor-ipmi-net@" DEFAULT_NIC ".service");
++        log<level::INFO>("Done ipmi-net reload");
++    }
++}
++
+ void initializeTimers()
+ {
+     auto event = sdeventplus::Event::get_default();
+@@ -271,6 +282,7 @@ void initializeTimers()
+         std::make_unique<Timer>(event, std::bind(refreshObjects));
+     reloadTimer = std::make_unique<Timer>(event, std::bind(reloadNetworkd));
+     restartNicTimer = std::make_unique<Timer>(event, std::bind(restartNic));
++    restartNetipmidTimer = std::make_unique<Timer>(event, std::bind(restartNetipmid));
+ }
+ 
+ } // namespace network
+diff --git a/src/types.hpp b/src/types.hpp
+index 4f9244c..65cf7d2 100644
+--- a/src/types.hpp
++++ b/src/types.hpp
+@@ -36,6 +36,8 @@ constexpr auto refreshTimeout = reloadTimeout + 7s;
+ 
+ constexpr auto restartNicTimeout = refreshTimeout + 2s;
+ 
++constexpr auto restartNetipmidTimeout = refreshTimeout + 4s;
++
+ namespace systemd
+ {
+ namespace config
+-- 
+2.33.0
+

@@ -1,0 +1,12 @@
+{
+    "sys_param_3": [
+        0,
+        "OpenBMC"
+    ],
+    "ServiceName": "IPMI_HOST",
+    "ServiceID": "2",
+    "DefaultState": "Enable",
+    "TimeStamp": "2022-05-24T17:09:30",
+    "ConfigVersion": "1.0.0",
+    "SchemaVersion": "1.0"
+}

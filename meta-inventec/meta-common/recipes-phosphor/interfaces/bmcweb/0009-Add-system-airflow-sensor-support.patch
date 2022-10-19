@@ -1,0 +1,38 @@
+From 0a2ee86c5fe8bd0ac7f6f7509dc983d81908268e Mon Sep 17 00:00:00 2001
+From: Tommy Lin <lin.tommysc@inventec.com>
+Date: Tue, 11 Jan 2022 07:11:36 +0000
+Subject: [PATCH 09/17] Add system airflow sensor support
+
+Add units for system airflow sensor
+---
+ redfish-core/lib/sensors.hpp | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/redfish-core/lib/sensors.hpp b/redfish-core/lib/sensors.hpp
+index 44faca67..9da84a74 100644
+--- a/redfish-core/lib/sensors.hpp
++++ b/redfish-core/lib/sensors.hpp
+@@ -58,7 +58,8 @@ static auto sensorPaths = std::to_array<std::string_view>({
+     "/xyz/openbmc_project/sensors/power",
+     "/xyz/openbmc_project/sensors/current",
+     "/xyz/openbmc_project/sensors/airflow",
+-               "/xyz/openbmc_project/sensors/humidity",
++    "/xyz/openbmc_project/sensors/humidity",
++    "/xyz/openbmc_project/sensors/cfm",
+ #ifdef BMCWEB_NEW_POWERSUBSYSTEM_THERMALSUBSYSTEM
+     "/xyz/openbmc_project/sensors/voltage",
+     "/xyz/openbmc_project/sensors/fan_tach",
+@@ -144,6 +145,10 @@ inline const char* toReadingUnits(const std::string& sensorType)
+     {
+         return "A";
+     }
++    if (sensorType == "cfm")
++    {
++        return "CFM";
++    }
+     if (sensorType == "fan_tach")
+     {
+         return "RPM";
+-- 
+2.33.0
+

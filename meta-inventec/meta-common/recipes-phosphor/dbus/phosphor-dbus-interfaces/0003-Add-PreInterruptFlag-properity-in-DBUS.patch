@@ -1,0 +1,40 @@
+From f78eeee21c092076af7bbd95b708c61ffd9cb5fe Mon Sep 17 00:00:00 2001
+From: Ren Yu <yux.ren@intel.com>
+Date: Mon, 29 Jul 2019 10:51:12 +0800
+Subject: [PATCH 03/20] Add PreInterruptFlag properity in DBUS.
+
+PreTimeoutInterruptOccurFlag in DBUS would be set 'true'
+when watchdog pre-timeout interrupt occurred.
+
+Tested:
+Enable command(raw 0x06 0x31) that get message flag
+can set right bit about watchdog,
+need record PreTimeoutInterruptOccurFlag
+at xyz.openbmmc_project.State.Watchdog when watchdog
+pre-timeout interrupt occurred.
+
+Signed-off-by: Ren Yu <yux.ren@intel.com>
+---
+ yaml/xyz/openbmc_project/State/Watchdog.interface.yaml | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/yaml/xyz/openbmc_project/State/Watchdog.interface.yaml b/yaml/xyz/openbmc_project/State/Watchdog.interface.yaml
+index 3eda1b7..db2f393 100644
+--- a/yaml/xyz/openbmc_project/State/Watchdog.interface.yaml
++++ b/yaml/xyz/openbmc_project/State/Watchdog.interface.yaml
+@@ -60,6 +60,12 @@ properties:
+           The timer user at the time of expiration.
+       default: "Reserved"
+ 
++    - name: PreTimeoutInterruptOccurFlag
++      type: boolean
++      description: >
++          PreTimeoutInterruptOccurFlag that preTimeoutInterrupt action occurred.
++      default: false
++
+ enumerations:
+     - name: Action
+       description: >
+-- 
+2.33.0
+

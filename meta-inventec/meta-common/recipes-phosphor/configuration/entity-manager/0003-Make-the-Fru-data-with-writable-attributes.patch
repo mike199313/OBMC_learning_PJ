@@ -1,0 +1,129 @@
+From 3da54274df49bd1fdc82c24d7c6e73b6363563f4 Mon Sep 17 00:00:00 2001
+From: Matt Cheng <cheng.matt@inventec.com>
+Date: Mon, 5 Sep 2022 11:08:49 +0800
+Subject: [PATCH] Make the Fru data with writable attributes.
+
+Symptom/Reason:
+        The dbus cannot modify the Fru data, so make the Fru data with writable attributes.
+
+Solution/Change:
+        [Entity Manager]
+          1. Make all property has a writable attribute.
+          2. Change the productName with bus and address.
+
+Entry Test:
+        busctl tree xyz.openbmc_project.FruDevice
+        busctl set-property xyz.openbmc_project.FruDevice /xyz/openbmc_project/FruDevice/3_80 xyz.openbmc_project.FruDevice BOARD_PRODUCT_NAME s "TRANSFORMERS"
+---
+ meson_options.txt |  2 +-
+ src/FruDevice.cpp | 61 ++++++++++++++++++++++-------------------------
+ 2 files changed, 30 insertions(+), 33 deletions(-)
+ mode change 100644 => 100755 meson_options.txt
+ mode change 100644 => 100755 src/FruDevice.cpp
+
+diff --git a/meson_options.txt b/meson_options.txt
+old mode 100644
+new mode 100755
+index 770451d..df01f92
+--- a/meson_options.txt
++++ b/meson_options.txt
+@@ -5,5 +5,5 @@ option(
+     'fru-device', type: 'boolean', description: 'Build fru-device.',
+ )
+ option(
+-    'fru-device-resizefru', value : false, type: 'boolean', description: 'Allow FruDevice to resize FRU areas.',
++    'fru-device-resizefru', value : true, type: 'boolean', description: 'Allow FruDevice to resize FRU areas.',
+ )
+diff --git a/src/FruDevice.cpp b/src/FruDevice.cpp
+old mode 100644
+new mode 100755
+index fe1461b..59215c3
+--- a/src/FruDevice.cpp
++++ b/src/FruDevice.cpp
+@@ -676,7 +676,9 @@ void addFruObjectToDbus(
+         unknownBusObjectCount++;
+     }
+ 
+-    productName = "/xyz/openbmc_project/FruDevice/" + productName;
++    //Modified by Matt, Change the Fru Device path from product name to [bus]_[address]
++    productName = "/xyz/openbmc_project/FruDevice/" + std::to_string(bus) + "_" + std::to_string(address);
++
+     // avoid duplicates by checking to see if on a mux
+     if (bus > 0)
+     {
+@@ -744,37 +746,32 @@ void addFruObjectToDbus(
+         std::string key =
+             std::regex_replace(property.first, nonAsciiRegex, "_");
+ 
+-        if (property.first == "PRODUCT_ASSET_TAG")
+-        {
+-            std::string propertyName = property.first;
+-            iface->register_property(
+-                key, property.second + '\0',
+-                [bus, address, propertyName, &dbusInterfaceMap,
+-                 &unknownBusObjectCount, &powerIsOn, &objServer,
+-                 &systemBus](const std::string& req, std::string& resp) {
+-                    if (strcmp(req.c_str(), resp.c_str()) != 0)
++        //Modified by Matt, make all VPD with writable attributes.
++        std::string propertyName = property.first;
++        iface->register_property(
++            key, property.second + '\0',
++            [bus, address, propertyName, &dbusInterfaceMap,
++            &unknownBusObjectCount, &powerIsOn, &objServer,
++            &systemBus](const std::string& req, std::string& resp) {
++                if (strcmp(req.c_str(), resp.c_str()) != 0)
++                {
++                    // call the method which will update
++                    if (updateFRUProperty(req, bus, address, propertyName,
++                                        dbusInterfaceMap,
++                                        unknownBusObjectCount, powerIsOn,
++                                        objServer, systemBus))
+                     {
+-                        // call the method which will update
+-                        if (updateFRUProperty(req, bus, address, propertyName,
+-                                              dbusInterfaceMap,
+-                                              unknownBusObjectCount, powerIsOn,
+-                                              objServer, systemBus))
+-                        {
+-                            resp = req;
+-                        }
+-                        else
+-                        {
+-                            throw std::invalid_argument(
+-                                "FRU property update failed.");
+-                        }
++                        resp = req;
+                     }
+-                    return 1;
+-                });
+-        }
+-        else if (!iface->register_property(key, property.second + '\0'))
+-        {
+-            std::cerr << "illegal key: " << key << "\n";
+-        }
++                    else
++                    {
++                        throw std::invalid_argument(
++                            "FRU property update failed.");
++                    }
++                }
++                return 1;
++            });
++
+         if (debug)
+         {
+             std::cout << property.first << ": " << property.second << "\n";
+@@ -1289,8 +1286,8 @@ bool updateFRUProperty(
+         std::copy(restFRUAreasData.begin(), restFRUAreasData.end(),
+                   fruData.begin() + nextFRUAreaNewLoc);
+         // Update Common Header
+-        for (int fruArea = fruAreaInternal; fruArea <= fruAreaMultirecord;
+-             fruArea++)
++        for (fruAreas fruArea = fruAreas::fruAreaInternal; fruArea <= fruAreas::fruAreaMultirecord;
++             ++fruArea)
+         {
+             unsigned int fruAreaOffsetField = getHeaderAreaFieldOffset(fruArea);
+             size_t curFRUAreaOffset = fruData[fruAreaOffsetField];
+-- 
+2.33.0
+

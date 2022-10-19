@@ -1,0 +1,37 @@
+From 55746b24c23c83d3017afa8d98e55358fd80b893 Mon Sep 17 00:00:00 2001
+From: cynthia <wu.cynthia@inventec.com>
+Date: Mon, 25 Apr 2022 10:48:21 +0800
+Subject: [PATCH] Remove extra '"' in config-static-bmc-reboot.json.in to fix
+ json format error
+
+---
+ bmc/firmware-handler/config-static-bmc-reboot.json.in | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/bmc/firmware-handler/config-static-bmc-reboot.json.in b/bmc/firmware-handler/config-static-bmc-reboot.json.in
+index e2618e8..fafc3ab 100644
+--- a/bmc/firmware-handler/config-static-bmc-reboot.json.in
++++ b/bmc/firmware-handler/config-static-bmc-reboot.json.in
+@@ -2,16 +2,16 @@
+ 	"blob": "/flash/image",
+ 	"handler": {
+ 		"type": "file",
+-		"path": "@STATIC_HANDLER_STAGED_NAME@"
++		"path": @STATIC_HANDLER_STAGED_NAME@
+ 	},
+ 	"actions": {
+ 		"preparation": {
+ 			"type": "systemd",
+-			"unit": "@PREPARATION_DBUS_SERVICE@"
++			"unit": @PREPARATION_DBUS_SERVICE@
+ 		},
+ 		"verification": {
+ 			"type": "systemd",
+-			"unit": "@VERIFY_DBUS_SERVICE@"
++			"unit": @VERIFY_DBUS_SERVICE@
+ 		},
+ 		"update": {
+ 			"type": "reboot"
+-- 
+2.17.1
+

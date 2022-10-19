@@ -1,0 +1,37 @@
+From 075df46f114fc61d417c3d5f33e5949b02277b6c Mon Sep 17 00:00:00 2001
+From: Jason Lin <lin.jasonyy@inventec.com>
+Date: Fri, 24 Jun 2022 10:46:26 +0800
+Subject: [PATCH] Bug 1122, 1123 -
+ [Transformers][Transformers-nuv][OpenBMC][WebUI][hw status] Memory size is
+ empty of dimm info in Inventory and LEDs page.
+
+---
+ src/store/modules/HardwareStatus/MemoryStore.js | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/src/store/modules/HardwareStatus/MemoryStore.js b/src/store/modules/HardwareStatus/MemoryStore.js
+index fd8f0a9..c8809bc 100644
+--- a/src/store/modules/HardwareStatus/MemoryStore.js
++++ b/src/store/modules/HardwareStatus/MemoryStore.js
+@@ -26,7 +26,7 @@ const MemoryStore = {
+           SparePartNumber,
+           Description,
+           MemoryType,
+-          MemorySize,
++          // MemorySize,
+           LocationIndicatorActive,
+           Location,
+         } = data;
+@@ -45,7 +45,8 @@ const MemoryStore = {
+           sparePartNumber: SparePartNumber,
+           description: Description,
+           memoryType: MemoryType,
+-          memorySize: MemorySize,
++          memorySize: CapacityMiB,
++          // memorySize: MemorySize,
+           identifyLed: LocationIndicatorActive,
+           uri: data['@odata.id'],
+           locationNumber: Location?.PartLocation?.ServiceLabel,
+-- 
+2.33.0
+

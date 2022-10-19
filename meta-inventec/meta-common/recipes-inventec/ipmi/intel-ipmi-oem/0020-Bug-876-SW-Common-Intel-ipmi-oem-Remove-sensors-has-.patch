@@ -1,0 +1,56 @@
+From 6ce05fe9475b6cfe6ab801c1023d6a0e75296d03 Mon Sep 17 00:00:00 2001
+From: "pj.chen" <chen.pj@inventec.com>
+Date: Tue, 15 Mar 2022 06:55:29 +0000
+Subject: [PATCH 20/25] Bug 876 - [SW][Common][Intel-ipmi-oem] - Remove sensors
+ has no sensorInfo in subtree
+
+Symptom/Reason:
+    Intel-ipmi-oem would scan all dbus object path contains sensor relate interfaces.
+    But if sensor didn't contain sensorInfo, would cause SDR function error.
+
+Root Cause:
+    SDR is relate to sensorTree size, but also needs to get sensor
+    number in sensorInfo.
+
+Solution/Change:
+    Remove sensor without sensorInfo in sensorTree.
+
+Entry Test:
+sysadmin@starscream:~# ipmitool sdr list
+....
+Without error
+---
+ include/sdrutils.hpp | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/include/sdrutils.hpp b/include/sdrutils.hpp
+index 793d35d..5d88327 100644
+--- a/include/sdrutils.hpp
++++ b/include/sdrutils.hpp
+@@ -288,6 +288,23 @@ inline static uint16_t getSensorSubtree(std::shared_ptr<SensorSubTree>& subtree,
+         phosphor::logging::log<phosphor::logging::level::ERR>(e.what());
+         return -1;
+     }
++
++    /* Bug 876 - [SW][Common][Intel-ipmi-oem] - Remove sensors has no sensorInfo in subtree */
++    std::vector<std::string> removeTarget;
++    for (auto& sensor : *sensorTreePtr)
++    {
++        auto& subVect = sensor.second.begin()->second;
++
++        if (std::find(subVect.begin(), subVect.end(), ipmiInterface) == subVect.end())
++        {
++            removeTarget.push_back(sensor.first);
++        }
++    }
++    for(auto& it : removeTarget)
++    {
++        sensorTreePtr->erase(it);
++    }
++
+     subtree = sensorTreePtr;
+     sensorUpdatedIndex++;
+     // The SDR is being regenerated, wipe the old stats
+-- 
+2.33.0
+

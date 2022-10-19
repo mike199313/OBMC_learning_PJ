@@ -1,0 +1,296 @@
+From cd81d404d50372e69ce0be389f91cbfe936ef6af Mon Sep 17 00:00:00 2001
+From: cynthia <wu.cynthia@inventec.com>
+Date: Mon, 16 May 2022 14:39:48 +0800
+Subject: [PATCH 18/20] New dbus interfaces support for composition service
+
+    Symptom/Reason:
+	composition service commands not support
+
+    Root Cause:
+	N/A
+
+    Solution/Change:
+	Add yaml files and meson files for new dbus interface
+
+    Entry Test:
+	curl basic -u root:0penBmc -X GET https://${IP}/redfish/v1/CompositionService/ResourceBlocks -k
+---
+ .../Composition/ResourceBlock/meson.build     | 14 ++++++
+ .../Composition/ResourceZone/meson.build      | 14 ++++++
+ .../Inventory/Composition/System/meson.build  | 14 ++++++
+ .../Inventory/Composition/meson.build         | 42 ++++++++++++++++
+ .../Inventory/CompositionService/meson.build  | 14 ++++++
+ gen/xyz/openbmc_project/Inventory/meson.build | 15 ++++++
+ .../Composition/ResourceBlock.interface.yaml  | 48 +++++++++++++++++++
+ .../Composition/ResourceZone.interface.yaml   |  9 ++++
+ .../Composition/System.interface.yaml         |  7 +++
+ .../CompositionService.interface.yaml         | 10 ++++
+ 10 files changed, 187 insertions(+)
+ create mode 100644 gen/xyz/openbmc_project/Inventory/Composition/ResourceBlock/meson.build
+ create mode 100644 gen/xyz/openbmc_project/Inventory/Composition/ResourceZone/meson.build
+ create mode 100644 gen/xyz/openbmc_project/Inventory/Composition/System/meson.build
+ create mode 100644 gen/xyz/openbmc_project/Inventory/Composition/meson.build
+ create mode 100644 gen/xyz/openbmc_project/Inventory/CompositionService/meson.build
+ create mode 100644 yaml/xyz/openbmc_project/Inventory/Composition/ResourceBlock.interface.yaml
+ create mode 100644 yaml/xyz/openbmc_project/Inventory/Composition/ResourceZone.interface.yaml
+ create mode 100644 yaml/xyz/openbmc_project/Inventory/Composition/System.interface.yaml
+ create mode 100644 yaml/xyz/openbmc_project/Inventory/CompositionService.interface.yaml
+
+diff --git a/gen/xyz/openbmc_project/Inventory/Composition/ResourceBlock/meson.build b/gen/xyz/openbmc_project/Inventory/Composition/ResourceBlock/meson.build
+new file mode 100644
+index 0000000..9190dfe
+--- /dev/null
++++ b/gen/xyz/openbmc_project/Inventory/Composition/ResourceBlock/meson.build
+@@ -0,0 +1,14 @@
++# Generated file; do not modify.
++generated_sources += custom_target(
++    'xyz/openbmc_project/Inventory/Composition/ResourceBlock__cpp'.underscorify(),
++    input: [ '../../../../../../yaml/xyz/openbmc_project/Inventory/Composition/ResourceBlock.interface.yaml',  ],
++    output: [ 'server.cpp', 'server.hpp', 'client.hpp',  ],
++    command: [
++        sdbuspp_gen_meson_prog, '--command', 'cpp',
++        '--output', meson.current_build_dir(),
++        '--tool', sdbusplusplus_prog,
++        '--directory', meson.current_source_dir() / '../../../../../../yaml',
++        'xyz/openbmc_project/Inventory/Composition/ResourceBlock',
++    ],
++)
++
+diff --git a/gen/xyz/openbmc_project/Inventory/Composition/ResourceZone/meson.build b/gen/xyz/openbmc_project/Inventory/Composition/ResourceZone/meson.build
+new file mode 100644
+index 0000000..2258dec
+--- /dev/null
++++ b/gen/xyz/openbmc_project/Inventory/Composition/ResourceZone/meson.build
+@@ -0,0 +1,14 @@
++# Generated file; do not modify.
++generated_sources += custom_target(
++    'xyz/openbmc_project/Inventory/Composition/ResourceZone__cpp'.underscorify(),
++    input: [ '../../../../../../yaml/xyz/openbmc_project/Inventory/Composition/ResourceZone.interface.yaml',  ],
++    output: [ 'server.cpp', 'server.hpp', 'client.hpp',  ],
++    command: [
++        sdbuspp_gen_meson_prog, '--command', 'cpp',
++        '--output', meson.current_build_dir(),
++        '--tool', sdbusplusplus_prog,
++        '--directory', meson.current_source_dir() / '../../../../../../yaml',
++        'xyz/openbmc_project/Inventory/Composition/ResourceZone',
++    ],
++)
++
+diff --git a/gen/xyz/openbmc_project/Inventory/Composition/System/meson.build b/gen/xyz/openbmc_project/Inventory/Composition/System/meson.build
+new file mode 100644
+index 0000000..a730d12
+--- /dev/null
++++ b/gen/xyz/openbmc_project/Inventory/Composition/System/meson.build
+@@ -0,0 +1,14 @@
++# Generated file; do not modify.
++generated_sources += custom_target(
++    'xyz/openbmc_project/Inventory/Composition/System__cpp'.underscorify(),
++    input: [ '../../../../../../yaml/xyz/openbmc_project/Inventory/Composition/System.interface.yaml',  ],
++    output: [ 'server.cpp', 'server.hpp', 'client.hpp',  ],
++    command: [
++        sdbuspp_gen_meson_prog, '--command', 'cpp',
++        '--output', meson.current_build_dir(),
++        '--tool', sdbusplusplus_prog,
++        '--directory', meson.current_source_dir() / '../../../../../../yaml',
++        'xyz/openbmc_project/Inventory/Composition/System',
++    ],
++)
++
+diff --git a/gen/xyz/openbmc_project/Inventory/Composition/meson.build b/gen/xyz/openbmc_project/Inventory/Composition/meson.build
+new file mode 100644
+index 0000000..6bdd78b
+--- /dev/null
++++ b/gen/xyz/openbmc_project/Inventory/Composition/meson.build
+@@ -0,0 +1,42 @@
++# Generated file; do not modify.
++subdir('ResourceBlock')
++generated_others += custom_target(
++    'xyz/openbmc_project/Inventory/Composition/ResourceBlock__markdown'.underscorify(),
++    input: [ '../../../../../yaml/xyz/openbmc_project/Inventory/Composition/ResourceBlock.interface.yaml',  ],
++    output: [ 'ResourceBlock.md' ],
++    command: [
++        sdbuspp_gen_meson_prog, '--command', 'markdown',
++        '--output', meson.current_build_dir(),
++        '--tool', sdbusplusplus_prog,
++        '--directory', meson.current_source_dir() / '../../../../../yaml',
++        'xyz/openbmc_project/Inventory/Composition/ResourceBlock',
++    ],
++)
++
++subdir('ResourceZone')
++generated_others += custom_target(
++    'xyz/openbmc_project/Inventory/Composition/ResourceZone__markdown'.underscorify(),
++    input: [ '../../../../../yaml/xyz/openbmc_project/Inventory/Composition/ResourceZone.interface.yaml',  ],
++    output: [ 'ResourceZone.md' ],
++    command: [
++        sdbuspp_gen_meson_prog, '--command', 'markdown',
++        '--output', meson.current_build_dir(),
++        '--tool', sdbusplusplus_prog,
++        '--directory', meson.current_source_dir() / '../../../../../yaml',
++        'xyz/openbmc_project/Inventory/Composition/ResourceZone',
++    ],
++)
++
++subdir('System')
++generated_others += custom_target(
++    'xyz/openbmc_project/Inventory/Composition/System__markdown'.underscorify(),
++    input: [ '../../../../../yaml/xyz/openbmc_project/Inventory/Composition/System.interface.yaml',  ],
++    output: [ 'System.md' ],
++    command: [
++        sdbuspp_gen_meson_prog, '--command', 'markdown',
++        '--output', meson.current_build_dir(),
++        '--tool', sdbusplusplus_prog,
++        '--directory', meson.current_source_dir() / '../../../../../yaml',
++        'xyz/openbmc_project/Inventory/Composition/System',
++    ],
++)
+\ No newline at end of file
+diff --git a/gen/xyz/openbmc_project/Inventory/CompositionService/meson.build b/gen/xyz/openbmc_project/Inventory/CompositionService/meson.build
+new file mode 100644
+index 0000000..c29f17e
+--- /dev/null
++++ b/gen/xyz/openbmc_project/Inventory/CompositionService/meson.build
+@@ -0,0 +1,14 @@
++# Generated file; do not modify.
++generated_sources += custom_target(
++    'xyz/openbmc_project/Inventory/CompositionService__cpp'.underscorify(),
++    input: [ '../../../../../yaml/xyz/openbmc_project/Inventory/CompositionService.interface.yaml',  ],
++    output: [ 'server.cpp', 'server.hpp', 'client.hpp',  ],
++    command: [
++        sdbuspp_gen_meson_prog, '--command', 'cpp',
++        '--output', meson.current_build_dir(),
++        '--tool', sdbusplusplus_prog,
++        '--directory', meson.current_source_dir() / '../../../../../yaml',
++        'xyz/openbmc_project/Inventory/CompositionService',
++    ],
++)
++
+diff --git a/gen/xyz/openbmc_project/Inventory/meson.build b/gen/xyz/openbmc_project/Inventory/meson.build
+index 2383524..8bd18b2 100644
+--- a/gen/xyz/openbmc_project/Inventory/meson.build
++++ b/gen/xyz/openbmc_project/Inventory/meson.build
+@@ -42,4 +42,19 @@ generated_others += custom_target(
+     ],
+ )
+ 
++subdir('CompositionService')
++generated_others += custom_target(
++    'xyz/openbmc_project/Inventory/CompositionService__markdown'.underscorify(),
++    input: [ '../../../../yaml/xyz/openbmc_project/Inventory/CompositionService.interface.yaml',  ],
++    output: [ 'CompositionService.md' ],
++    command: [
++        sdbuspp_gen_meson_prog, '--command', 'markdown',
++        '--output', meson.current_build_dir(),
++        '--tool', sdbusplusplus_prog,
++        '--directory', meson.current_source_dir() / '../../../../yaml',
++        'xyz/openbmc_project/Inventory/CompositionService',
++    ],
++)
++
+ subdir('Source')
++subdir('Composition')
+\ No newline at end of file
+diff --git a/yaml/xyz/openbmc_project/Inventory/Composition/ResourceBlock.interface.yaml b/yaml/xyz/openbmc_project/Inventory/Composition/ResourceBlock.interface.yaml
+new file mode 100644
+index 0000000..38e1273
+--- /dev/null
++++ b/yaml/xyz/openbmc_project/Inventory/Composition/ResourceBlock.interface.yaml
+@@ -0,0 +1,48 @@
++properties:
++    - name: CompositionState
++      type: enum[self.ComposeState]
++      default: ComposedAndAvailable
++    - name: Reserved
++      type: boolean
++      default: false
++    - name: SharingCapable
++      type: boolean
++      default: true
++    - name: SharingEnabled
++      type: boolean
++      default: true 
++    - name: MaxComposition
++      type: uint16
++      default: 1
++    - name: NumberOfCompositions
++      type: uint16
++      default: 1   
++    - name: ZoneId
++      type: array[uint16]
++    - name: Chassis
++      type: array[string]
++    - name: ComputerSystems
++      type: array[string]
++    - name: State
++      type: boolean
++      default: true
++    - name: Health
++      type: boolean
++      default: true
++    - name: Type
++      type: enum[self.BlockType]
++
++enumerations:
++    - name: BlockType
++      values:
++        - name: Storage
++        - name: Memory
++        - name: Processor
++    - name: ComposeState
++      values:
++        - name: Unused
++        - name: Composing
++        - name: ComposedAndAvailable
++        - name: Composed
++        - name: Failed
++        - name: Unavailable
+\ No newline at end of file
+diff --git a/yaml/xyz/openbmc_project/Inventory/Composition/ResourceZone.interface.yaml b/yaml/xyz/openbmc_project/Inventory/Composition/ResourceZone.interface.yaml
+new file mode 100644
+index 0000000..35e5f69
+--- /dev/null
++++ b/yaml/xyz/openbmc_project/Inventory/Composition/ResourceZone.interface.yaml
+@@ -0,0 +1,9 @@
++properties:
++    - name: ZoneId
++      type: array[uint16]
++    - name: State
++      type: boolean
++      default: true
++    - name: Health
++      type: boolean
++      default: true
+\ No newline at end of file
+diff --git a/yaml/xyz/openbmc_project/Inventory/Composition/System.interface.yaml b/yaml/xyz/openbmc_project/Inventory/Composition/System.interface.yaml
+new file mode 100644
+index 0000000..5f00c98
+--- /dev/null
++++ b/yaml/xyz/openbmc_project/Inventory/Composition/System.interface.yaml
+@@ -0,0 +1,7 @@
++properties:
++    - name: Link
++      type: array[string]
++    - name: Name
++      type: string
++    - name: HostName
++      type: string
+\ No newline at end of file
+diff --git a/yaml/xyz/openbmc_project/Inventory/CompositionService.interface.yaml b/yaml/xyz/openbmc_project/Inventory/CompositionService.interface.yaml
+new file mode 100644
+index 0000000..54e6772
+--- /dev/null
++++ b/yaml/xyz/openbmc_project/Inventory/CompositionService.interface.yaml
+@@ -0,0 +1,10 @@
++properties:
++    - name: State
++      type: boolean
++      default: true
++    - name: Health
++      type: boolean
++      default: true
++    - name: SystemNum
++      type: uint16
++      default: 0
+-- 
+2.33.0
+

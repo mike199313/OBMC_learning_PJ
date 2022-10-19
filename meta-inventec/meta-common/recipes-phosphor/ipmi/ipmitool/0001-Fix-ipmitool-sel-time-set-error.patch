@@ -1,0 +1,116 @@
+From 634304feb73d0dfee51cea9269cb97193b694e64 Mon Sep 17 00:00:00 2001
+From: cynthia <wu.cynthia@inventec.com>
+Date: Tue, 22 Jun 2021 10:31:08 +0800
+Subject: [PATCH] - Fix ipmitool sel time set error - Fix ipmitool sel time get
+ error
+
+Symptom/Reason:
+	1.The time set with 'ipmitool sel time set' will be wrong
+	2.The time get with 'ipmitool sel time get' will be wrong
+          after changing utc time offset
+
+Root Cause:
+	1.The format for strptime() is wrong
+	2.The format for time output isn't the same as official
+          release (ver 1.8.18), so there will be conflict when both
+          exist
+
+Solution/Change:
+	[ipmi_sel.c]
+	1.Change time format to %m/%d/%Y %H:%M:%S" in ipmi_sel_set_time
+	2.Change time format to follow official release (ver 1.8.18)
+          in ipmi_sel_get_time
+
+Entry Test:
+	1. ipmitool sel time set
+	ex: ipmitool sel time set ipmitool sel time set "06/22/2021 10:00:00"
+	2. ipmitool sel time get
+---
+ lib/ipmi_sel.c | 41 +++++++++++++++++++++++++++++++----------
+ 1 file changed, 31 insertions(+), 10 deletions(-)
+
+diff --git a/lib/ipmi_sel.c b/lib/ipmi_sel.c
+index b6b8da1..bdfca08 100644
+--- a/lib/ipmi_sel.c
++++ b/lib/ipmi_sel.c
+@@ -2702,6 +2702,7 @@ ipmi_sel_get_time(struct ipmi_intf * intf)
+ 	struct ipmi_rs * rsp;
+ 	struct ipmi_rq req;
+ 	time_t time;
++	static char tbuf[40];
+ 
+ 	memset(&req, 0, sizeof(req));
+ 	req.msg.netfn = IPMI_NETFN_STORAGE;
+@@ -2724,7 +2725,8 @@ ipmi_sel_get_time(struct ipmi_intf * intf)
+ 	}
+ 
+ 	time = ipmi32toh(rsp->data);
+-	printf("%s\n", ipmi_timestamp_numeric(time));
++	strftime(tbuf, sizeof(tbuf), "%m/%d/%Y %H:%M:%S", gmtime(&time));
++	printf("%s\n", tbuf);
+ 
+ 	return 0;
+ }
+@@ -2745,7 +2747,7 @@ ipmi_sel_set_time(struct ipmi_intf * intf, const char * time_string)
+ 	struct tm tm = {0};
+ 	uint8_t msg_data[4] = {0};
+ 	time_t t;
+-	const char *time_format = "%x %X"; /* Use locale-defined format */
++	const char *time_format = "%m/%d/%Y %H:%M:%S"; /* Use locale-defined format */
+ 
+ 	memset(&req, 0, sizeof(req));
+ 	req.msg.netfn    = IPMI_NETFN_STORAGE;
+@@ -2762,7 +2764,7 @@ ipmi_sel_set_time(struct ipmi_intf * intf, const char * time_string)
+ 	else {
+ 		bool error = true; /* Assume the string is invalid */
+ 		/* Now let's extract time_t from the supplied string */
+-		if (!strptime(time_string, time_format, &tm)) {
++		if ( strptime(time_string, time_format, &tm)!=NULL ) {
+ 			tm.tm_isdst = (-1); /* look up DST information */
+ 			t = mktime(&tm);
+ 			if (t >= 0) {
+@@ -2775,15 +2777,34 @@ ipmi_sel_set_time(struct ipmi_intf * intf, const char * time_string)
+ 			lprintf(LOG_ERR, "Specified time could not be parsed");
+ 			return -1;
+ 		}
+-
+-		/*
+-		 * If `-c` wasn't specified then t we've just got is in local timesone
+-		 */
+-		if (!time_in_utc) {
+-			t = ipmi_localtime2utc(t);
+-		}
+ 	}
+ 
++	{
++            //modify UTC time to local time expressed in number of seconds from 1/1/70 0:0:0 1970 GMT
++            struct tm * tm_tmp = {0};
++            int gt_year,gt_yday,gt_hour,gt_min,lt_year,lt_yday,lt_hour,lt_min;
++            int delta_hour;
++            tm_tmp=gmtime(&t);
++            gt_year=tm_tmp->tm_year;
++            gt_yday=tm_tmp->tm_yday;
++            gt_hour=tm_tmp->tm_hour;
++            gt_min=tm_tmp->tm_min;
++            memset(&*tm_tmp, 0, sizeof(struct tm));
++            tm_tmp=localtime(&t);
++            lt_year=tm_tmp->tm_year;
++            lt_yday=tm_tmp->tm_yday;
++            lt_hour=tm_tmp->tm_hour;
++            lt_min=tm_tmp->tm_min;
++            delta_hour=lt_hour - gt_hour;
++            if ( (lt_year > gt_year) || ((lt_year == gt_year) && (lt_yday > gt_yday)) )
++                    delta_hour += 24;
++            if ( (lt_year < gt_year) || ((lt_year == gt_year) && (lt_yday < gt_yday)) )
++                    delta_hour -= 24;
++
++            t += (delta_hour * 60 * 60) + (lt_min - gt_min) * 60;
++    }
++
++
+ 	/*
+ 	 * At this point `t` is UTC. Convert it to LE and send.
+ 	 */
+-- 
+2.33.0
+

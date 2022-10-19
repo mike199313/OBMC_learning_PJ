@@ -1,0 +1,310 @@
+From 3f206a5e599c9e73aadb0402fe9b6cd75b1d01e8 Mon Sep 17 00:00:00 2001
+From: "Fred.Chang" <chang.fredys@inventec.com>
+Date: Tue, 22 Mar 2022 05:51:23 +0000
+Subject: [PATCH 12/25] The main implementation of WARM RESET Bug 1041 -
+ [Transformers][OpenBMC][IPMI] After warm reset, here is no sel log about warm
+ reset. Symptom/Reason : - Add the main implementation of warm reset
+
+Root Cause:
+    - Not supported in origin OpenBMC
+
+Solution/Change:
+    [intel-ipmi-oem]
+        - Add new cpp file to support global commands
+        - Add new SEL definition to support the log of warm reset
+        - Add resetfail to avoid to touch the situation of the restarting too quick
+
+Entry Test:
+    - Issue warm reset
+        ipmitool mc reset warm
+       - Waiting for 40 seconds
+       - Check from the journal
+               journalctl -u phosphor-ipmi-host.service
+       - Check from the SEL
+               ipmitool sel elist
+---
+ CMakeLists.txt             |   2 +-
+ include/globalcommands.hpp |   1 +
+ src/globalcommands.cpp     | 248 +++++++++++++++++++++++++++++++++++++
+ 3 files changed, 250 insertions(+), 1 deletion(-)
+ create mode 100755 include/globalcommands.hpp
+ create mode 100755 src/globalcommands.cpp
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 9820466..4028c91 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -98,7 +98,7 @@ add_custom_command(OUTPUT include/ipmi-whitelist.hpp
+ 
+ add_library (zinteloemcmds
+              SHARED src/sensorcommands.cpp src/biosconfigcommands.cpp
+-             src/storagecommands.cpp src/multinodecommands.cpp
++             src/storagecommands.cpp src/multinodecommands.cpp src/globalcommands.cpp
+              src/firmware-update.cpp src/appcommands.cpp src/smbioshandler.cpp
+              src/smbiosmdrv2handler.cpp src/manufacturingcommands.cpp
+              src/bmccontrolservices.cpp src/bridgingcommands.cpp
+diff --git a/include/globalcommands.hpp b/include/globalcommands.hpp
+new file mode 100755
+index 0000000..7b9637e
+--- /dev/null
++++ b/include/globalcommands.hpp
+@@ -0,0 +1 @@
++#pragma once
+\ No newline at end of file
+diff --git a/src/globalcommands.cpp b/src/globalcommands.cpp
+new file mode 100755
+index 0000000..98efc56
+--- /dev/null
++++ b/src/globalcommands.cpp
+@@ -0,0 +1,248 @@
++
++#include <ipmid/api.hpp>
++#include <ipmid/utils.hpp>
++#include "globalcommands.hpp"
++#include <systemd/sd-bus.h>
++#include <phosphor-logging/log.hpp>
++#include <boost/algorithm/string.hpp>
++#include <fstream>
++#include <nlohmann/json.hpp>
++#include <thread>
++
++namespace ipmi
++{
++
++const static constexpr char* warmResetConfFile = "/usr/share/ipmi-providers/warm_reset.json";
++const static constexpr char* systemDService = "org.freedesktop.systemd1";
++const static constexpr char* systemDObjPath = "/org/freedesktop/systemd1";
++const static constexpr char* systemDMgrIntf = "org.freedesktop.systemd1.Manager";
++void registerGlobalFunctions() __attribute__((constructor));
++
++static std::tuple<bool, std::map<std::string,std::vector<std::string>>, std::vector<std::string>> getConfigureFromJsonFile(const std::string filename) {
++    std::map<std::string,std::vector<std::string> > configure;
++    std::vector<std::string> ulist;
++    std::ifstream jsonfile(filename.c_str());
++    bool resetself = false;
++    if (jsonfile.is_open())
++    {
++        auto root = nlohmann::json::parse(jsonfile, nullptr, false);
++        if (!root.is_discarded())
++        {
++            try {
++                resetself = root["reset_self"];
++                for(auto& r : root["rule_list"]) {
++                    configure[r["path"].get<std::string>()] = r["contains"].get<std::vector<std::string> >();
++                }
++
++                for(auto& u : root["unit_list"]) {
++                    ulist.push_back(u);
++                }
++            }
++            catch (const std::exception& e)
++            {
++                phosphor::logging::log<phosphor::logging::level::ERR>(
++                    "[Warm reset] ERROR: configure parser failure");
++            };
++        }
++        else
++        {
++            phosphor::logging::log<phosphor::logging::level::ERR>(
++                "[Warm reset] ERROR: configure parser failure");
++        }
++    }
++    else
++    {
++        phosphor::logging::log<phosphor::logging::level::ERR>(
++            "[Warm reset] ERROR: configure not found");
++    }
++    return std::make_tuple(resetself, configure, ulist);
++}
++
++
++static std::vector<std::string> getServiceNameFromPath(const std::string path, const std::vector<std::string> contains)
++{   
++    std::vector<std::string> snlist;
++    std::shared_ptr<sdbusplus::asio::connection> dbus = getSdBus();
++    auto getObject =
++        dbus->new_method_call("xyz.openbmc_project.ObjectMapper",
++                              "/xyz/openbmc_project/object_mapper",
++                              "xyz.openbmc_project.ObjectMapper", "GetObject");
++
++    getObject.append(path.c_str(), snlist);
++    std::map<std::string, std::vector<std::string>> resp;
++    
++    try
++    {
++        auto reply = dbus->call(getObject);
++        reply.read(resp);
++    }
++    catch (sdbusplus::exception_t&)
++    {
++        std::fprintf(stderr, "[Warm Reset] ERROR: Getting service name from Object Mapper by path is failure(%s)\n", path.c_str());
++    };
++
++
++    for (auto& [sn, _]: resp) {
++        for(auto& c : contains) {
++            if(boost::contains(boost::to_lower_copy(sn),boost::to_lower_copy(c))) {
++                snlist.emplace_back(sn);
++                break;
++            }
++        }
++    }
++    if(snlist.size() == 0) {
++        std::fprintf(stderr, "[Warm Reset] Warning: There is no one in this path(%s)\n", path.c_str());
++    }
++    return snlist;
++}
++
++static std::string getServiceUnit(std::string service_name) {
++        sd_bus* bus = NULL;
++        sd_bus_creds *creds = NULL;
++        const char *s= NULL;
++
++        int r = sd_bus_default_system(&bus);
++        if (r < 0) {
++            std::fprintf(stderr, "[Warm Reset] ERROR: Get Dbus fail, errno = %d\n", r);
++            return std::string("n/a");
++        }
++
++        r = sd_bus_get_name_creds(bus,
++                                  service_name.c_str(),
++                                  SD_BUS_CREDS_AUGMENT|_SD_BUS_CREDS_ALL,
++                                  &creds);
++        if (r < 0) {
++            sd_bus_unref(bus);
++            std::fprintf(stderr, "[Warm Reset] ERROR: Get creds fail, errno = %d\n", r);
++            return std::string("n/a");
++        }
++
++        r = sd_bus_creds_get_unit(creds, &s);
++        if (r < 0) {
++            sd_bus_creds_unrefp(&creds);
++            sd_bus_unref(bus);
++            std::fprintf(stderr, "[Warm Reset] ERROR: Get unit name fail, errno = %d\n", r);
++            return std::string("n/a");
++        }
++
++        auto unit = std::string(s?s:"n/a");
++        sd_bus_creds_unrefp(&creds);
++        sd_bus_unref(bus);
++        return unit;
++}
++
++
++static int8_t restartUnit(std::string unit)
++{
++    try
++    {
++        auto dbus = getSdBus();
++        auto method = dbus->new_method_call(systemDService, systemDObjPath,
++                                            systemDMgrIntf,
++                                            "RestartUnit");
++        method.append(unit.c_str(), "replace");
++        auto reply = dbus->call(method);
++        std::fprintf(stderr, "[Warm Reset] Info: RestartUnit [%s]\n",unit.c_str());
++    }
++    catch (const sdbusplus::exception::SdBusError& e)
++    {
++        std::fprintf(stderr, "[Warm Reset] ERROR: Restart service(%s) fail\n", unit.c_str());
++        return -1;
++    }
++
++    return 0;
++}
++
++static int8_t resetfailedUnit(std::string unit)
++{
++    try
++    {
++        auto dbus = getSdBus();
++        auto method = dbus->new_method_call(systemDService, systemDObjPath,
++                                            systemDMgrIntf,
++                                            "ResetFailedUnit");
++        method.append(unit.c_str());
++        auto reply = dbus->call(method);
++        std::fprintf(stderr, "[Warm Reset] Info: ResetFailedUnit [%s]\n",unit.c_str());
++    }
++    catch (const sdbusplus::exception::SdBusError& e)
++    {
++        std::fprintf(stderr, "[Warm Reset] ERROR: Reset-failed service(%s) fail\n", unit.c_str());
++        return -1;
++    }
++
++    return 0;
++}
++
++
++void reset_self(bool resetself) {
++    if(resetself) {
++        std::system("systemctl restart phosphor-ipmi-host &");
++    }
++}
++
++
++void generateSELEvent(char const *SensorPath, std::vector<uint8_t> eventData, bool assert)
++{
++    std::shared_ptr<sdbusplus::asio::connection> bus = getSdBus();
++    uint16_t generateID = 0x10;
++
++    auto writeSEL = bus->new_method_call( "xyz.openbmc_project.Logging.IPMI", 
++                                          "/xyz/openbmc_project/Logging/IPMI", 
++                                          "xyz.openbmc_project.Logging.IPMI", 
++                                          "IpmiSelAdd");
++    writeSEL.append("SEL Entry", std::string(SensorPath), eventData, assert, generateID);
++    try {
++        bus->call(writeSEL);
++    } catch (sdbusplus::exception_t &e) {
++        std::fprintf(stderr, "[Warm Reset] ERROR: IpmiSelAdd failed\n");
++    }
++}
++
++
++ipmi::RspType<> ipmiGlobalWarmReset()
++{
++    auto result = getConfigureFromJsonFile(warmResetConfFile);
++    auto resetself = std::get<0>(result);
++    auto configure = std::get<1>(result);
++    auto ulist = std::get<2>(result);
++    for (auto& [path, contains]: configure) {
++        auto snlist = getServiceNameFromPath(path, contains);
++        for(auto& sn : snlist) {
++            auto unit = getServiceUnit(sn);
++            if(std::count(ulist.begin(), ulist.end(), unit)==0) {
++                resetfailedUnit(unit);
++                restartUnit(unit);
++                resetfailedUnit(unit);
++                std::fprintf(stderr, "[Warm Reset] Info: Restart \"%s\" [%s] success\n",sn.c_str(), unit.c_str());
++            }
++        }
++    }
++
++    for(auto& unit : ulist) {
++        resetfailedUnit(unit);
++        restartUnit(unit);
++        resetfailedUnit(unit);
++        std::fprintf(stderr, "[Warm Reset] Info: Restart [%s] success\n",unit.c_str());
++    }
++
++    std::vector<uint8_t> warmReset{0x02, 0xFF, 0xFF};
++    generateSELEvent("/xyz/openbmc_project/sensor/specific/system_boot_restart_initiated/bmc_warm_reset", warmReset, true);
++
++    std::thread(reset_self, resetself).detach();
++
++    return ipmi::responseSuccess();
++}
++
++void registerGlobalFunctions(void)
++{
++    phosphor::logging::log<phosphor::logging::level::INFO>(
++        "Registering Global commands");
++
++    // Warm Reset
++    ipmi::registerHandler(ipmi::prioOemBase, ipmi::netFnApp,
++                          ipmi::app::cmdWarmReset, ipmi::Privilege::Admin,
++                          ipmiGlobalWarmReset);
++}
++
++} // namespace ipmi
+-- 
+2.33.0
+

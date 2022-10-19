@@ -1,0 +1,135 @@
+From 1b7f5f3aff44e94d69274d4de216a7e34561a205 Mon Sep 17 00:00:00 2001
+From: Tommy Lin <lin.tommysc@inventec.com>
+Date: Mon, 7 Mar 2022 06:59:49 +0000
+Subject: [PATCH 03/10] Implement LAN Config IPv6 Static Hop Limit
+
+---
+ src/ethernet_interface.cpp | 19 +++++++++++++++++++
+ src/ethernet_interface.hpp |  4 ++++
+ src/util.cpp               | 26 ++++++++++++++++++++++++++
+ src/util.hpp               |  6 ++++++
+ 4 files changed, 55 insertions(+)
+
+diff --git a/src/ethernet_interface.cpp b/src/ethernet_interface.cpp
+index aa31e1b..6381e32 100644
+--- a/src/ethernet_interface.cpp
++++ b/src/ethernet_interface.cpp
+@@ -102,6 +102,7 @@ EthernetInterface::EthernetInterface(sdbusplus::bus::bus& bus,
+     EthernetInterfaceIntf::dhcpEnabled(dhcpEnabled);
+     EthernetInterfaceIntf::ipv6AcceptRA(getIPv6AcceptRAFromConf());
+     EthernetInterfaceIntf::nicEnabled(enabled ? *enabled : queryNicEnabled());
++    EthernetInterfaceIntf::ipv6HopLimit(getIPv6HopValue(manager.getConfDir(), intfName));
+     const auto& gatewayList = manager.getRouteTable().getDefaultGateway();
+     const auto& gateway6List = manager.getRouteTable().getDefaultGateway6();
+     std::string defaultGateway;
+@@ -592,6 +593,18 @@ EthernetInterface::DHCPConf EthernetInterface::dhcpEnabled(DHCPConf value)
+     return value;
+ }
+ 
++uint8_t EthernetInterface::ipv6HopLimit(uint8_t value)
++{
++    if (value == EthernetInterfaceIntf::ipv6HopLimit())
++    {
++        return value;
++    }
++
++    EthernetInterfaceIntf::ipv6HopLimit(value);
++    manager.writeToConfigurationFile();
++    return value;
++}
++
+ bool EthernetInterface::linkUp() const
+ {
+     bool value = EthernetInterfaceIntf::linkUp();
+@@ -1107,6 +1120,12 @@ void EthernetInterface::writeConfigurationFile()
+     stream << (dhcpIsEnabled(IP::Protocol::IPv6) ? "true" : "false");
+     stream << "\n";
+ 
++    // Add the IPv6HopLimit entry
++    if (EthernetInterfaceIntf::ipv6HopLimit() > 0)
++    {
++        stream << "IPv6HopLimit=" << std::to_string(EthernetInterfaceIntf::ipv6HopLimit()) << "\n";
++    }
++
+     // Static IP addresses
+     for (const auto& addr : addrs)
+     {
+diff --git a/src/ethernet_interface.hpp b/src/ethernet_interface.hpp
+index 8928455..633ed7b 100644
+--- a/src/ethernet_interface.hpp
++++ b/src/ethernet_interface.hpp
+@@ -160,6 +160,9 @@ class EthernetInterface : public Ifaces
+     /** Set value of DHCPEnabled */
+     DHCPConf dhcpEnabled(DHCPConf value) override;
+ 
++    /** Set value of IPv6HopLimit */
++    uint8_t ipv6HopLimit(uint8_t value) override;
++
+     /** @brief Selectively disables DHCP
+      *  @param[in] protocol - The IPv4 or IPv6 protocol to return to static
+      *                        addressing mode
+@@ -244,6 +247,7 @@ class EthernetInterface : public Ifaces
+     using EthernetInterfaceIntf::linkUp;
+     using EthernetInterfaceIntf::mtu;
+     using EthernetInterfaceIntf::nicEnabled;
++    using EthernetInterfaceIntf::ipv6HopLimit;
+     using MacAddressIntf::macAddress;
+ 
+     using EthernetInterfaceIntf::defaultGateway;
+diff --git a/src/util.cpp b/src/util.cpp
+index c331463..38ded07 100644
+--- a/src/util.cpp
++++ b/src/util.cpp
+@@ -520,6 +520,32 @@ EthernetInterfaceIntf::DHCPConf getDHCPValue(const std::string& confDir,
+     return dhcp;
+ }
+ 
++uint8_t getIPv6HopValue(const std::string& confDir, const std::string& intf)
++{
++    uint8_t hopLimit = 64;
++    // Get the interface mode value from systemd conf
++    // using namespace std::string_literals;
++    fs::path confPath = confDir;
++    std::string fileName = systemd::config::networkFilePrefix + intf +
++                           systemd::config::networkFileSuffix;
++    confPath /= fileName;
++
++    auto rc = config::ReturnCode::SUCCESS;
++    config::ValueList values;
++    config::Parser parser(confPath.string());
++
++    std::tie(rc, values) = parser.getValues("Network", "IPv6HopLimit");
++    if (rc != config::ReturnCode::SUCCESS)
++    {
++        log<level::DEBUG>("Unable to get the value for Network[IPv6HopLimit]",
++                          entry("RC=%d", rc));
++        return hopLimit;
++    }
++    // There will be only single value for IPv6HopLimit key.
++    hopLimit = (uint8_t)(std::stoi(values[0]) & 0xff);
++    return hopLimit;
++}
++
+ namespace mac_address
+ {
+ 
+diff --git a/src/util.hpp b/src/util.hpp
+index 804d492..e9a66d2 100644
+--- a/src/util.hpp
++++ b/src/util.hpp
+@@ -159,6 +159,12 @@ std::optional<std::string> interfaceToUbootEthAddr(const char* intf);
+ EthernetInterfaceIntf::DHCPConf getDHCPValue(const std::string& confDir,
+                                              const std::string& intf);
+ 
++/** @brief read the IPv6HopLimit value from the configuration file
++ *  @param[in] confDir - Network configuration directory.
++ *  @param[in] intf - Interface name.
++ */
++uint8_t getIPv6HopValue(const std::string& confDir, const std::string& intf);
++
+ namespace internal
+ {
+ 
+-- 
+2.33.0
+

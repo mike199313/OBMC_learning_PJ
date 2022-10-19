@@ -1,0 +1,83 @@
+From 17ae362beac68f3977194c1a686a3590a154af58 Mon Sep 17 00:00:00 2001
+From: cynthia <wu.cynthia@inventec.com>
+Date: Thu, 16 Jun 2022 10:03:56 +0800
+Subject: [PATCH] Fix error for Redfish can't get BIOS version
+
+Sympton/Reason:
+     BMC updater can't get BIOS version, so Redfish can't get
+    BIOS as well
+
+Root Cause:
+     BMC updater service starts before smbios, so can't get info
+    from smbios service
+
+Solution/Change:
+    [system.cpp]
+     Make smbios update BMC updater when it starts and set BIOS
+    version
+
+Entry Test:
+    1. Redfish
+    curl -basic -u root:$PASSWORD -X GET https://$IP/redfish/v1/UpdateService/FirmwareInventory/bios_active -k -l
+---
+ service_files/smbios-mdrv2.service |  1 +
+ src/system.cpp                     | 24 ++++++++++++++++++++++++
+ 2 files changed, 25 insertions(+)
+
+diff --git a/service_files/smbios-mdrv2.service b/service_files/smbios-mdrv2.service
+index b30f797..feeb047 100644
+--- a/service_files/smbios-mdrv2.service
++++ b/service_files/smbios-mdrv2.service
+@@ -1,6 +1,7 @@
+ [Unit]
+ Description=Intel BMC SMBIOS MDR V2
+ After=xyz.openbmc_project.EntityManager.service
++After=xyz.openbmc_project.Software.BMC.Updater.service
+ 
+ [Service]
+ Restart=always
+diff --git a/src/system.cpp b/src/system.cpp
+index 81c6ef5..27a077f 100644
+--- a/src/system.cpp
++++ b/src/system.cpp
+@@ -22,6 +22,9 @@
+ #include <iomanip>
+ #include <iostream>
+ #include <sstream>
++
++#include <sdbusplus/asio/connection.hpp>
++
+ namespace phosphor
+ {
+ namespace smbios
+@@ -93,6 +96,27 @@ std::string System::version(std::string value)
+         result = tempS;
+     }
+ 
++    boost::asio::io_context io;
++    auto connection = std::make_shared<sdbusplus::asio::connection>(io);
++    sdbusplus::bus::bus& bus = static_cast<sdbusplus::bus::bus&>(*connection);
++
++    sdbusplus::message::message method =
++        bus.new_method_call(       
++            "xyz.openbmc_project.Software.BMC.Updater",
++            "/xyz/openbmc_project/software/bios_active",
++            "org.freedesktop.DBus.Properties", "Set");
++    method.append("xyz.openbmc_project.Software.Version", "Version",
++        std::variant<std::string>{result} );
++    try
++    {
++        sdbusplus::message::message reply = bus.call(method);
++    }
++    catch (const sdbusplus::exception_t& e)
++    {
++        fprintf(stderr,"Can't set bios ersion property to bmc updater:  %s\n",e.what());
++        return result;
++    }
++
+     return sdbusplus::xyz::openbmc_project::Inventory::Decorator::server::
+         Revision::version(result);
+ }
+-- 
+2.33.0
+

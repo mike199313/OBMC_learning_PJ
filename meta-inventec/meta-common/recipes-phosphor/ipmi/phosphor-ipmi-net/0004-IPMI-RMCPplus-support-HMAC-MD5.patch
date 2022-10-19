@@ -1,0 +1,361 @@
+From 4ce02ec481e1b1d5e169518fd9d59f1f5d1cb593 Mon Sep 17 00:00:00 2001
+From: Tommy Lin <lin.tommysc@inventec.com>
+Date: Thu, 10 Mar 2022 06:34:54 +0000
+Subject: [PATCH 5/5] RMCP+ support HMAC-MD5 cipher suit
+
+Symptom/Reason :
+    - According to the "M-BMC-SYS-0033 Should support IPMI over LAN+ with SHA256 and MD5". Adding HMAC-MD5 algorithm.
+
+Root Cause:
+    - None
+
+Solution/Change:
+    [phosphor-ipmi-net]
+        - add hmac-md5 algorithm for data integrity and SIK generation.
+
+Entry Test:
+    - build up RMCP+ session by HMAC-MD5, cipher id is 8.
+        -- ipmitool -C8 -I lanplus -H 172.17.0.2 -p 2623 -U root -P 0penBmc shell
+---
+ auth_algo.cpp        | 52 ++++++++++++++++++++++++++++++
+ auth_algo.hpp        | 31 ++++++++++++++++++
+ command/rakp34.cpp   |  7 +++++
+ integrity_algo.cpp   | 65 ++++++++++++++++++++++++++++++++++++++
+ integrity_algo.hpp   | 75 ++++++++++++++++++++++++++++++++++++++++++++
+ sessions_manager.cpp |  7 +++++
+ 6 files changed, 237 insertions(+)
+
+diff --git a/auth_algo.cpp b/auth_algo.cpp
+index 0219b30..5adc657 100644
+--- a/auth_algo.cpp
++++ b/auth_algo.cpp
+@@ -2,6 +2,7 @@
+ 
+ #include <openssl/evp.h>
+ #include <openssl/hmac.h>
++#include <openssl/md5.h>
+ #include <openssl/sha.h>
+ 
+ #include <phosphor-logging/log.hpp>
+@@ -116,6 +117,57 @@ std::vector<uint8_t>
+     return output;
+ }
+ 
++std::vector<uint8_t>
++    AlgoMD5::generateSIK(const std::vector<uint8_t>& input) const
++{
++    std::vector<uint8_t> output(MD5_DIGEST_LENGTH);
++    unsigned int mdLen = 0;
++
++    if (HMAC(EVP_md5(), kgKey.data(), kgKey.size(), input.data(),
++             input.size(), output.data(), &mdLen) == NULL)
++    {
++        log<level::ERR>("Generate HMAC_MD5 failed");
++        output.resize(0);
++    }
++
++    return output;
++}
++
++std::vector<uint8_t>
++    AlgoMD5::generateHMAC(const std::vector<uint8_t>& input) const
++{
++    std::vector<uint8_t> output(MD5_DIGEST_LENGTH);
++    unsigned int mdLen = 0;
++
++    if (HMAC(EVP_md5(), userKey.data(), userKey.size(), input.data(),
++             input.size(), output.data(), &mdLen) == NULL)
++    {
++        log<level::ERR>("Generate HMAC_MD5 failed");
++        output.resize(0);
++    }
++
++    return output;
++}
++
++std::vector<uint8_t>
++    AlgoMD5::generateICV(const std::vector<uint8_t>& input) const
++{
++    std::vector<uint8_t> output(MD5_DIGEST_LENGTH);
++    unsigned int mdLen = 0;
++
++    if (HMAC(EVP_md5(), sessionIntegrityKey.data(),
++             sessionIntegrityKey.size(), input.data(), input.size(),
++             output.data(), &mdLen) == NULL)
++    {
++        log<level::ERR>(
++            "Generate HMAC_MD5_128 Integrity Check Value failed");
++        output.resize(0);
++    }
++    output.resize(integrityCheckValueLength);
++
++    return output;
++}
++
+ } // namespace rakp_auth
+ 
+ } // namespace cipher
+diff --git a/auth_algo.hpp b/auth_algo.hpp
+index c883690..92df579 100644
+--- a/auth_algo.hpp
++++ b/auth_algo.hpp
+@@ -114,6 +114,10 @@ class Interface
+         {
+             return true;
+         }
++        else if (algo == Algorithms::RAKP_HMAC_MD5)
++        {
++            return true;
++        }
+         else
+         {
+             return false;
+@@ -229,6 +233,33 @@ class AlgoSHA256 : public Interface
+         generateSIK(const std::vector<uint8_t>& input) const override;
+ };
+ 
++class AlgoMD5 : public Interface
++{
++  public:
++    static constexpr size_t integrityCheckValueLength = 16;
++
++    explicit AlgoMD5(integrity::Algorithms intAlgo,
++                     crypt::Algorithms cryptAlgo) :
++        Interface(intAlgo, cryptAlgo)
++    {
++    }
++
++    ~AlgoMD5() = default;
++    AlgoMD5(const AlgoMD5&) = default;
++    AlgoMD5& operator=(const AlgoMD5&) = default;
++    AlgoMD5(AlgoMD5&&) = default;
++    AlgoMD5& operator=(AlgoMD5&&) = default;
++
++    std::vector<uint8_t>
++        generateHMAC(const std::vector<uint8_t>& input) const override;
++
++    std::vector<uint8_t>
++        generateICV(const std::vector<uint8_t>& input) const override;
++
++    std::vector<uint8_t>
++        generateSIK(const std::vector<uint8_t>& input) const override;
++};
++
+ } // namespace rakp_auth
+ 
+ } // namespace cipher
+diff --git a/command/rakp34.cpp b/command/rakp34.cpp
+index deed708..64e1905 100644
+--- a/command/rakp34.cpp
++++ b/command/rakp34.cpp
+@@ -37,6 +37,13 @@ void applyIntegrityAlgo(const uint32_t bmcSessionID)
+                     authAlgo->sessionIntegrityKey));
+             break;
+         }
++        case cipher::integrity::Algorithms::HMAC_MD5_128:
++        {
++            session->setIntegrityAlgo(
++                std::make_unique<cipher::integrity::AlgoMD5>(
++                    authAlgo->sessionIntegrityKey));
++            break;
++        }
+         default:
+             break;
+     }
+diff --git a/integrity_algo.cpp b/integrity_algo.cpp
+index bac87d7..9fec7a3 100644
+--- a/integrity_algo.cpp
++++ b/integrity_algo.cpp
+@@ -4,6 +4,7 @@
+ 
+ #include <openssl/evp.h>
+ #include <openssl/hmac.h>
++#include <openssl/md5.h>
+ #include <openssl/sha.h>
+ 
+ namespace cipher
+@@ -142,6 +143,70 @@ std::vector<uint8_t> AlgoSHA256::generateKn(const std::vector<uint8_t>& sik,
+     return Kn;
+ }
+ 
++AlgoMD5::AlgoMD5(const std::vector<uint8_t>& sik) :
++    Interface(MD5_128_AUTHCODE_LENGTH)
++{
++    k1 = generateKn(sik, rmcp::const_1);
++}
++
++std::vector<uint8_t> AlgoMD5::generateHMAC(const uint8_t* input,
++                                           const size_t len) const
++{
++    std::vector<uint8_t> output(MD5_DIGEST_LENGTH);
++    unsigned int mdLen = 0;
++
++    if (HMAC(EVP_md5(), k1.data(), k1.size(), input, len, output.data(),
++             &mdLen) == NULL)
++    {
++        throw std::runtime_error("Generating HMAC_MD5_128 failed");
++    }
++
++    // HMAC generates Message Digest to the size of SHA256_DIGEST_LENGTH, the
++    // AuthCode field length is based on the integrity algorithm. So we are
++    // interested only in the AuthCode field length of the generated Message
++    // digest.
++    output.resize(authCodeLength);
++
++    return output;
++}
++
++bool AlgoMD5::verifyIntegrityData(
++    const std::vector<uint8_t>& packet, const size_t length,
++    std::vector<uint8_t>::const_iterator integrityData) const
++{
++    auto output = generateHMAC(
++        packet.data() + message::parser::RMCP_SESSION_HEADER_SIZE, length);
++
++    // Verify if the generated integrity data for the packet and the received
++    // integrity data matches.
++    return (std::equal(output.begin(), output.end(), integrityData));
++}
++
++std::vector<uint8_t>
++    AlgoMD5::generateIntegrityData(const std::vector<uint8_t>& packet) const
++{
++    return generateHMAC(
++        packet.data() + message::parser::RMCP_SESSION_HEADER_SIZE,
++        packet.size() - message::parser::RMCP_SESSION_HEADER_SIZE);
++}
++
++std::vector<uint8_t> AlgoMD5::generateKn(const std::vector<uint8_t>& sik,
++                                         const rmcp::Const_n& const_n) const
++{
++    unsigned int mdLen = 0;
++    std::vector<uint8_t> Kn(sik.size());
++
++    // Generated Kn for the integrity algorithm with the additional key keyed
++    // with SIK.
++    if (HMAC(EVP_md5(), sik.data(), sik.size(), const_n.data(),
++             const_n.size(), Kn.data(), &mdLen) == NULL)
++    {
++        throw std::runtime_error("Generating KeyN for integrity "
++                                 "algorithm HMAC_MD5 failed");
++    }
++    return Kn;
++}
++
+ } // namespace integrity
+ 
+ } // namespace cipher
+diff --git a/integrity_algo.hpp b/integrity_algo.hpp
+index cdeb617..3872323 100644
+--- a/integrity_algo.hpp
++++ b/integrity_algo.hpp
+@@ -97,6 +97,10 @@ class Interface
+         {
+             return true;
+         }
++        else if (algo == Algorithms::HMAC_MD5_128)
++        {
++            return true;
++        }
+         else
+         {
+             return false;
+@@ -307,6 +311,77 @@ class AlgoSHA256 final : public Interface
+                                       const size_t len) const;
+ };
+ 
++class AlgoMD5 final : public Interface
++{
++  public:
++    static constexpr size_t MD5_128_AUTHCODE_LENGTH = 16;
++
++    /**
++     * @brief Constructor for AlgoSHA256
++     *
++     * @param[in] - Session Integrity Key
++     */
++    explicit AlgoMD5(const std::vector<uint8_t>& sik);
++
++    AlgoMD5() = delete;
++    ~AlgoMD5() = default;
++    AlgoMD5(const AlgoMD5&) = default;
++    AlgoMD5& operator=(const AlgoMD5&) = default;
++    AlgoMD5(AlgoMD5&&) = default;
++    AlgoMD5& operator=(AlgoMD5&&) = default;
++
++    /**
++     * @brief Verify the integrity data of the packet
++     *
++     * @param[in] packet - Incoming IPMI packet
++     * @param[in] length - Length of the data in the packet to calculate
++     *                     the integrity data
++     * @param[in] integrityData - Iterator to the authCode in the packet
++     *
++     * @return true if authcode in the packet is equal to one generated
++     *         using integrity algorithm on the packet data, false otherwise
++     */
++    bool verifyIntegrityData(
++        const std::vector<uint8_t>& packet, const size_t length,
++        std::vector<uint8_t>::const_iterator integrityData) const override;
++
++    /**
++     * @brief Generate integrity data for the outgoing IPMI packet
++     *
++     * @param[in] packet - Outgoing IPMI packet
++     *
++     * @return on success return the integrity data for the outgoing IPMI
++     *         packet
++     */
++    std::vector<uint8_t> generateIntegrityData(
++        const std::vector<uint8_t>& packet) const override;
++
++    /**
++     * @brief Generate additional keying material based on SIK
++     *
++     * @param[in] sik - session integrity key
++     * @param[in] data - 20-byte Const_n
++     *
++     * @return on success returns the Kn based on HMAC-MD5
++     *
++     */
++    std::vector<uint8_t> generateKn(const std::vector<uint8_t>& sik,
++                                    const rmcp::Const_n& const_n) const;
++
++  private:
++    /**
++     * @brief Generate HMAC based on HMAC-MD5-128 algorithm
++     *
++     * @param[in] input - pointer to the message
++     * @param[in] len - length of the message
++     *
++     * @return on success returns the message authentication code
++     *
++     */
++    std::vector<uint8_t> generateHMAC(const uint8_t* input,
++                                      const size_t len) const;
++};
++
+ } // namespace integrity
+ 
+ } // namespace cipher
+diff --git a/sessions_manager.cpp b/sessions_manager.cpp
+index 7165447..f6420f9 100644
+--- a/sessions_manager.cpp
++++ b/sessions_manager.cpp
+@@ -237,6 +237,13 @@ std::shared_ptr<Session>
+                                                                     cryptAlgo));
+                 break;
+             }
++            case cipher::rakp_auth::Algorithms::RAKP_HMAC_MD5:
++            {
++                session->setAuthAlgo(
++                    std::make_unique<cipher::rakp_auth::AlgoMD5>(intAlgo,
++                                                                    cryptAlgo));
++                break;
++            }
+             default:
+             {
+                 throw std::runtime_error("Invalid Authentication Algorithm");
+-- 
+2.33.0
+

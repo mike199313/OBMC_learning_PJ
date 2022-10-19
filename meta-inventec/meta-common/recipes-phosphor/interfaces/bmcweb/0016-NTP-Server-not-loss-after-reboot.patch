@@ -1,0 +1,161 @@
+From 0fdb2e169c0080d59cc9c949ceaa236f4ddd8798 Mon Sep 17 00:00:00 2001
+From: bonnie <Liu.Bonnie@inventec.com>
+Date: Wed, 15 Jun 2022 15:18:26 +0800
+Subject: [PATCH 16/17] NTP Server not loss after reboot Bug 327 -
+ [Transformers][OpenBMC][Redfish]NTP Server Setting will loss After BMC Reboot
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Symptom/Reason：
+        NTP Server Setting will loss After BMC Reboot.
+
+Root Cause：
+	BMC got more than one object related to ntp server(e.g. usb0), the value of other object(not be set)will
+	override the NTP server value of eth0, so NTP server may have chance to be null after rebooting.
+
+Solution/Change：
+        1.Push all the NTPserver value if found.
+        	std::vector<std::string> pushEnd = *ntpServers;
+		for (auto pushBegin : pushEnd)
+		{
+			ntpData.push_back(pushBegin);
+		}
+	2.Using std::set to avoid showing repeated NTP server.
+		std::set<std::string> ntpSet ;
+		ntpSet.insert(ntpServers.begin(),ntpServers.end());
+
+Entry Test：
+bonnie@a69b86f83408:/openbmc/build/transformers/tmp/deploy/images/transformers$ curl -k -basic -u root:0penBmc -X GET https://10.6.141.75/redfish/v1/Managers/bmc/NetworkProtocol
+{
+  "@odata.etag": "708636814",
+  "@odata.id": "/redfish/v1/Managers/bmc/NetworkProtocol",
+  "@odata.type": "#ManagerNetworkProtocol.v1_5_0.ManagerNetworkProtocol",
+  "Description": "Manager Network Service",
+  "FQDN": "transformers",
+  "HTTP": {
+    "Port": 0,
+    "ProtocolEnabled": false
+  },
+  "HTTPS": {
+    "Certificates": {
+      "@odata.id": "/redfish/v1/Managers/bmc/NetworkProtocol/HTTPS/Certificates"
+    },
+    "Port": 443,
+    "ProtocolEnabled": true
+  },
+  "HostName": "transformers",
+  "IPMI": {
+    "Port": 623,
+    "ProtocolEnabled": true
+  },
+  "Id": "NetworkProtocol",
+  "NTP": {
+    "NTPServers": [
+      "2.2.3.3",
+      "8.8.8.8"
+    ],
+    "ProtocolEnabled": true
+  },
+  "Name": "Manager Network Protocol",
+  "SSH": {
+    "Port": 22,
+    "ProtocolEnabled": true
+  },
+  "Status": {
+    "Health": "OK",
+    "HealthRollup": "OK",
+    "State": "Enabled"
+  }
+bonnie@a69b86f83408:/openbmc/build/transformers/tmp/deploy/images/transformers$  curl -k -basic -u root:0penBmc -XPOST https://10.6.141.75/redfish/v1/Managers/bmc/Actions/Manager.Reset -d '{"ResetType": "GracefulRestart"}'
+{
+  "@Message.ExtendedInfo": [
+    {
+      "@odata.type": "#Message.v1_1_1.Message",
+      "Message": "Successfully Completed Request",
+      "MessageArgs": [],
+      "MessageId": "Base.1.8.1.Success",
+      "MessageSeverity": "OK",
+      "Resolution": "None"
+    }
+  ],
+  "@odata.etag": "3349378900"
+bonnie@a69b86f83408:/openbmc/build/transformers/tmp/deploy/images/transformers$  curl -k -basic -u root:0penBmc -XGET https://10.6.141.75/redfish/v1/Managers/bmc/NetworkProtocol
+{
+  "@odata.etag": "405884554",
+  "@odata.id": "/redfish/v1/Managers/bmc/NetworkProtocol",
+  "@odata.type": "#ManagerNetworkProtocol.v1_5_0.ManagerNetworkProtocol",
+  "Description": "Manager Network Service",
+  "FQDN": "transformers",
+  "HTTP": {
+    "Port": 0,
+    "ProtocolEnabled": false
+  },
+  "HTTPS": {
+    "Certificates": {
+      "@odata.id": "/redfish/v1/Managers/bmc/NetworkProtocol/HTTPS/Certificates"
+    },
+    "Port": 443,
+    "ProtocolEnabled": true
+  },
+  "HostName": "transformers",
+  "IPMI": {
+    "Port": 623,
+    "ProtocolEnabled": true
+  },
+  "Id": "NetworkProtocol",
+  "NTP": {
+    "NTPServers": [
+      "2.2.3.3",
+      "8.8.8.8"
+    ],
+    "ProtocolEnabled": true
+  },
+  "Name": "Manager Network Protocol",
+  "SSH": {
+    "Port": 22,
+    "ProtocolEnabled": true
+  },
+  "Status": {
+    "Health": "OK",
+    "HealthRollup": "OK",
+    "State": "Enabled"
+  }
+---
+ redfish-core/lib/network_protocol.hpp | 13 ++++++++++---
+ 1 file changed, 10 insertions(+), 3 deletions(-)
+
+diff --git a/redfish-core/lib/network_protocol.hpp b/redfish-core/lib/network_protocol.hpp
+index f99cfd36..8f1ccd23 100644
+--- a/redfish-core/lib/network_protocol.hpp
++++ b/redfish-core/lib/network_protocol.hpp
+@@ -67,7 +67,12 @@ inline void extractNTPServersAndDomainNamesData(
+                             &propertyPair.second);
+                     if (ntpServers != nullptr)
+                     {
+-                        ntpData = *ntpServers;
++                        std::vector<std::string> pushEnd = *ntpServers;
++                        for (auto pushBegin : pushEnd)
++                        {
++                            ntpData.push_back(pushBegin);
++                        }                        
++                        //ntpData = *ntpServers;
+                     }
+                 }
+                 else if (propertyPair.first == "DomainName")
+@@ -147,8 +152,10 @@ inline void getNetworkData(const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
+                                        "NetworkProtocol");
+             return;
+         }
+-        asyncResp->res.jsonValue["NTP"]["NTPServers"] = ntpServers;
+-        if (!hostName.empty())
++        std::set<std::string> ntpSet ; //to delete the same IP
++        ntpSet.insert(ntpServers.begin(),ntpServers.end());
++        asyncResp->res.jsonValue["NTP"]["NTPServers"] = ntpSet;
++        if (hostName.empty() == false)
+         {
+             std::string fqdn = hostName;
+             if (!domainNames.empty())
+-- 
+2.33.0
+

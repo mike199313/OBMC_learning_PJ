@@ -1,0 +1,40 @@
+From 75975a6b5cd7a74c11eea4734fa2d785fc515e46 Mon Sep 17 00:00:00 2001
+From: Tommy Lin <lin.tommysc@inventec.com>
+Date: Mon, 7 Mar 2022 09:49:53 +0000
+Subject: [PATCH 07/10] Add channel config for usb0
+
+Symptom/Reason :
+    - Add channel config for usb0
+
+Root Cause:
+    - N/A
+
+Solution/Change:
+    [phosphor-network]
+        - Fix usb0 IP address absent in lan print issue
+    [phosphor-ipmi-config]
+        - Add channel config for usb0
+
+Entry Test:
+    - Print channel config
+        ipmitool lan print 3
+---
+ src/ethernet_interface.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/ethernet_interface.cpp b/src/ethernet_interface.cpp
+index 053dfe4..9fafc01 100644
+--- a/src/ethernet_interface.cpp
++++ b/src/ethernet_interface.cpp
+@@ -231,7 +231,7 @@ void EthernetInterface::createIPAddressObjects()
+         {
+             origin = IP::AddressOrigin::DHCP;
+         }
+-        if (isLinkLocalIP(addr.ipaddress))
++        if (isLinkLocalIP(addr.ipaddress) && interfaceName() != USB_INTF_NAME)
+         {
+             origin = IP::AddressOrigin::LinkLocal;
+         }
+-- 
+2.33.0
+

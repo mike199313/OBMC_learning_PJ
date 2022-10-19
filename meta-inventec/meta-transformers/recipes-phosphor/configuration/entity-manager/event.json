@@ -1,0 +1,521 @@
+{
+    "Exposes": [
+        {
+            "Name": "CPU1_MEMTRIP_N",
+            "ReadingType": "discrete",
+            "SensorType": "processor",
+            "SensorInfo": [
+                {
+                    "Label": "CPU1_MEMTRIP_N",
+                    "SensorModel": "Event",
+                    "SensorNum": "0x14",
+                    "EntityId": "0x03",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+	    {
+            "Name": "CPU_ERROR0_N",
+            "ReadingType": "discrete",
+            "SensorType": "processor",
+            "SensorInfo": [
+                {
+                    "Label": "CPU_ERROR0_N",
+                    "SensorModel": "Event",
+                    "SensorNum": "0x15",
+                    "EntityId": "0x03",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+        {
+            "Name": "CPU_ERROR1_N",
+            "ReadingType": "discrete",
+            "SensorType": "processor",
+            "SensorInfo": [
+                {
+                    "Label": "CPU_ERROR1_N",
+                    "SensorModel": "Event",
+                    "SensorNum": "0x16",
+                    "EntityId": "0x03",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+	    {
+            "Name": "CPU_ERROR2_N",
+            "ReadingType": "discrete",
+            "SensorType": "processor",
+            "SensorInfo": [
+                {
+                    "Label": "CPU_ERROR2_N",
+                    "SensorModel": "Event",
+                    "SensorNum": "0x17",
+                    "EntityId": "0x03",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+	    {
+            "Name": "PCH_HOT_N",
+            "ReadingType": "discrete",
+            "SensorType": "processor",
+            "SensorInfo": [
+                {
+                    "Label": "PCH_HOT_N",
+                    "SensorModel": "Event",
+                    "SensorNum": "0x19",
+                    "EntityId": "0x03",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+	    {
+            "Name": "BIOS_POST_CMPLT_N",
+            "ReadingType": "discrete",
+            "SensorType": "processor",
+            "SensorInfo": [
+                {
+                    "Label": "BIOS_POST_CMPLT_N",
+                    "SensorModel": "Event",
+                    "SensorNum": "0x1B",
+                    "EntityId": "0x03",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+	    {
+            "Name": "PROC1MEM_VRHOT_N",
+            "ReadingType": "discrete",
+            "SensorType": "processor",
+            "SensorInfo": [
+                {
+                    "Label": "PROC1MEM_VRHOT_N",
+                    "SensorModel": "Event",
+                    "SensorNum": "0x1C",
+                    "EntityId": "0x03",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+        {
+            "Name": "PROC0_MEMHOT_OUT_N",
+            "ReadingType": "discrete",
+            "SensorType": "processor",
+            "SensorInfo": [
+                {
+                    "Label": "PROC0_MEMHOT_OUT_N",
+                    "SensorModel": "Event",
+                    "SensorNum": "0x1D",
+                    "EntityId": "0x03",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+        {
+            "Name": "PROC1_MEMHOT_OUT_N",
+            "ReadingType": "discrete",
+            "SensorType": "processor",
+            "SensorInfo": [
+                {
+                    "Label": "PROC1_MEMHOT_OUT_N",
+                    "SensorModel": "Event",
+                    "SensorNum": "0x1E",
+                    "EntityId": "0x03",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+        {
+            "Name": "CPU0_PROCHOT_N",
+            "ReadingType": "discrete",
+            "SensorType": "processor",
+            "SensorInfo": [
+                {
+                    "Label": "CPU0_PROCHOT_N",
+                    "SensorModel": "Event",
+                    "SensorNum": "0x1F",
+                    "EntityId": "0x03",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+        {
+            "Name": "CPU1_PROCHOT_N",
+            "ReadingType": "discrete",
+            "SensorType": "processor",
+            "SensorInfo": [
+                {
+                    "Label": "CPU1_PROCHOT_N",
+                    "SensorModel": "Event",
+                    "SensorNum": "0x20",
+                    "EntityId": "0x03",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+        {
+            "Name": "CPU0_THERMTRIP_N",
+            "ReadingType": "discrete",
+            "SensorType": "processor",
+            "SensorInfo": [
+                {
+                    "Label": "CPU0_THERMTRIP_N",
+                    "SensorModel": "Event",
+                    "SensorNum": "0x21",
+                    "EntityId": "0x03",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+        {
+            "Name": "CPU1_THERMTRIP_N",
+            "ReadingType": "discrete",
+            "SensorType": "processor",
+            "SensorInfo": [
+                {
+                    "Label": "CPU1_THERMTRIP_N",
+                    "SensorModel": "Event",
+                    "SensorNum": "0x22",
+                    "EntityId": "0x03",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+        {
+            "Name": "CPU0_MEMTRIP_N",
+            "ReadingType": "discrete",
+            "SensorType": "processor",
+            "SensorInfo": [
+                {
+                    "Label": "CPU0_MEMTRIP_N",
+                    "SensorModel": "Event",
+                    "SensorNum": "0x23",
+                    "EntityId": "0x03",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+	    {
+            "Name": "CPU_PWR_FAIL",
+            "ReadingType": "discrete",
+            "SensorType": "processor",
+            "SensorInfo": [
+                {
+                    "Label": "CPU_PWR_FAIL",
+                    "SensorModel": "Event",
+                    "SensorNum": "0x24",
+                    "EntityId": "0x03",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+        {
+            "Name": "DIMM_MODULE_POWER_FAIL",
+            "ReadingType": "discrete",
+            "SensorType": "processor",
+            "SensorInfo": [
+                {
+                    "Label": "DIMM_MODULE_POWER_FAIL",
+                    "SensorModel": "Event",
+                    "SensorNum": "0x25",
+                    "EntityId": "0x03",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+	    {
+            "Name": "PCH_PWR_FAIL",
+            "ReadingType": "discrete",
+            "SensorType": "processor",
+            "SensorInfo": [
+                {
+                    "Label": "PCH_PWR_FAIL",
+                    "SensorModel": "Event",
+                    "SensorNum": "0x27",
+                    "EntityId": "0x03",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+	    {
+            "Name": "PROC0_VRHOT_N",
+            "ReadingType": "discrete",
+            "SensorType": "processor",
+            "SensorInfo": [
+                {
+                    "Label": "PROC0_VRHOT_N",
+                    "SensorModel": "Event",
+                    "SensorNum": "0x29",
+                    "EntityId": "0x03",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+        {
+            "Name": "PROC1_VRHOT_N",
+            "ReadingType": "discrete",
+            "SensorType": "processor",
+            "SensorInfo": [
+                {
+                    "Label": "PROC1_VRHOT_N",
+                    "SensorModel": "Event",
+                    "SensorNum": "0x2A",
+                    "EntityId": "0x03",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+        {
+            "Name": "PROC0MEM_VRHOT_N",
+            "ReadingType": "discrete",
+            "SensorType": "processor",
+            "SensorInfo": [
+                {
+                    "Label": "PROC0MEM_VRHOT_N",
+                    "SensorModel": "Event",
+                    "SensorNum": "0x2B",
+                    "EntityId": "0x03",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+	    {
+            "Name": "NMI_SW",
+            "ReadingType": "discrete",
+            "SensorType": "processor",
+            "SensorInfo": [
+                {
+                    "Label": "NMI_SW",
+                    "SensorModel": "Event",
+                    "SensorNum": "0x56",
+                    "EntityId": "0x03",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+        {
+            "Name": "INTRUDER",
+            "ReadingType": "discrete",
+            "SensorType": "processor",
+            "SensorInfo": [
+                {
+                    "Label": "INTRUDER",
+                    "SensorModel": "Event",
+                    "SensorNum": "0x57",
+                    "EntityId": "0x03",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+	    {
+            "Name": "MEM_CONTROLLER_PWR_FAIL",
+            "ReadingType": "discrete",
+            "SensorType": "processor",
+            "SensorInfo": [
+                {
+                    "Label": "MEM_CONTROLLER_PWR_FAIL",
+                    "SensorModel": "Event",
+                    "SensorNum": "0x5B",
+                    "EntityId": "0x03",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+        {
+            "Name": "DCMI_Power_Threshold",
+            "ReadingType": "discrete_05h",
+            "SensorType": "power_unit",
+            "SensorInfo": [
+                {
+                    "Label": "DCMI_Power_Threshold",
+                    "SensorModel": "Event",
+                    "SensorNum": "0x78",
+                    "EntityId": "0x13",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+        {
+            "Name": "DCMI_Power_Off",
+            "ReadingType": "discrete_0ah",
+            "SensorType": "system_event",
+            "SensorInfo": [
+                {
+                    "Label": "DCMI_Power_Off",
+                    "SensorModel": "Event",
+                    "SensorNum": "0xB0",
+                    "EntityId": "0x7",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+        {
+            "Name": "BMC_health",
+            "ReadingType": "oem_event_70h",
+            "SensorType": "oem_e0h",
+            "SensorInfo": [
+                {
+                    "Label": "BMC_health",
+                    "SensorModel": "Event",
+                    "SensorNum": "0xB1",
+                    "EntityId": "0x7",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+        {
+            "Name": "Fast_throttling",
+            "ReadingType": "oem_event_00h",
+            "SensorType": "oem_d1h",
+            "SensorInfo": [
+                {
+                    "Label": "Fast_throttling",
+                    "SensorModel": "Event",
+                    "SensorNum": "0x04",
+                    "EntityId": "0x7",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+        {
+            "Name": "Sensors_reading_status",
+            "ReadingType": "oem_event_71h",
+            "SensorType": "oem_e1h",
+            "SensorInfo": [
+                {
+                    "Label": "Sensors_reading_status",
+                    "SensorModel": "Event",
+                    "SensorNum": "0xB2",
+                    "EntityId": "0x7",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+        {
+            "Name": "Subsystem_health",
+            "ReadingType": "discrete_6fh",
+            "SensorType": "management_subsystem_health",
+            "SensorInfo": [
+                {
+                    "Label": "Subsystem_health",
+                    "SensorModel": "Event",
+                    "SensorNum": "0xB3",
+                    "EntityId": "0x7",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+        {
+            "Name": "FanRPMReport",
+            "ReadingType": "discrete_6fh",
+            "SensorType": "fan",
+            "SensorInfo": [
+                {
+                    "Label": "FanRPMReport",
+                    "SensorModel": "Event",
+                    "SensorNum": "0x01",
+                    "EntityId": "0x7",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+        {
+            "Name": "IntelMEHealth",
+            "ReadingType": "discrete_6fh",
+            "SensorType": "oem_d4h",
+            "SensorInfo": [
+                {
+                    "Label": "IntelMEHealth",
+                    "SensorModel": "Event",
+                    "SensorNum": "0xB4",
+                    "EntityId": "0x7",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+        {
+            "Name": "PSUStateCheck",
+            "ReadingType": "discrete_6fh",
+            "SensorType": "power_supply",
+            "SensorInfo": [
+                {
+                    "Label": "PSUStateCheck",
+                    "SensorModel": "Event",
+                    "SensorNum": "0xB5",
+                    "EntityId": "0x7",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+        {
+            "Name": "SMITimeoutCheck",
+            "ReadingType": "oem_event_00h",
+            "SensorType": "oem_d5h",
+            "SensorInfo": [
+                {
+                    "Label": "SMITimeoutCheck",
+                    "SensorModel": "Event",
+                    "SensorNum": "0xB6",
+                    "EntityId": "0x7",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+        {
+            "Name": "SystemReconfigure",
+            "ReadingType": "discrete_6fh",
+            "SensorType": "system_event",
+            "SensorInfo": [
+                {
+                    "Label": "SystemReconfigure",
+                    "SensorModel": "Event",
+                    "SensorNum": "0x07",
+                    "EntityId": "0x7",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        }  
+    ],
+    "Name": "Transformers event",
+    "Probe": "TRUE",
+    "Type": "Event",
+    "xyz.openbmc_project.Inventory.Decorator.Ipmi": {
+        "EntityId": "0x07",
+        "EntityInstance": 1
+    }
+}

@@ -1,0 +1,166 @@
+From d25ab1eb6f2b119d1067d859ba20742a73fd01c8 Mon Sep 17 00:00:00 2001
+From: "pj.chen" <chen.pj@inventec.com>
+Date: Thu, 3 Mar 2022 09:21:05 +0000
+Subject: [PATCH 04/31] Watchdog - Store Don't log flag to dbus
+
+Symtom/Reason:
+    Save the don't log flag to dbus for watchdog command.
+
+Root Cause:
+    The don't log flag didn't work.
+
+Solution/Change:
+    Add the don't log to phosphor-dbus-interface.
+    And set/get the value when watchdog command has set.
+
+Entry Test:
+
+ipmitool raw 0x06 0x24 0x81 0x30 0x10 0x02 0x2c 0x01
+
+And check dbus interface
+busctl introspect xyz.openbmc_project.Watchdog /xyz/openbmc_project/watchdog/host0
+
+xyz.openbmc_project.State.Watchdog  interface -         -                                        -
+.ResetTimeRemaining                 method    b         -                                        -
+.CurrentTimerUse                    property  s         "xyz.openbmc_project.State.Watchdog.T... emits-change writable
+.DontLog                            property  b         true                                     emits-change writable
+---
+ app/watchdog.cpp         | 25 ++++++++++++++++++++++---
+ app/watchdog_service.cpp | 14 +++++++++++++-
+ app/watchdog_service.hpp | 15 +++++++++++++++
+ 3 files changed, 50 insertions(+), 4 deletions(-)
+
+diff --git a/app/watchdog.cpp b/app/watchdog.cpp
+index 1d12220..a78c422 100644
+--- a/app/watchdog.cpp
++++ b/app/watchdog.cpp
+@@ -211,8 +211,12 @@ WatchdogService::TimerUse ipmiTimerUseToWdTimerUse(IpmiTimerUse ipmiTimerUse)
+         }
+     }
+ }
+-
++/*
++    Inventec - Store Don't log flag to dbus
++*/
++/*
+ static bool timerNotLogFlags = false;
++*/
+ static std::bitset<8> timerUseExpirationFlags = 0;
+ static uint3_t timerPreTimeoutInterrupt = 0;
+ static constexpr uint8_t wdExpirationFlagReservedBit0 = 0x0;
+@@ -257,7 +261,12 @@ ipmi::RspType<>
+         return ipmi::responseInvalidFieldRequest();
+     }
+ 
++    /*
++        Inventec - Store Don't log flag to dbus
++    */
++    /*
+     timerNotLogFlags = dontLog;
++    */
+     timerPreTimeoutInterrupt = preTimeoutInterrupt;
+ 
+     try
+@@ -296,6 +305,11 @@ ipmi::RspType<>
+         wd_service.setPreTimeoutInterrupt(
+             ipmiPreTimeoutInterruptToWdAction(ipmiPreTimeoutInterrupt));
+ 
++        /*
++            Inventec - Store Don't log flag to dbus
++        */
++        wd_service.setDontLog(dontLog);
++
+         lastCallSuccessful = true;
+         return ipmi::responseSuccess();
+     }
+@@ -450,9 +464,14 @@ ipmi::RspType<uint3_t, // timerUse - timer use
+             }
+             else
+             {
+-                presentCountdown = 0;
++                presentCountdown = initialCountdown;
++                /*
++                    Inventec - Store Don't log flag to dbus
++                */
++                #if 0
+                 // Automatically clear it whenever a timer expiration occurs.
+                 timerNotLogFlags = false;
++                #endif
+             }
+         }
+ 
+@@ -463,7 +482,7 @@ ipmi::RspType<uint3_t, // timerUse - timer use
+         return ipmi::responseSuccess(
+             types::enum_cast<uint3_t>(
+                 wdTimerUseToIpmiTimerUse(wd_prop.timerUse)),
+-            0, wd_prop.enabled, timerNotLogFlags,
++            0, wd_prop.enabled, wd_prop.dontLog,
+             types::enum_cast<uint3_t>(
+                 wdActionToIpmiAction(wd_prop.expireAction)),
+             0, timerPreTimeoutInterrupt, 0, pretimeout, timerUseExpirationFlags,
+diff --git a/app/watchdog_service.cpp b/app/watchdog_service.cpp
+index 4df1ab6..4d80c54 100644
+--- a/app/watchdog_service.cpp
++++ b/app/watchdog_service.cpp
+@@ -86,6 +86,10 @@ WatchdogService::Properties WatchdogService::getProperties()
+         wd_prop.interval = std::get<uint64_t>(properties.at("Interval"));
+         wd_prop.timeRemaining =
+             std::get<uint64_t>(properties.at("TimeRemaining"));
++        /*
++            Inventec - Store Don't log flag to dbus
++        */
++        wd_prop.dontLog = std::get<bool>(properties.at("DontLog"));
+         return wd_prop;
+     }
+     catch (const std::exception& e)
+@@ -203,4 +207,12 @@ void WatchdogService::setPreTimeoutInterrupt(
+     PreTimeoutInterruptAction preTimeoutInterrupt)
+ {
+     setProperty("PreTimeoutInterrupt", convertForMessage(preTimeoutInterrupt));
+-}
+\ No newline at end of file
++}
++
++/*
++    Inventec - Store Don't log flag to dbus
++*/
++void WatchdogService::setDontLog(bool dontlog)
++{
++    setProperty("DontLog", dontlog);
++}
+diff --git a/app/watchdog_service.hpp b/app/watchdog_service.hpp
+index 32b7461..78a9439 100644
+--- a/app/watchdog_service.hpp
++++ b/app/watchdog_service.hpp
+@@ -40,6 +40,10 @@ class WatchdogService
+         TimerUse expiredTimerUse;
+         uint64_t interval;
+         uint64_t timeRemaining;
++        /*
++            Inventec - Store Don't log flag to dbus
++        */
++        bool dontLog;
+     };
+ 
+     /** @brief Retrieves a copy of the currently set properties on the
+@@ -101,6 +105,17 @@ class WatchdogService
+      */
+     void setPreTimeoutInterrupt(PreTimeoutInterruptAction preTimeoutInterrupt);
+ 
++    /*
++        Inventec - Store Don't log flag to dbus
++    */
++    /** @brief Sets the value of the DontLog property on the host
++     * watchdog
++     *
++     *  @param[in] DontLog - The new DontLog value
++     */
++    void setDontLog(bool dontLog);
++
++
+   private:
+     /** @brief sdbusplus handle */
+     sdbusplus::bus::bus bus;
+-- 
+2.33.0
+

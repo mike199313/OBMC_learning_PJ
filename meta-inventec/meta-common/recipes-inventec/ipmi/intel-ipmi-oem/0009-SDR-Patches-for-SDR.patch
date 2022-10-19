@@ -1,0 +1,687 @@
+From c744ffe3be11c0599b31ca4179a8d9f3fe1632dd Mon Sep 17 00:00:00 2001
+From: "pj.chen" <chen.pj@inventec.com>
+Date: Mon, 7 Mar 2022 05:19:25 +0000
+Subject: [PATCH 09/25] SDR - Patches for SDR
+
+- Patched to get match sensor number from event dbus path.
+- Patch sensor reading command to get sensor number from dbus
+- Find sensor number from dbus to get sensor current value
+- Patch to support below event type report when implement SDR discrete event. The Sensor/Event DBUS path
+  should include below string and detect to report correct byte.
+
+- Fix sensor reading factor un-match in SDR
+
+Symptom/Reason:
+    The reading of some sensors are not correct.
+
+Root Cause:
+    The reading factor would save in the SDR record,
+    and the sensor reading would use the factors to convert the value.
+    In SDR, using only the maximum and minimum to calculate the factors.
+    But in sensor reading, would use also threshold settings.
+
+Solution/Change:
+   Modify the get maximum and minimum part.
+
+Entry Test:
+
+sysadmin@transformers:~# ipmitool sensor get FAN1_TACH1
+Locating sensor record...
+Sensor ID              : FAN1_TACH1 (0x30)
+ Entity ID             : 29.0
+ Sensor Type (Threshold)  : Fan
+ Sensor Reading        : 8304 (+/- 0) RPM
+ Status                : ok
+ Lower Non-Recoverable : na
+ Lower Critical        : 1211.000
+ Lower Non-Critical    : na
+ Upper Non-Critical    : na
+ Upper Critical        : 43942.000
+ Upper Non-Recoverable : na
+ Positive Hysteresis   : Unspecified
+ Negative Hysteresis   : Unspecified
+ Assertion Events      :
+ Event Enable          : Event Messages Disabled
+ Assertions Enabled    : lcr- ucr+
+ Deassertions Enabled  : lcr+ ucr-
+
+sysadmin@transformers:~# cat /sys/class/hwmon/hwmon0/fan0_input
+8220
+---
+ include/sdrutils.hpp   | 437 +++++++++++++++++++++++++++++++++++++----
+ src/sensorcommands.cpp |  22 ++-
+ 2 files changed, 413 insertions(+), 46 deletions(-)
+
+diff --git a/include/sdrutils.hpp b/include/sdrutils.hpp
+index 5349e34..f5d4895 100644
+--- a/include/sdrutils.hpp
++++ b/include/sdrutils.hpp
+@@ -55,6 +55,11 @@ static constexpr uint16_t lun1Sensor0 = 0x100;
+ static constexpr uint16_t lun3Sensor0 = 0x300;
+ static constexpr uint16_t invalidSensorNumber = 0xFFFF;
+ static constexpr uint8_t reservedSensorNumber = 0xFF;
++static constexpr auto ipmiInterface = "xyz.openbmc_project.Sensor.IpmiSensor";
++static constexpr auto sensorNumProp = "sensorNumber";
++static constexpr auto propIntf = "org.freedesktop.DBus.Properties";
++static bool is_SensorNumMapReset = true;
++
+ 
+ namespace details
+ {
+@@ -233,13 +238,20 @@ inline static uint16_t getSensorSubtree(std::shared_ptr<SensorSubTree>& subtree)
+         dbus,
+         "type='signal',member='InterfacesAdded',arg0path='/xyz/openbmc_project/"
+         "sensors/'",
+-        [](sdbusplus::message::message& m) { sensorTreePtr.reset(); });
++        [](sdbusplus::message::message& m) {
++            sensorTreePtr.reset();
++            is_SensorNumMapReset = true;
++        });
+ 
+     static sdbusplus::bus::match::match sensorRemoved(
+         dbus,
+         "type='signal',member='InterfacesRemoved',arg0path='/xyz/"
+         "openbmc_project/sensors/'",
+-        [](sdbusplus::message::message& m) { sensorTreePtr.reset(); });
++        [](sdbusplus::message::message& m) {
++            sensorTreePtr.reset();
++            is_SensorNumMapReset = true;
++        });
++
+ 
+     if (sensorTreePtr)
+     {
+@@ -253,8 +265,9 @@ inline static uint16_t getSensorSubtree(std::shared_ptr<SensorSubTree>& subtree)
+         dbus.new_method_call("xyz.openbmc_project.ObjectMapper",
+                              "/xyz/openbmc_project/object_mapper",
+                              "xyz.openbmc_project.ObjectMapper", "GetSubTree");
+-    static constexpr const auto depth = 2;
+-    static constexpr std::array<const char*, 3> interfaces = {
++    static constexpr const auto depth = 3;
++    static constexpr std::array<const char*, 4> interfaces = {
++        "xyz.openbmc_project.Sensor.IpmiSensor",
+         "xyz.openbmc_project.Sensor.Value",
+         "xyz.openbmc_project.Sensor.Threshold.Warning",
+         "xyz.openbmc_project.Sensor.Threshold.Critical"};
+@@ -277,53 +290,253 @@ inline static uint16_t getSensorSubtree(std::shared_ptr<SensorSubTree>& subtree)
+     return sensorUpdatedIndex;
+ }
+ 
+-inline static bool getSensorNumMap(std::shared_ptr<SensorNumMap>& sensorNumMap)
++using  SensorSubTreeItem = std::pair< std::string,
++                                boost::container::flat_map<std::string, std::vector<std::string>> >;
++enum sensorNumMapOption
++{
++    getSensorNumMapPtr = 0,
++    update_full,
++    update_ByNum,
++    update_ByPath
++};
++
++inline static bool _updateSensorNumMap(SensorSubTreeItem& sensor, sdbusplus::bus::bus& dbus,
++                                        uint8_t& sensorNumber, std::string& path,
++                                        std::shared_ptr<SensorNumMap>& sensorNumMap)
+ {
+-    static std::shared_ptr<SensorNumMap> sensorNumMapPtr;
+-    bool sensorNumMapUpated = false;
+-    static uint16_t prevSensorUpdatedIndex = 0;
++    /*
++    * We use the subvector of the sensorTree container to store sensor number as a chache.
++    * That can save the time for calling dbus to sensor number.
++    */
++    auto& subVect = sensor.second.begin()->second;
++    auto sensorNum_itr = subVect.rbegin();
++    bool ret = false;
++    std::string connection = sensor.second.begin()->first;
++    path = sensor.first;
++
++    if constexpr (debug)
++    {
++        std::fprintf(stderr, "[%s] OBJ_PATH: %s, SERVICE: %s\n",
++                    __func__, path.c_str(), connection.c_str());
++    }
++
++    if (boost::ends_with(*sensorNum_itr, ":SensorNum"))
++    {
++        sensorNumber = std::stoi(*sensorNum_itr);
++        int findNum = sensorNumber;
++        /*
++        * Note:
++        * Currently we don't consider LUN and because we use bimap container which cannot allow duplicated member
++        * that means we cannot have the same sensor number but the different path, vice versa.
++        */
++        if (sensorNumMap->left.find(findNum) == sensorNumMap->left.end())
++        {
++            sensorNumMap->insert(
++                SensorNumMap::value_type(sensorNumber, path));
++        }
++        ret = true;
++    }
++    else
++    {
++        // check it has the dbus interface "ipmiInterface"
++        if (std::find(sensorNum_itr, subVect.rend(), ipmiInterface) != subVect.rend())
++        {
++            try
++            {
++                auto methodCall = dbus.new_method_call(connection.c_str(), path.c_str(), propIntf, "Get");
++                methodCall.append(ipmiInterface, sensorNumProp);
++
++                auto reply = dbus.call(methodCall);
++                if (reply.is_method_error())
++                {
++                    if constexpr (debug)
++                    {
++                        std::fprintf(stderr, "[%s] Method call reply fail\n", __func__);
++                    }
++                    return ret;
++                }
++
++                std::variant<uint64_t> sn;
++                reply.read(sn);
++                sensorNumber = static_cast<uint8_t>(std::get<uint64_t>(sn));
++                sensorNumMap->insert(
++                    SensorNumMap::value_type(sensorNumber, path));
++
++                // put the sensor number to the subvector as a cache
++                subVect.emplace_back(std::to_string(sensorNumber)+":SensorNum");
++                ret = true;
++
++                if constexpr (debug)
++                {
++                    std::fprintf(stderr, "[%s] Insert Sensor(#0x%x), path:%s\n",
++                        __func__, sensorNumber, path.c_str());
++                }
++            }
++            catch (std::exception &)
++            {
++                if constexpr (debug)
++                {
++                    std::fprintf(stderr, "[%s] Get Sensor(#0x%x) Connection Fail\nPath:%s\n",
++                        __func__, sensorNumber, path.c_str());
++                }
++            }
++        }
++    }
++    return ret;
++}
++inline static bool updateSensorNumMap(std::shared_ptr<SensorNumMap>& sensorNumMap,
++                uint8_t& sensorNum, std::string& objPath,
++                sensorNumMapOption option = sensorNumMapOption::getSensorNumMapPtr)
++ {
++    bool result = false;
+     std::shared_ptr<SensorSubTree> sensorTree;
+-    uint16_t curSensorUpdatedIndex = details::getSensorSubtree(sensorTree);
+-    if (!sensorTree)
++    static std::shared_ptr<SensorNumMap> s_sensorNumMap = nullptr;
++    static bool is_InProgess = false;
++
++    if (is_InProgess)
++    {
++        if constexpr (debug)
++        {
++            std::fprintf(stderr, "[%s] SensorNumMap is in updating...\n", __func__);
++        }
++        return result;
++    }
++    // check should refresh sensorNumMap
++    if (is_SensorNumMapReset)
+     {
+-        return sensorNumMapUpated;
++        if constexpr (debug)
++        {
++            std::fprintf(stderr, "[%s] Refreshing...\n", __func__);
++        }
++        s_sensorNumMap.reset();
++        option = sensorNumMapOption::update_full;
++    }
++
++    /* To be efficient, we only do full scan at first time.
++     * If there is any sensor info not found,
++     * we will update it individually later.
++     */
++    if (option == sensorNumMapOption::getSensorNumMapPtr && s_sensorNumMap)
++    {
++        sensorNumMap = s_sensorNumMap;
++        result = true;
++        return result;
+     }
+ 
+-    if ((curSensorUpdatedIndex == prevSensorUpdatedIndex) && sensorNumMapPtr)
++    is_InProgess = true;
++
++    details::getSensorSubtree(sensorTree);
++    if (!sensorTree) 
++    {
++        is_InProgess = false;
++        return result; //false;
++    }
++    sd_bus* bus = NULL;
++    int ret = sd_bus_default_system(&bus);
++    if (ret < 0)
+     {
+-        sensorNumMap = sensorNumMapPtr;
+-        return sensorNumMapUpated;
++        is_InProgess = false;
++        return result; //false;
+     }
+-    prevSensorUpdatedIndex = curSensorUpdatedIndex;
+ 
+-    sensorNumMapPtr = std::make_shared<SensorNumMap>();
++    sdbusplus::bus::bus dbus(bus);
+ 
+-    uint16_t sensorNum = 0;
+-    uint16_t sensorIndex = 0;
+-    for (const auto& sensor : *sensorTree)
++    if (!s_sensorNumMap)
+     {
+-        sensorNumMapPtr->insert(
+-            SensorNumMap::value_type(sensorNum, sensor.first));
+-        sensorIndex++;
+-        if (sensorIndex == maxSensorsPerLUN)
++        s_sensorNumMap = std::make_shared<SensorNumMap>();
++    }
++
++    if (option == sensorNumMapOption::update_ByPath)
++    {
++        auto found = sensorTree->find(objPath);
++        if (found != sensorTree->end())
+         {
+-            sensorIndex = lun1Sensor0;
++            result = _updateSensorNumMap(*found, dbus, sensorNum, objPath, s_sensorNumMap);
+         }
+-        else if (sensorIndex == (lun1Sensor0 | maxSensorsPerLUN))
++    }
++    else
++    {
++        for (auto& sensor : *sensorTree)
+         {
+-            // Skip assigning LUN 0x2 any sensors
+-            sensorIndex = lun3Sensor0;
++            uint8_t _sensorNum;
++            bool is_ok = _updateSensorNumMap(sensor, dbus, _sensorNum, objPath, s_sensorNumMap);
++            if (option == sensorNumMapOption::update_ByNum && _sensorNum == sensorNum)
++            {
++                result = is_ok;
++                break;
++            }
+         }
+-        else if (sensorIndex == (lun3Sensor0 | maxSensorsPerLUN))
++
++        if (option == sensorNumMapOption::update_full)
+         {
+-            // this is an error, too many IPMI sensors
+-            throw std::out_of_range("Maximum number of IPMI sensors exceeded.");
++            // If we do full update, just let the result is true
++            // If there is any sensor info not found, we will update it individually later
++            result = true;
+         }
+-        sensorNum = sensorIndex;
+     }
+-    sensorNumMap = sensorNumMapPtr;
+-    sensorNumMapUpated = true;
+-    return sensorNumMapUpated;
++
++    sensorNumMap = s_sensorNumMap;
++
++    if (is_SensorNumMapReset)
++    {
++        is_SensorNumMapReset = false;
++    }
++    is_InProgess = false;
++
++    return result;
++}
++
++inline static bool getSensorNumMap(std::shared_ptr<SensorNumMap>& sensorNumMap)
++{
++    std::string path;
++    uint8_t sensorNumber;
++
++    return updateSensorNumMap(sensorNumMap, sensorNumber, path, sensorNumMapOption::getSensorNumMapPtr);
++}
++
++/* @brief To update SensorNumMap individually by sensorNum
++ * @param[in] sensorNumMap - a ptr to point at s_sensorNumMap
++ * @param[in] sensorNum - the sensor number
++ * @param[out] objPath - the obj path of the sensor
++ * @return bool - to indicate the result
++*/
++inline static bool tryGetPathBySensorNum(std::shared_ptr<SensorNumMap>& sensorNumMap,
++                                            uint8_t sensorNum, std::string& objPath)
++{
++    bool ret = updateSensorNumMap(sensorNumMap, sensorNum, objPath, sensorNumMapOption::update_ByNum);
++
++    if (!ret)
++    {
++        objPath = std::string();
++    }
++    if constexpr (debug)
++    {
++        std::fprintf(stderr, "[%s] sensor(#0x%x), obj path:%s\n", __func__, sensorNum, objPath.c_str());
++    }
++
++    return ret;
++}
++
++/* @brief To update SensorNumMap individually by obj path
++ * @param[in] sensorNumMap - a ptr to point at s_sensorNumMap
++ * @param[in] objPath - the obj path of the sensor
++ * @param[out] sensorNum - the sensor number
++ * @return bool - to indicate the result
++*/
++inline static bool tryGetSensorNumByPath(std::shared_ptr<SensorNumMap>& sensorNumMap,
++                                            std::string objPath, uint8_t& sensorNum)
++{
++    bool ret = updateSensorNumMap(sensorNumMap, sensorNum, objPath, sensorNumMapOption::update_ByPath);
++
++    if (!ret)
++    {
++        sensorNum = 0xFF;
++    }
++    if constexpr (debug)
++    {
++        std::fprintf(stderr, "[%s] sensor(#0x%x), obj path:%s\n", __func__, sensorNum, objPath.c_str());
++    }
++    return ret;
+ }
+ } // namespace details
+ 
+@@ -356,11 +569,13 @@ enum class SensorTypeCodes : uint8_t
+     current = 0x3,
+     fan = 0x4,
+     other = 0xB,
++    oem = 0xC0,
+ };
+ 
+ const static boost::container::flat_map<const char*, SensorTypeCodes, CmpStr>
+     sensorTypes{{{"temperature", SensorTypeCodes::temperature},
+                  {"voltage", SensorTypeCodes::voltage},
++                 {"oem", SensorTypeCodes::oem},
+                  {"current", SensorTypeCodes::current},
+                  {"fan_tach", SensorTypeCodes::fan},
+                  {"fan_pwm", SensorTypeCodes::fan},
+@@ -413,15 +628,81 @@ inline static uint16_t getSensorNumberFromPath(const std::string& path)
+     }
+     catch (const std::out_of_range& e)
+     {
+-        phosphor::logging::log<phosphor::logging::level::ERR>(e.what());
+-        return invalidSensorNumber;
++        // phosphor::logging::log<phosphor::logging::level::ERR>(e.what());
++        uint8_t sensorNum;
++        bool ret = details::tryGetSensorNumByPath(sensorNumMapPtr, path, sensorNum);
++        if (debug && !ret)
++        {
++            phosphor::logging::log<phosphor::logging::level::ERR>("Failed to get sensor number");
++        }
++
++        return sensorNum;
+     }
+ }
+ 
++enum class EventTypeCodes : uint8_t
++{
++    unspecific = 0x00,
++    threshold = 0x01,
++    discrete = 0x03,
++    specific = 0x6F,
++    oem = 0x70,
++};
++
++inline static uint8_t getEventTypeStringFromPath(const std::string& path)
++{
++    uint8_t eventType = 0xFF;
++
++    if (path.find("discrete") != std::string::npos)
++    {
++        eventType = (uint8_t)EventTypeCodes::discrete;
++    }
++    else if (path.find("unspecific") != std::string::npos)
++    {
++        eventType = (uint8_t)EventTypeCodes::unspecific;
++    }
++    else if (path.find("specific") != std::string::npos)
++    {
++        eventType = (uint8_t)EventTypeCodes::specific;
++    }
++    else if (path.find("oem") != std::string::npos)
++    {
++        eventType = (uint8_t)EventTypeCodes::oem;
++    }
++    
++    return eventType;
++}
++
+ inline static uint8_t getSensorEventTypeFromPath(const std::string& path)
+ {
+     // TODO: Add support for additional reading types as needed
+-    return 0x1; // reading type = threshold
++    uint8_t type = getEventTypeStringFromPath(path);
++
++    if (type != 0xFF)
++    {
++        return type;
++    }
++    else
++    {
++        return (uint8_t)EventTypeCodes::threshold; // default return 0x01
++    }
++}
++
++inline static uint16_t getMappedSensorId(uint16_t recordId)
++{
++    std::shared_ptr<SensorNumMap> sensorNumMapPtr;
++    details::getSensorNumMap(sensorNumMapPtr);
++
++    auto m = sensorNumMapPtr->left;
++    uint16_t index = 0;
++    for( auto iter = m.begin(), iend = m.end(); iter != iend; ++iter )
++    {
++        if(index == recordId) {
++            return iter->first;
++        }
++        index++;
++    }
++    return 0;
+ }
+ 
+ inline static std::string getPathFromSensorNumber(uint16_t sensorNum)
+@@ -439,8 +720,15 @@ inline static std::string getPathFromSensorNumber(uint16_t sensorNum)
+     }
+     catch (const std::out_of_range& e)
+     {
+-        phosphor::logging::log<phosphor::logging::level::ERR>(e.what());
+-        return std::string();
++        // phosphor::logging::log<phosphor::logging::level::ERR>(e.what());
++        //try to git it from dbus
++        std::string objPath;
++        bool ret = details::tryGetPathBySensorNum(sensorNumMapPtr, sensorNum, objPath);
++        if (debug && !ret)
++        {
++            phosphor::logging::log<phosphor::logging::level::ERR>("Failed to get sensor objPath");
++        }
++        return objPath;
+     }
+ }
+ 
+@@ -538,12 +826,36 @@ static inline const std::string* getSensorConfigurationInterface(
+     return nullptr;
+ }
+ 
++/* Inventec path - get sensorInfo interface*/
++static inline const std::string* getSensorInfoInterface(
++    const std::map<std::string, std::vector<std::string>>&
++        sensorInterfacesResponse)
++{
++    auto entityManagerService =
++        sensorInterfacesResponse.find("xyz.openbmc_project.EntityManager");
++    if (entityManagerService == sensorInterfacesResponse.end())
++    {
++        return nullptr;
++    }
++
++    for (const auto& entry : entityManagerService->second)
++    {
++        if (boost::algorithm::ends_with(entry, ".SensorInfo0"))
++        {
++            return &entry;
++        }
++    }
++
++    return nullptr;
++}
++
++
+ // Follow Association properties for Sensor back to the Board dbus object to
+ // check for an EntityId and EntityInstance property.
+ static inline void updateIpmiFromAssociation(const std::string& path,
+                                              const SensorMap& sensorMap,
+                                              uint8_t& entityId,
+-                                             uint8_t& entityInstance)
++                                             uint8_t& entityInstance, uint8_t& sensorNumber)
+ {
+     namespace fs = std::filesystem;
+ 
+@@ -648,6 +960,7 @@ static inline void updateIpmiFromAssociation(const std::string& path,
+ 
+         entityIdProp = configurationProperties.find("EntityId");
+         entityInstanceProp = configurationProperties.find("EntityInstance");
++        auto sensorNumberProp = configurationProperties.find("SensorNum");
+         if (entityIdProp != configurationProperties.end())
+         {
+             entityId =
+@@ -658,15 +971,55 @@ static inline void updateIpmiFromAssociation(const std::string& path,
+             entityInstance = static_cast<uint8_t>(
+                 std::get<uint64_t>(entityInstanceProp->second));
+         }
++        if (sensorNumberProp != configurationProperties.end())
++        {
++            sensorNumber = static_cast<uint8_t>(
++                std::get<uint64_t>(sensorNumberProp->second));
++        }
++
++        /* Inventec patch - Get sensor information from sensorInfo interface*/
++        const std::string* sensorInfoInterface =
++            getSensorInfoInterface(sensorInterfacesResponse);
++
++        // We didnt' find a configuration interface for this sensor, but we
++        // followed the Association property to get here, so we're done
++        // searching.
++        if (!sensorInfoInterface)
++        {
++            std::fprintf(stderr,"cannot get sensorInfo interface\n");
++            break;
++        }
++        // We found a sensorInfo interface.
++        std::map<std::string, DbusVariant>sensorInfoProperties =
++            getEntityManagerProperties(sensorConfigPath.c_str(),
++                                       sensorInfoInterface->c_str());
+ 
++        entityIdProp = sensorInfoProperties.find("EntityId");
++        entityInstanceProp = sensorInfoProperties.find("EntityInstance");
++        sensorNumberProp = sensorInfoProperties.find("SensorNum");
++        if (entityIdProp != sensorInfoProperties.end())
++        {
++            entityId =
++                static_cast<uint8_t>(std::get<uint64_t>(entityIdProp->second));
++        }
++        if (entityInstanceProp != sensorInfoProperties.end())
++        {
++            entityInstance = static_cast<uint8_t>(
++                std::get<uint64_t>(entityInstanceProp->second));
++        }
++        if (sensorNumberProp != sensorInfoProperties.end())
++        {
++            sensorNumber = static_cast<uint8_t>(
++                std::get<uint64_t>(sensorNumberProp->second));
++        }
+         // stop searching Association records.
+         break;
+     } // end for Association vectors.
+ 
+     if constexpr (debug)
+     {
+-        std::fprintf(stderr, "path=%s, entityId=%d, entityInstance=%d\n",
+-                     path.c_str(), entityId, entityInstance);
++        std::fprintf(stderr, "path=%s, entityId=%d, entityInstance=%d, sensorNumber=%d\n",
++                     path.c_str(), entityId, entityInstance, sensorNumber);
+     }
+ }
+ 
+diff --git a/src/sensorcommands.cpp b/src/sensorcommands.cpp
+index 5ea9035..787d320 100644
+--- a/src/sensorcommands.cpp
++++ b/src/sensorcommands.cpp
+@@ -1277,6 +1277,9 @@ static int getSensorDataRecord(ipmi::Context::ptr ctx,
+     std::string connection;
+     std::string path;
+     uint16_t sensNumFromRecID{recordID};
++
++    /* Inventec - Patched to get match snesor number from event dbus path */
++    #if 0
+     if ((recordID > lun0MaxSensorNum) && (recordID < lun1MaxSensorNum))
+     {
+         // LUN 0 has one reserved sensor number. Compensate here by adding one
+@@ -1292,9 +1295,10 @@ static int getSensorDataRecord(ipmi::Context::ptr ctx,
+         sensNumFromRecID = recordID + (maxSensorsPerLUN + 1) + 2;
+         ctx->lun = 3;
+     }
++    #endif
+ 
+     auto status = getSensorConnection(
+-        ctx, static_cast<uint8_t>(sensNumFromRecID), connection, path);
++        ctx, getMappedSensorId(recordID), connection, path);
+     if (status)
+     {
+         phosphor::logging::log<phosphor::logging::level::ERR>(
+@@ -1340,7 +1344,8 @@ static int getSensorDataRecord(ipmi::Context::ptr ctx,
+                                   sizeof(get_sdr::SensorDataRecordHeader);
+     record.key.owner_id = 0x20;
+     record.key.owner_lun = lun;
+-    record.key.sensor_number = sensornumber;
++    /* Inventec - Patched to get match snesor number from event dbus path */
++    //record.key.sensor_number = sensornumber;
+ 
+     record.body.sensor_capabilities = 0x68; // auto rearm - todo hysteresis
+     record.body.sensor_type = getSensorTypeFromPath(path);
+@@ -1368,11 +1373,15 @@ static int getSensorDataRecord(ipmi::Context::ptr ctx,
+ 
+     // follow the association chain to get the parent board's entityid and
+     // entityInstance
+-    updateIpmiFromAssociation(path, sensorMap, entityId, entityInstance);
++    updateIpmiFromAssociation(path, sensorMap, entityId, entityInstance,sensornumber);
++    record.key.sensor_number = sensornumber;
++
+ 
+     record.body.entity_id = entityId;
+     record.body.entity_instance = entityInstance;
+ 
++    /* Inventec patch - Fix sensor reading factor un-match in SDR */
++    #if 0
+     auto maxObject = sensorObject->second.find("MaxValue");
+     auto minObject = sensorObject->second.find("MinValue");
+ 
+@@ -1389,6 +1398,11 @@ static int getSensorDataRecord(ipmi::Context::ptr ctx,
+     {
+         min = std::visit(VariantToDoubleVisitor(), minObject->second);
+     }
++    #endif
++    double max = 0;
++    double min = 0;
++    getSensorMaxMin(sensorMap, max, min);
++    /* Inventec patch - Fix sensor reading factor un-match in SDR - END*/
+ 
+     int16_t mValue = 0;
+     int8_t rExp = 0;
+@@ -1461,7 +1475,7 @@ static int getSensorDataRecord(ipmi::Context::ptr ctx,
+         name = path.substr(nameStart + 1, std::string::npos - nameStart);
+     }
+ 
+-    std::replace(name.begin(), name.end(), '_', ' ');
++    //std::replace(name.begin(), name.end(), '_', ' ');
+     if (name.size() > FULL_RECORD_ID_STR_MAX_LENGTH)
+     {
+         // try to not truncate by replacing common words
+-- 
+2.33.0
+

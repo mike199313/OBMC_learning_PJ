@@ -1,0 +1,91 @@
+From b2fb239c8a04279df37025571e4073731a0e70ed Mon Sep 17 00:00:00 2001
+From: Tommy Lin <lin.tommysc@inventec.com>
+Date: Tue, 11 Jan 2022 05:52:47 +0000
+Subject: [PATCH 04/17] Ip fix
+
+gateway ip fix
+---
+ redfish-core/lib/ethernet.hpp | 60 +++++++++++++++++++++++++++++++++++
+ 1 file changed, 60 insertions(+)
+
+diff --git a/redfish-core/lib/ethernet.hpp b/redfish-core/lib/ethernet.hpp
+index 5ccc25fe..126a68d2 100644
+--- a/redfish-core/lib/ethernet.hpp
++++ b/redfish-core/lib/ethernet.hpp
+@@ -1390,6 +1390,36 @@ inline void handleIPv4StaticPatch(
+                 if (ipv4VerifyIpAndGetBitcount(*address))
+                 {
+                     addr = &(*address);
++                    BMCWEB_LOG_DEBUG << "IPv4 address - " << *addr;
++                    uint8_t firstbyte = 1, i = 0;
++                    char* endPtr;
++                    std::vector<std::string> bytesInMask;
++                    boost::split(bytesInMask, (*addr), boost::is_any_of("."));
++                    for (const std::string& byte : bytesInMask)
++                    {
++                        long value = std::strtol(byte.c_str(), &endPtr, 10);
++                        if (firstbyte)
++                        {
++                            if (value == 127)   //checking for loopback IP
++                            {
++                                messages::propertyValueTypeError(asyncResp->res, *address, pathString + "/Address");
++                                errorInEntry = true;
++                            }
++
++                            if (value >=224 && value <=239)     //checking for multicast IP
++                            {
++                                messages::propertyValueTypeError(asyncResp->res, *address, pathString + "/Address");
++                                errorInEntry = true;
++                            }
++                            firstbyte =0;
++                        }
++                        i++;
++                        if ( i == 4 && (value == 255 || value == 0))      //checking for network & broadcast IP
++                        {
++                            messages::propertyValueTypeError(asyncResp->res, *address, pathString + "/Address");
++                            errorInEntry = true;
++                        }
++                    }
+                 }
+                 else
+                 {
+@@ -1442,6 +1472,36 @@ inline void handleIPv4StaticPatch(
+                 if (ipv4VerifyIpAndGetBitcount(*gateway))
+                 {
+                     gw = &(*gateway);
++                    BMCWEB_LOG_DEBUG << "IPv4 Gateway - " << *gw;
++                    uint8_t firstbyte = 1, i = 0;
++                    char* endPtr;
++                    std::vector<std::string> bytesInMask;
++                    boost::split(bytesInMask, (*gw), boost::is_any_of("."));
++                    for (const std::string& byte : bytesInMask)
++                    {
++                        long value = std::strtol(byte.c_str(), &endPtr, 10);
++                        if (firstbyte)
++                        {
++                            if (value == 127)   //checking for loopback IP
++                            {
++                                messages::propertyValueTypeError(asyncResp->res, *gateway, pathString + "/Gateway");
++                                errorInEntry = true;
++                            }
++
++                            if (value >=224 && value <=239)     //checking for multicast IP
++                            {
++                                messages::propertyValueTypeError(asyncResp->res, *gateway, pathString + "/Gateway");
++                                errorInEntry = true;
++                            }
++                            firstbyte =0;
++                        }
++                        i++;
++                        if ( i == 4 && (value == 255 || value == 0))      //checking for network ID & broadcast IP
++                        {
++                            messages::propertyValueTypeError(asyncResp->res, *gateway, pathString + "/Gateway");
++                            errorInEntry = true;
++                        }
++                    }
+                 }
+                 else
+                 {
+-- 
+2.33.0
+

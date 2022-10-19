@@ -1,0 +1,1747 @@
+From ea6192c03f12019d999566607be2f28a7a495b55 Mon Sep 17 00:00:00 2001
+From: Tommy Lin <lin.tommysc@inventec.com>
+Date: Fri, 27 May 2022 07:47:55 +0000
+Subject: [PATCH 23/25] Implement PEF features
+
+Symptom/Reason:
+- Implement PEF features
+
+Root Cause:
+- N/A
+
+Solution/Change:
+- [phosphor-dbus-interfaces]
+  - Add SignalEvent signal in IPMI interface
+- [phosphor-sel-logger]
+  - Add signal trigger code
+- [intel-ipmi-oem]
+  - Implement PEF manager
+  - Implement PEF IPMI command handler
+
+Entry Test:
+- Get PEF capabilities
+  - ipmitool raw 0x04 0x10
+---
+ CMakeLists.txt            |  12 +
+ include/eventcommands.hpp |  51 ++++
+ include/pef.hpp           | 154 ++++++++++++
+ include/pef_manager.hpp   | 354 +++++++++++++++++++++++++++
+ include/pef_serialize.hpp |  48 ++++
+ src/eventcommands.cpp     | 500 ++++++++++++++++++++++++++++++++++++++
+ src/pef/pef_manager.cpp   | 377 ++++++++++++++++++++++++++++
+ src/pef/pef_serialize.cpp | 119 +++++++++
+ 8 files changed, 1615 insertions(+)
+ create mode 100644 include/eventcommands.hpp
+ create mode 100644 include/pef.hpp
+ create mode 100644 include/pef_manager.hpp
+ create mode 100644 include/pef_serialize.hpp
+ create mode 100644 src/eventcommands.cpp
+ create mode 100644 src/pef/pef_manager.cpp
+ create mode 100644 src/pef/pef_serialize.cpp
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index bd6fb83..fceab0e 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -20,6 +20,8 @@ set (
+ "
+ )
+ 
++set (DEFAULT_CLASS_VERSION 1)
++
+ project (intel-ipmi-oem CXX)
+ 
+ add_definitions (-DBOOST_ERROR_CODE_HEADER_ONLY)
+@@ -30,6 +32,7 @@ add_definitions (-DBOOST_NO_TYPEID)
+ add_definitions (-DBOOST_ASIO_DISABLE_THREADS)
+ add_definitions (-DBOOST_COROUTINES_NO_DEPRECATION_WARNING)
+ add_definitions (-Wno-psabi)
++add_definitions (-DCLASS_VERSION=${DEFAULT_CLASS_VERSION})
+ 
+ if (NOT YOCTO) # headers that can't be built without yocto
+     include_directories (SYSTEM non-yocto)
+@@ -48,6 +51,8 @@ if (NOT YOCTO) # headers that can't be built without yocto
+     link_directories (${CMAKE_BINARY_DIR}/sdbusplus-src/.libs)
+     include_directories (SYSTEM ${CMAKE_BINARY_DIR}/phosphor-logging-src)
+     link_directories (${CMAKE_BINARY_DIR}/phosphor-logging-src/.libs)
++    include_directories (SYSTEM ${CMAKE_BINARY_DIR}/phosphor-snmp-src)
++    link_directories (${CMAKE_BINARY_DIR}/phosphor-snmp-src/.libs)
+     include_directories (SYSTEM ${CMAKE_BINARY_DIR}/intel-dbus-interfaces-src)
+     link_directories (${CMAKE_BINARY_DIR}/intel-dbus-interfaces-src/.libs)
+     include_directories (SYSTEM ${CMAKE_BINARY_DIR}/phosphor-ipmi-host/include)
+@@ -63,6 +68,10 @@ if (YOCTO)
+     include_directories (SYSTEM ${LOGGING_INCLUDE_DIRS})
+     link_directories (${LOGGING_LIBRARY_DIRS})
+ 
++    pkg_check_modules (SNMP phosphor-snmp REQUIRED)
++    include_directories (SYSTEM ${SNMP_INCLUDE_DIRS})
++    link_directories (${SNMP_LIBRARY_DIRS})
++
+     pkg_check_modules (LIBIPMID libipmid REQUIRED)
+     include_directories (SYSTEM ${LIBIPMID_INCLUDE_DIRS})
+     link_directories (${LIBIPMID_LIBRARY_DIRS})
+@@ -105,6 +114,8 @@ add_library (zinteloemcmds
+              src/bmccontrolservices.cpp src/bridgingcommands.cpp
+              src/ipmi_to_redfish_hooks.cpp src/me_to_redfish_hooks.cpp
+              src/chassiscommands.cpp src/whitelist-filter.cpp
++             src/eventcommands.cpp
++             src/pef/pef_manager.cpp src/pef/pef_serialize.cpp
+              include/ipmi-whitelist.hpp)
+ set_target_properties (zinteloemcmds PROPERTIES VERSION "0.1.0")
+ set_target_properties (zinteloemcmds PROPERTIES SOVERSION "0")
+@@ -112,6 +123,7 @@ target_link_libraries (zinteloemcmds stdc++fs)
+ target_link_libraries (zinteloemcmds ipmid)
+ target_link_libraries (zinteloemcmds sdbusplus)
+ target_link_libraries (zinteloemcmds phosphor_logging)
++target_link_libraries (zinteloemcmds snmp)
+ target_link_libraries (zinteloemcmds intel_dbus)
+ target_link_libraries (zinteloemcmds -luserlayer)
+ target_link_libraries (zinteloemcmds -lchannellayer)
+diff --git a/include/eventcommands.hpp b/include/eventcommands.hpp
+new file mode 100644
+index 0000000..d0580de
+--- /dev/null
++++ b/include/eventcommands.hpp
+@@ -0,0 +1,51 @@
++/*
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//      http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++*/
++
++#pragma once
++
++#include <array>
++#include <cstring>
++#include <cstdint>
++#include <string_view>
++#include <type_traits>
++
++namespace ipmi::sensor_event
++{
++
++/** @brief Copies bytes from an array into a trivially copyable container
++ *
++ *  @params[out] t     - The container receiving the data
++ *  @params[in]  bytes - The data to copy
++ */
++template <size_t N, typename T>
++void copyInto(T& t, const std::array<uint8_t, N>& bytes)
++{
++    static_assert(std::is_trivially_copyable_v<T>);
++    static_assert(N == sizeof(T));
++    std::memcpy(&t, bytes.data(), bytes.size());
++}
++
++/** @brief Gets a generic view of the bytes in the input container
++ *
++ *  @params[in] t - The data to reference
++ *  @return A string_view referencing the bytes in the container
++ */
++template <typename T>
++std::string_view dataRef(const T& t)
++{
++    static_assert(std::is_trivially_copyable_v<T>);
++    return {reinterpret_cast<const char*>(&t), sizeof(T)};
++}
++
++} // namespace ipmi::sensor_event
+diff --git a/include/pef.hpp b/include/pef.hpp
+new file mode 100644
+index 0000000..24072d7
+--- /dev/null
++++ b/include/pef.hpp
+@@ -0,0 +1,154 @@
++/*
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//      http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++*/
++
++#pragma once
++
++#include <array>
++#include <cstdint>
++#include <cstddef>
++#include <string>
++
++namespace ipmi
++{
++namespace sensor_event
++{
++namespace pef
++{
++
++constexpr uint8_t PEF_VERSION = 0x51;
++constexpr uint8_t PEF_PARAM_VERSION = 0x11;
++
++static constexpr size_t EvtDataSize = 3;
++
++constexpr uint8_t MATCH_ANY = 0xff;
++constexpr uint8_t FILTER_ENABLED = 0x80;
++constexpr uint8_t EVENT_OFFSET_MASK = 0x0f;
++constexpr uint8_t TIMER_DISABLE = 0x00;
++constexpr uint8_t TIMER_PEF_DISABLE = 0xfe;
++constexpr uint8_t TIMER_GET_COUNTDOWN = 0xff;
++constexpr uint8_t SRC_SW = 0x00;
++constexpr uint8_t SRC_BMC = 0x01;
++constexpr uint8_t PEF_CAP_ALERT = 0x01;
++constexpr uint8_t PEF_CAP_OEM = 0x80;
++constexpr uint8_t PEF_ALERT_OP_INIT = 0x00;
++constexpr uint8_t PEF_ALERT_OP_GET = 0x01;
++constexpr uint8_t PEF_ALERT_OP_CLEAR = 0x02;
++
++constexpr uint8_t ccConfParamNotSupported = 0x80;
++constexpr uint8_t ccParamSetInProgress = 0x81;
++constexpr uint8_t ccParamReadOnly = 0x82;
++constexpr uint8_t ccParamWriteOnly = 0x83;
++constexpr uint8_t ccEventParamNotSupported = 0x83;
++
++enum class AlertStatus : uint8_t
++{
++    None = 0x00,
++    EndNormal,
++    CallRetry,
++    TimeOut,
++    Pending = 0xff
++};
++
++enum class ParamSetStatus : uint8_t
++{
++    Complete = 0x00,
++    InProgress,
++    CommitWrite,
++    Reserved
++};
++
++/** @brief PEF Parameters */
++enum class PefParam : uint8_t
++{
++    SetStatus = 0,
++    PefControl,
++    ActionControl,
++    StartupDelay,
++    AlertStartupDelay,
++    EventFilterNum,
++    EventFilterTable,
++    EventFilterData1,
++    AlertPolicyNum,
++    AlertPolicyTable,
++    SystemGuid,
++    AlertStringNum,
++    AlertStringKeys,
++    AlertStrings,
++    GroupCtlNum,
++    GroupCtlTable
++};
++
++/**
++ * @struct EventDetail
++ *
++ * Detail for incoming event
++ */
++struct EventItem
++{
++    uint16_t recordId;
++    uint64_t timestamp;
++    std::array<uint8_t, EvtDataSize> eventData;
++    std::string sensorPath;
++    std::string msg;
++
++    EventItem& operator =(const EventItem& item)
++    {
++        recordId = item.recordId;
++        timestamp = item.timestamp;
++        eventData = item.eventData;
++        sensorPath = item.sensorPath;
++        msg = item.msg;
++        return *this;
++    }
++};
++
++/**
++ * @struct EventFilterData
++ *
++ * Event filter data for Get/Set PEF Configuration Parameters Command.
++ */
++struct _EventFilterData
++{
++    uint8_t filter_conf;        //!< Filter Configuration..
++    uint8_t filter_act;         //!< Filter Action.
++    uint8_t policy_num;         //!< Alert Policy Number.
++    uint8_t severity;           //!< Event Severity.
++    uint8_t gen_id1;            //!< Generator ID Byte 1.
++    uint8_t gen_id2;            //!< Generator ID Byte 2.
++    uint8_t sensor_type;        //!< Sensor Type.
++    uint8_t sensor_num;         //!< Sensor #.
++    uint8_t trigger;            //!< Event Trigger (Event/Reading Type).
++    uint16_t offset;            //!< Event Data 1 Event Offset Mask.
++    uint8_t data1_and;          //!< Event Data 1 AND Mask.
++    uint8_t data1_comp1;        //!< Event Data 1 Compare 1.
++    uint8_t data1_comp2;        //!< Event Data 1 Compare 2.
++    uint8_t data2_and;          //!< Event Data 2 AND Mask.
++    uint8_t data2_comp1;        //!< Event Data 2 Compare 1.
++    uint8_t data2_comp2;        //!< Event Data 2 Compare 2.
++    uint8_t data3_and;          //!< Event Data 3 AND Mask.
++    uint8_t data3_comp1;        //!< Event Data 3 Compare 1.
++    uint8_t data3_comp2;        //!< Event Data 3 Compare 2.
++} __attribute__((packed));
++
++static constexpr size_t PEF_DATA_SIZE = sizeof(_EventFilterData);
++
++union EventFilterData
++{
++    _EventFilterData data;
++    uint8_t bytes[PEF_DATA_SIZE];
++};
++
++} // namespace pef
++} // namespace sensor_event
++} // namespace ipmi
+diff --git a/include/pef_manager.hpp b/include/pef_manager.hpp
+new file mode 100644
+index 0000000..8ad308e
+--- /dev/null
++++ b/include/pef_manager.hpp
+@@ -0,0 +1,354 @@
++/*
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//      http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++*/
++
++#pragma once
++
++#include "pef.hpp"
++#include "pef_serialize.hpp"
++
++#include <boost/asio/steady_timer.hpp>
++#include <condition_variable>
++#include <map>
++#include <mutex>
++#include <queue>
++#include <sdbusplus/bus.hpp>
++
++static constexpr auto OBJ_EVENT_PEF = "/xyz/openbmc_project/sensor/pef";
++static constexpr auto PEF_BUSNAME = "xyz.openbmc_project.Event.PEF";
++static constexpr auto CONF_PATH = "/var/lib/pef";
++
++namespace ipmi
++{
++namespace sensor_event
++{
++namespace pef
++{
++
++/** @class PefManager
++ *  @brief OpenBMC PEF implementation.
++ */
++class PefManager
++{
++  public:
++    PefManager(std::shared_ptr<boost::asio::io_context> io);
++    PefManager() = delete;
++    PefManager(const PefManager&) = delete;
++    PefManager& operator=(const PefManager&) = delete;
++    PefManager(PefManager&&) = delete;
++    PefManager& operator=(PefManager&&) = delete;
++    virtual ~PefManager();
++
++    /** @brief Construct EventFilterData from persisted representations.
++     */
++    void restorePefData();
++
++    /** @brief Add a new EventFilterData.
++     *  @param[in] filterId - Event filter number.
++     *  @param[in] data - EventFilterData to be added.
++     */
++    void addPefData(uint8_t filterId, EventFilterData& data);
++
++    /** @brief Delete a new EventFilterData.
++     *  @param[in] filterId - Event filter number.
++     */
++    void delPefData(uint8_t filterId);
++
++    /** @brief Get EventFilterData specified.
++     *  @param[in] filterId - Event filter number.
++     *  @return EventFilterData specified.
++     */
++    EventFilterData& getFilterData(size_t filterId)
++    {
++        return filterTable[filterId];
++    }
++
++    /** @brief Get all EventFilterData.
++     *  @return All EventFilterData.
++     */
++    size_t getFilterTableSize()
++    {
++        return filterTable.size();
++    }
++
++    /** @brief Enqueue an new incoming event for processing
++     *  @param[in] event - Event item to be processed.
++     */
++    void enqueueEvent(EventItem& event);
++
++    /** @brief Set last processed event ID
++     *  @param[in] source - SW or BMC.
++     *  @param[in] id - Record ID.
++     */
++    void setLastProcessedEventId(uint8_t source, uint16_t id)
++    {
++        if (source == SRC_SW)
++        {
++            lastEventIdSw = id;
++        }
++        else if (source == SRC_BMC)
++        {
++            lastEventIdBmc = id;
++        }
++
++        pefPostponeTimer.cancel();
++    }
++
++    /** @brief Get last processed event ID
++     *  @return Last processed event ID.
++     */
++    std::tuple<uint16_t, uint16_t> getLastProcessedEventId()
++    {
++        return std::make_tuple(lastEventIdSw, lastEventIdBmc);
++    }
++
++    /** @brief Get lastest incoming event ID
++     *  @return Lastest incoming event ID.
++     */
++    uint16_t getLastEventId()
++    {
++        return lastEventId;
++    }
++
++    /** @brief Get last event addition timestamp.
++     *  @return Last event addition timestamp.
++     */
++    uint32_t getLastAddTime()
++    {
++        return lastAddTime;
++    }
++
++    /** @brief Set Postpone Timer in seconds
++     *  @param[in] delay - Postpone dealy in seconds.
++     */
++    void setPostponeTimer(uint8_t delay)
++    {
++        postponeTimer = delay;
++        pefPostponeTimer.cancel();
++    }
++
++    /** @brief Get current count down value of Postpone Timer
++     *  @return Current count down value of Postpone Timer
++     */
++    uint8_t getTimerCountdown();
++
++    /** @brief Send Alert Immediately
++     *  @return Alert Immediate Status
++     */
++    void alertImmediate();
++
++    /** @brief Get Alert Immediate Status
++     *  @return Alert Immediate Status
++     */
++    AlertStatus getAlertStatus()
++    {
++        return alertStatus;
++    }
++
++    /** @brief Get Alert Immediate Status
++     */
++    void clearAlertStatus()
++    {
++        alertStatus = AlertStatus::None;
++    }
++
++    /** @brief Get Set In Progress Status
++     *  @return Set In Progress Status
++     */
++    ParamSetStatus getSetStatus()
++    {
++        return setStatus;
++    }
++
++    /** @brief Get Set In Progress Status
++     *  @return Set In Progress Status
++     */
++    void setSetStatus(ParamSetStatus status)
++    {
++        setStatus = status;
++    }
++
++    /** @brief Get PEF enablement status
++     *  @return PEF enablement status
++     */
++    bool isEnabled()
++    {
++        return isActive;
++    }
++
++    /** @brief Enable/Disable PEF
++     *  @param[in] enable - True to enable, else to disable.
++     */
++    void setEnabled(bool enable)
++    {
++        if (enable == isActive)
++        {
++            // Already in state specified
++            return;
++        }
++
++        if (enable)
++        {
++            start();
++        }
++        else
++        {
++            stop();
++        }
++    }
++
++    /** @brief Start looper thread
++     */
++    void start();
++
++    /** @brief Stop looper thread
++     */
++    void stop();
++
++  protected:
++    /** @brief Looper function to dequeue EventItem object for processing
++     */
++    void pefLooper();
++
++    /** @brief Handler function to process event
++     */
++    void processEvent(EventItem& event);
++
++    /** @brief Send alert
++     *  @param[in] sensorType - Sensor type.
++     *  @param[in] sensorNum - Sensor#.
++     *  @param[in] eventType - Event trigger type.
++     *  @return EventFilterData specified.
++     */
++    void sendAlert(uint16_t eventId, uint8_t eventType, uint64_t timestamp, std::string msg);
++
++  private:
++    /** @brief Collection of all EventFilterData.
++     */
++    std::map<size_t, EventFilterData> filterTable;
++
++    /** @brief Event queue for PEF processing.
++     */
++    std::queue<EventItem> eventQ;
++
++    /** @brief Event queue for PEF processing.
++     */
++    bool isActive = false;
++
++    /** @brief Indicates if PEF Postpone Timer is counting or not.
++     */
++    bool isCounting = false;
++
++    /** @brief Last processed event ID set by SW.
++     */
++    uint16_t lastEventIdSw = 0xffff;
++
++    /** @brief Last processed event ID set by BMC.
++     */
++    uint16_t lastEventIdBmc = 0xffff;
++
++    /** @brief Lastest incoming event ID.
++     */
++    uint16_t lastEventId = 0xffff;
++
++    /** @brief Last processed event ID.
++     */
++    uint8_t postponeTimer = TIMER_DISABLE;
++
++    /** @brief Most recent addition timestamp.
++     */
++    uint32_t lastAddTime;
++
++    /** @brief Last processed event ID.
++     */
++    AlertStatus alertStatus = AlertStatus::None;
++
++    /** @brief Set In Progress
++     */
++    ParamSetStatus setStatus = ParamSetStatus::Complete;
++
++    /** @brief accumulate timer */
++    boost::asio::steady_timer pefPostponeTimer;
++
++    std::mutex q_mutex;
++    std::condition_variable cv;
++};
++
++/** @brief Check if sensor type & sensor# has match in Event Filter Table Entry
++    */
++inline static bool checkSensorMatch(uint8_t sensorType, uint8_t sensorNum, const EventFilterData& entry)
++{
++    if (entry.data.sensor_type == MATCH_ANY)
++    {
++        if (entry.data.sensor_num == MATCH_ANY)
++        {
++            return true;
++        }
++        else
++        {
++            return sensorNum == entry.data.sensor_num;
++        }
++    }
++
++    return (sensorType == entry.data.sensor_type) && (sensorNum == entry.data.sensor_num);
++}
++
++/** @brief Check if Event Filter Entry is enabled or not
++    */
++inline static bool checkFilterEnabled(uint8_t control)
++{
++    return (control & FILTER_ENABLED) != 0;
++}
++
++/** @brief Check if Event Type has match in Event Filter Table Entry
++    */
++inline static bool checkEventTypeMatch(uint8_t sourceType, uint8_t filterType)
++{
++    if (filterType == MATCH_ANY)
++    {
++        return true;
++    }
++    return (sourceType == filterType);
++}
++
++/** @brief Check if Event Offset has match in Event Filter Table Entry
++    */
++inline static bool checkEventOffset(uint8_t eventData, uint16_t offset)
++{
++    return ((0x01 << (eventData & EVENT_OFFSET_MASK)) & offset) != 0;
++}
++
++/** @brief Check if sensor type & sensor# has match in Event Filter Table Entry
++    */
++inline static bool checkEventData(uint8_t eventData, uint8_t andMask, uint8_t comp1, uint8_t comp2)
++{
++    uint8_t target = eventData & andMask;
++
++    // Check exact match
++    if (target & comp1 != comp2 & comp1)
++    {
++        return false;
++    }
++
++    // Check none-exact match
++    if ((target & ~comp1) & (comp2 & ~comp1) == 0)
++    {
++        return false;
++    }
++
++    return true;
++}
++
++} // namespace pef
++} // namespace sensor_event
++} // namespace ipmi
+diff --git a/include/pef_serialize.hpp b/include/pef_serialize.hpp
+new file mode 100644
+index 0000000..53d7671
+--- /dev/null
++++ b/include/pef_serialize.hpp
+@@ -0,0 +1,48 @@
++/*
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//      http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++*/
++
++#pragma once
++
++#include <filesystem>
++
++namespace ipmi
++{
++namespace sensor_event
++{
++namespace pef
++{
++
++constexpr auto SEPARATOR = "_";
++
++namespace fs = std::filesystem;
++
++/** @brief Serialize and persist SNMP manager/client D-Bus object.
++ *  @param[in] id - filename of the persisted SNMP manager object.
++ *  @param[in] data - event filter data
++ *  @param[in] path - path of persistent location where D-Bus object would be
++ * saved.
++ *  @return fs::path - pathname of persisted snmp manager/client file.
++ */
++fs::path serialize(size_t id, const EventFilterData& data, const fs::path& path);
++
++/** @brief Deserialze SNMP manager/client info into a D-Bus object
++ *  @param[in] path - pathname of persisted manager/client file.
++ *  @param[in] data - event filter data
++ *  @return bool - true if the deserialization was successful, false otherwise.
++ */
++bool deserialize(const fs::path& path, EventFilterData& data);
++
++} // namespace pef
++} // namespace sensor_event
++} // namespace ipmi
+diff --git a/src/eventcommands.cpp b/src/eventcommands.cpp
+new file mode 100644
+index 0000000..f8866c9
+--- /dev/null
++++ b/src/eventcommands.cpp
+@@ -0,0 +1,500 @@
++/*
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//      http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++*/
++
++#include "eventcommands.hpp"
++#include "pef.hpp"
++#include "pef_manager.hpp"
++
++#include <ipmid/api.hpp>
++#include <memory>
++#include <optional>
++#include <phosphor-logging/log.hpp>
++#include <sdbusplus/bus.hpp>
++#include <sdbusplus/bus/match.hpp>
++
++using namespace phosphor::logging;
++
++namespace ipmi::sensor_event
++{
++
++static constexpr auto PEF_DATA_PATH = "/var/lib/inv-ipmi-oem";
++
++std::unique_ptr<pef::PefManager> manager;
++
++std::unique_ptr<sdbusplus::bus::match_t> matchPtr;
++
++static void registerPefFunctions() __attribute__((constructor));
++
++/** @brief implements the get PEF capabilities command
++ *
++ *  @returns ipmi completion code plus response data
++ *   - PEF Version
++ *   - Action Support
++ *   - Number of event filter table entries
++ */
++ipmi::RspType<uint8_t,  // PEF Version
++              uint8_t, // Action Support
++              uint8_t>  // Number of event filter table entries
++    ipmiPefGetCapabilities()
++{
++    log<level::INFO>("[PEF] ipmiPefGetCapabilities.");
++    return ipmi::responseSuccess(
++            pef::PEF_VERSION,
++            pef::PEF_CAP_ALERT | pef::PEF_CAP_OEM,
++            (uint8_t)manager->getFilterTableSize());
++}
++
++/** @brief implements the arm PEF postpone timer command
++ *  @param delay        - PEF Postpone Timeout
++ *
++ *  @returns ipmi completion code plus response data
++ *   - Present timer countdown value
++ */
++ipmi::RspType<uint8_t>  // Present timer countdown value
++    ipmiPefArmPostpineTimer(uint8_t delay)
++{
++    log<level::INFO>("[PEF] ipmiPefArmPostpineTimer.", entry("DELAY=0x%x", static_cast<unsigned>(delay)));
++
++    if (delay == pef::TIMER_PEF_DISABLE)
++    {
++        manager->setPostponeTimer(delay);
++        if (manager->isEnabled())
++        {
++            manager->stop();
++        }
++    }
++    else if (delay == pef::TIMER_GET_COUNTDOWN)
++    {
++        // Do nothing
++    }
++    else
++    {
++        manager->setPostponeTimer(delay);
++        if (!manager->isEnabled())
++        {
++            manager->start();
++        }
++    }
++
++    return ipmi::responseSuccess(manager->getTimerCountdown());
++}
++
++/** @brief implements the Set Last Processed Event ID command
++ *  @param source        - Setter source (BMC/SW)
++ *  @param recordId      - Record ID.
++ *
++ *  @returns ipmi completion code
++ */
++ipmi::RspType<>
++    ipmiPefSetLastProcessedEventId(uint8_t source, uint16_t recordId)
++{
++    log<level::INFO>("[PEF] ipmiPefSetLastProcessedEventId.",
++                    entry("BMC_SW=0x%x", static_cast<unsigned>(source)),
++                    entry("RECORD=0x%x", static_cast<unsigned>(recordId)));
++    manager->setLastProcessedEventId(source & 0x1, recordId);
++    return ipmi::responseSuccess();
++}
++
++/** @brief implements the Get Last Processed Event ID command
++ *
++ *  @returns ipmi completion code plus response data
++ *   - Most recent addition timestamp
++ *   - Last record id
++ *   - Last SW processed record id
++ *   - Last BMC processed record id
++ */
++ipmi::RspType<  uint32_t,   // Most recent addition timestamp
++                uint16_t,   // Last record id
++                uint16_t,   // Last SW processed record id
++                uint16_t>   // Last BMC processed record id
++    ipmiPefGetLastProcessedEventId()
++{
++    log<level::INFO>("[PEF] ipmiPefGetLastProcessedEventId.");
++    auto [ recordSw, recordBmc ] = manager->getLastProcessedEventId();
++    return ipmi::responseSuccess(manager->getLastAddTime(),
++                                manager->getLastEventId(),
++                                recordSw, recordBmc);
++}
++
++/** @brief implements the Get Last Processed Event ID command
++ *
++ *  @returns ipmi completion code plus response data
++ *   - Alert Immediate Status
++ */
++ipmi::RspType<uint8_t>   // Alert Immediate Status
++    ipmiPefAlertImmediate(  uint8_t channel,        //Channel number
++                            uint8_t destOp,         //Destination Selector/Operation
++                            uint8_t alertString,    //Alert String Selector
++                            std::optional<std::vector<uint8_t>> details) // data 4-11
++{
++    log<level::INFO>("[PEF] ipmiPefAlertImmediate.",
++                    entry("OP=0x%x", static_cast<unsigned>(destOp)));
++    uint8_t cmd = destOp >> 4;
++    if (cmd == pef::PEF_ALERT_OP_INIT)
++    {
++        if (details && details.value().size() > 0)
++        {
++            //Platform Event Parameters (4:11) not supported.
++            return ipmi::response(pef::ccEventParamNotSupported);
++        }
++        manager->alertImmediate();
++    }
++    else if (cmd == pef::PEF_ALERT_OP_CLEAR)
++    {
++        manager->clearAlertStatus();
++    }
++    uint8_t status = static_cast<uint8_t>(manager->getAlertStatus());
++    return ipmi::responseSuccess(status);
++}
++
++/** @brief implements the Set PEF Configuration Parameters Command
++ *
++ *  @returns ipmi completion code
++ */
++ipmi::RspType<>
++    ipmiPefSetParam(uint8_t selector,           //Parameter selector
++                    message::Payload& req)      //Destination Selector/Operation
++{
++    log<level::INFO>("[PEF] ipmiPefSetParam.",
++        entry("SELECTOR=0x%x", static_cast<unsigned>(selector)));
++    switch (static_cast<pef::PefParam>(selector & 0x7f))
++    {
++        case pef::PefParam::SetStatus:
++        {
++            uint8_t status;
++            if (req.unpack(status) != 0 || !req.fullyUnpacked())
++            {
++                return ipmi::responseReqDataLenInvalid();
++            }
++
++            manager->setSetStatus(static_cast<pef::ParamSetStatus>(status));
++            return ipmi::responseSuccess();
++        }
++        case pef::PefParam::PefControl:
++        {
++            uint1_t pefEnable;
++            uint1_t eventMsg;
++            uint1_t startupDelay;
++            uint1_t alertDelay;
++            uint4_t rsvd;
++
++            if (req.unpack(pefEnable, eventMsg, startupDelay, alertDelay, rsvd) != 0
++                || !req.fullyUnpacked())
++            {
++                return responseReqDataLenInvalid();
++            }
++
++            if (rsvd)
++            {
++                return responseInvalidFieldRequest();
++            }
++
++            if (startupDelay || alertDelay)
++            {
++                return ipmi::response(pef::ccEventParamNotSupported);
++            }
++
++            manager->setEnabled(static_cast<bool>(pefEnable));
++            return ipmi::responseSuccess();
++        }
++        case pef::PefParam::ActionControl:
++        {
++            uint1_t alert;
++            uint1_t powerDown;
++            uint1_t reset;
++            uint1_t powerCycle;
++            uint1_t oem;
++            uint1_t diag;
++            uint2_t rsvd;
++
++            if (req.unpack(alert, powerDown, reset, powerCycle, oem, diag, rsvd) != 0
++                || !req.fullyUnpacked())
++            {
++                return responseReqDataLenInvalid();
++            }
++
++            if (rsvd)
++            {
++                return responseInvalidFieldRequest();
++            }
++
++            // Since we only support alert notification. Enable/Disable alert means
++            // Enable/Disable whole PEF manager
++            manager->setEnabled(static_cast<bool>(alert));
++            return ipmi::responseSuccess();
++        }
++        case pef::PefParam::EventFilterNum:
++        {
++            return ipmi::response(pef::ccParamReadOnly);
++        }
++        case pef::PefParam::EventFilterTable:
++        {
++            uint8_t entryId;
++            pef::EventFilterData entry{};
++            std::array<uint8_t, pef::PEF_DATA_SIZE> bytes;
++            if (req.unpack(entryId, bytes) != 0 || !req.fullyUnpacked())
++            {
++                return responseReqDataLenInvalid();
++            }
++            copyInto(entry.data, bytes);
++            manager->addPefData(entryId, entry);
++            return ipmi::responseSuccess();
++        }
++        case pef::PefParam::EventFilterData1:
++        {
++            uint8_t entryId;
++            uint8_t data1;
++
++            if (req.unpack(entryId, data1) != 0 || !req.fullyUnpacked())
++            {
++                return responseReqDataLenInvalid();
++            }
++
++            if (entryId == 0x0)
++            {
++                return responseInvalidFieldRequest();
++            }
++
++            pef::EventFilterData& entry = manager->getFilterData(static_cast<size_t>(entryId));
++            entry.data.filter_conf = data1;
++            return ipmi::responseSuccess();
++        }
++        case pef::PefParam::AlertPolicyNum:
++        {
++            return ipmi::response(pef::ccParamReadOnly);
++        }
++        case pef::PefParam::AlertStringNum:
++        {
++            return ipmi::response(pef::ccParamReadOnly);
++        }
++        case pef::PefParam::GroupCtlNum:
++        {
++            return ipmi::response(pef::ccParamReadOnly);
++        }
++        case pef::PefParam::SystemGuid:
++        {
++            return ipmi::response(pef::ccParamReadOnly);
++        }
++    }
++
++    return ipmi::response(pef::ccConfParamNotSupported);
++}
++
++/** @brief implements the Get PEF Configuration Parameters Command
++ *
++ *  @returns ipmi completion code plus response data
++ *   - param data
++ */
++RspType<message::Payload>
++    ipmiPefGetParam(uint7_t selector,       //Parameter selector
++                    bool revOnly,           //Parameter selector
++                    uint8_t s_selector,     //Set Selector
++                    uint8_t b_selector)     //Block Selector
++{
++    message::Payload ret;
++    constexpr uint8_t current_revision = pef::PEF_PARAM_VERSION;
++    ret.pack(current_revision);
++    if (revOnly)
++    {
++        return responseSuccess(std::move(ret));
++    }
++
++    log<level::INFO>("[PEF] ipmiPefGetParam.", entry("SELECTOR=0x%x", static_cast<unsigned>(selector)));
++
++    switch (static_cast<pef::PefParam>(selector))
++    {
++        case pef::PefParam::SetStatus:
++        {
++            uint8_t status = static_cast<uint8_t>(manager->getSetStatus());
++            ret.pack(status);
++            return responseSuccess(std::move(ret));
++        }
++        case pef::PefParam::PefControl:
++        {
++            bool pefEnabled = manager->isEnabled();
++            bool eventMsg = true;
++            bool startupDelay = false;
++            bool alertDelay = false;
++            ret.pack(   static_cast<uint1_t>(pefEnabled),
++                        static_cast<uint1_t>(eventMsg),
++                        static_cast<uint1_t>(startupDelay),
++                        static_cast<uint1_t>(alertDelay),
++                        uint4_t{});
++            return responseSuccess(std::move(ret));
++        }
++        case pef::PefParam::ActionControl:
++        {
++            bool alert = manager->isEnabled();;
++            bool powerDown = false;
++            bool reset = false;
++            bool powerCycle = false;
++            bool oem = false;
++            bool diag = false;
++            ret.pack(   static_cast<uint1_t>(alert),
++                        static_cast<uint1_t>(powerDown),
++                        static_cast<uint1_t>(reset),
++                        static_cast<uint1_t>(powerCycle),
++                        static_cast<uint1_t>(oem),
++                        static_cast<uint1_t>(diag),
++                        uint2_t{});
++            return responseSuccess(std::move(ret));
++        }
++        case pef::PefParam::EventFilterNum:
++        {
++            uint8_t num = static_cast<uint8_t>(manager->getFilterTableSize());
++            ret.pack(num);
++            return responseSuccess(std::move(ret));
++        }
++        case pef::PefParam::EventFilterTable:
++        {
++            auto entry = manager->getFilterData(static_cast<size_t>(s_selector));
++            ret.pack(s_selector);
++            ret.pack(dataRef(entry.data));
++            return responseSuccess(std::move(ret));
++        }
++        case pef::PefParam::EventFilterData1:
++        {
++            auto entry = manager->getFilterData(static_cast<size_t>(s_selector));
++            ret.pack(s_selector);
++            ret.pack(entry.data.filter_conf);
++            return responseSuccess(std::move(ret));
++        }
++        case pef::PefParam::AlertPolicyNum:
++        {
++            uint7_t num = 0;
++            ret.pack(s_selector, num, uint1_t{});
++            return responseSuccess(std::move(ret));
++        }
++        case pef::PefParam::AlertStringNum:
++        {
++            uint7_t num = 0;
++            ret.pack(num, uint1_t{});
++            return responseSuccess(std::move(ret));
++        }
++        case pef::PefParam::GroupCtlNum:
++        {
++            uint8_t num = 0;
++            ret.pack(num);
++            return responseSuccess(std::move(ret));
++        }
++        case pef::PefParam::SystemGuid:
++        {
++            uint8_t control = 0x0;
++            uint8_t guid[16] = {};
++            ret.pack(control);
++            ret.pack(dataRef(guid));
++            return responseSuccess(std::move(ret));
++        }
++    }
++
++    return ipmi::response(pef::ccConfParamNotSupported, std::move(ret));
++}
++
++void eventSignalReceived(sdbusplus::message::message& msg)
++{
++    log<level::INFO>("[PEF] eventCallback enter");
++
++    // Get the event details from the message
++    uint16_t recordId;
++    std::string sensorPath;
++    std::vector<uint8_t> eventData{};
++    std::string eventMsg;
++    try
++    {
++        msg.read(recordId, sensorPath, eventData, eventMsg);
++        if (eventData.size() != pef::EvtDataSize)
++        {
++            log<level::ERR>("[PEF] Invalid event data size.", entry("SIZE=%d", eventData.size()));
++            return;
++        }
++        pef::EventItem event{recordId, 0, {}, sensorPath.c_str(), eventMsg.c_str()};
++        std::copy_n(eventData.begin(), pef::EvtDataSize, event.eventData.begin());
++        manager->enqueueEvent(event);
++    }
++    catch (const sdbusplus::exception_t& e)
++    {
++        log<level::ERR>("[PEF] error getting event signal data.", entry("ERROR=%s", e.what()));
++        return;
++    }
++}
++
++void startPefMonitor()
++{
++    log<level::INFO>("[PEF] startPefMonitor");
++
++    if (!manager)
++    {
++        log<level::INFO>("[PEF] init PefManager");
++        manager = std::make_unique<pef::PefManager>(getIoContext());
++        manager->start();
++    }
++
++    if (matchPtr == nullptr)
++    {
++        log<level::INFO>("[PEF] init Matcher");
++        using namespace sdbusplus::bus::match::rules;
++        auto bus = getSdBus();
++
++        matchPtr = std::make_unique<sdbusplus::bus::match_t>(
++            *bus,
++            "type='signal', member='SignalEvent'",
++            std::bind(eventSignalReceived, std::placeholders::_1));
++    }
++}
++
++static void registerPefFunctions(void)
++{
++    log<level::INFO>("[PEF] Registering INV Event commands");
++    startPefMonitor();
++
++    log<level::INFO>("[PEF] Registering INV Event handlers");
++    // <Get PEF Capabilities>
++    ipmi::registerHandler(ipmi::prioOpenBmcBase, ipmi::netFnSensor,
++                          ipmi::sensor_event::cmdGetPefCapabilities, ipmi::Privilege::User,
++                          ipmiPefGetCapabilities);
++
++    // <Arm PEF Postpone Timer>
++    ipmi::registerHandler(ipmi::prioOpenBmcBase, ipmi::netFnSensor,
++                          ipmi::sensor_event::cmdArmPefPostponeTimer, ipmi::Privilege::Admin,
++                          ipmiPefArmPostpineTimer);
++
++    // <Set Last Processed Event ID>
++    ipmi::registerHandler(ipmi::prioOpenBmcBase, ipmi::netFnSensor,
++                          ipmi::sensor_event::cmdSetLastProcessedEventId, ipmi::Privilege::Admin,
++                          ipmiPefSetLastProcessedEventId);
++
++    // <Get Last Processed Event ID>
++    ipmi::registerHandler(ipmi::prioOpenBmcBase, ipmi::netFnSensor,
++                          ipmi::sensor_event::cmdGetLastProcessedEventId, ipmi::Privilege::Admin,
++                          ipmiPefGetLastProcessedEventId);
++
++    // <Alert Immediate>
++    ipmi::registerHandler(ipmi::prioOpenBmcBase, ipmi::netFnSensor,
++                          ipmi::sensor_event::cmdAlertImmediate, ipmi::Privilege::Admin,
++                          ipmiPefAlertImmediate);
++
++    // <Set PEF Configuration Parameters>
++    ipmi::registerHandler(ipmi::prioOpenBmcBase, ipmi::netFnSensor,
++                          ipmi::sensor_event::cmdSetPefConfigurationParams, ipmi::Privilege::Admin,
++                          ipmiPefSetParam);
++
++    // <Get PEF Configuration Parameters>
++    ipmi::registerHandler(ipmi::prioOpenBmcBase, ipmi::netFnSensor,
++                          ipmi::sensor_event::cmdGetPefConfigurationParams, ipmi::Privilege::Operator,
++                          ipmiPefGetParam);
++
++    log<level::INFO>("[PEF] Registering INV Event done");
++}
++
++} // namespace ipmi::sensor_event
+diff --git a/src/pef/pef_manager.cpp b/src/pef/pef_manager.cpp
+new file mode 100644
+index 0000000..13c196d
+--- /dev/null
++++ b/src/pef/pef_manager.cpp
+@@ -0,0 +1,377 @@
++/*
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//      http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++*/
++
++#include "pef_manager.hpp"
++#include "sdrutils.hpp"
++
++#include <ipmid/api.hpp>
++#include <phosphor-logging/elog.hpp>
++#include <phosphor-logging/elog-errors.hpp>
++#include <phosphor-logging/log.hpp>
++#include <snmp.hpp>
++#include <snmp_notification.hpp>
++#include <xyz/openbmc_project/Common/error.hpp>
++
++#include <chrono>
++#include <filesystem>
++#include <future>
++#include <thread>
++
++namespace ipmi
++{
++namespace sensor_event
++{
++namespace pef
++{
++
++using namespace phosphor::logging;
++using namespace phosphor::network::snmp;
++using namespace sdbusplus::xyz::openbmc_project::Logging::server;
++using InternalFailure =
++    sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure;
++namespace fs = std::filesystem;
++
++std::chrono::time_point<std::chrono::steady_clock> startTime;
++
++PefManager::PefManager(std::shared_ptr<boost::asio::io_context> io) :
++            pefPostponeTimer(*io)
++{
++    restorePefData();
++}
++
++PefManager::~PefManager()
++{
++    stop();
++    filterTable.clear();
++}
++
++/** @brief Start looper thread
++    */
++void PefManager::start()
++{
++    if (isActive)
++    {
++        // Already started
++        return;
++    }
++
++    std::thread pef_worker(&PefManager::pefLooper, this);
++    pef_worker.detach();
++}
++
++/** @brief Stop looper thread
++    */
++void PefManager::stop()
++{
++    isActive = false;
++    cv.notify_one();
++    isCounting = false;
++}
++
++/** @brief Construct EventFilterData from persisted representations.
++    */
++void PefManager::restorePefData()
++{
++    if (!fs::exists(CONF_PATH) || fs::is_empty(CONF_PATH))
++    {
++        return;
++    }
++
++    filterTable.clear();
++
++    for (auto& confFile :
++         fs::recursive_directory_iterator(CONF_PATH))
++    {
++        if (!fs::is_regular_file(confFile))
++        {
++            continue;
++        }
++
++        auto managerID = confFile.path().filename().string();
++        size_t idNum = std::stol(managerID);
++
++        EventFilterData data{};
++        if (deserialize(confFile.path(), data))
++        {
++            filterTable.emplace(idNum, std::move(data));
++        }
++    }
++}
++
++/** @brief Add a new EventFilterData.
++    *  @param[in] filterId - Event filter number.
++    *  @param[in] data - EventFilterData to be added.
++    */
++void PefManager::addPefData(uint8_t filterId, EventFilterData& data)
++{
++    fs::path outPath = serialize(filterId, data, CONF_PATH);
++    filterTable.emplace(static_cast<size_t>(filterId), std::move(data));
++}
++
++/** @brief Delete a new EventFilterData.
++    *  @param[in] filterId - Event filter number.
++    */
++void PefManager::delPefData(uint8_t filterId)
++{
++    std::error_code ec;
++    // remove the persistent file
++    fs::path fileName = CONF_PATH;
++    fileName /= std::to_string(filterId);
++
++    if (fs::exists(fileName))
++    {
++        if (!fs::remove(fileName, ec))
++        {
++            log<level::ERR>("Unable to delete the file",
++                            entry("FILE=%s", fileName.c_str()),
++                            entry("ERROR=%d", ec.value()));
++        }
++    }
++    else
++    {
++        log<level::ERR>("File doesn't exist",
++                        entry("FILE=%s", fileName.c_str()));
++    }
++
++    filterTable.erase(filterId);
++}
++
++/** @brief Handler function to process event
++    */
++void PefManager::processEvent(EventItem& event)
++{
++    uint8_t sensorType = getSensorTypeFromPath(event.sensorPath);
++    uint8_t sensorNum = getSensorNumberFromPath(event.sensorPath);
++    uint8_t eventType = getSensorEventTypeFromPath(event.sensorPath);
++    bool matchFound = false;
++
++    log<level::INFO>("[PEF] Processing event.",
++                    entry("PATH=%s", event.sensorPath.c_str()),
++                    entry("TYPE=0x%x", static_cast<unsigned>(sensorType)),
++                    entry("NUM=0x%x", static_cast<unsigned>(sensorNum)));
++
++    for (const auto & [key, entry] : filterTable)
++    {
++        //Check filter enabled
++        if (!checkFilterEnabled(entry.data.filter_conf))
++        {
++            continue;
++        }
++
++        //Check event type
++        if (!checkEventTypeMatch(eventType, entry.data.trigger))
++        {
++            continue;
++        }
++
++        //Check sensor type & number
++        if (!checkSensorMatch(sensorType, sensorNum, entry))
++        {
++            continue;
++        }
++
++        //Check event offset
++        if (!checkEventOffset(event.eventData[0], entry.data.offset))
++        {
++            continue;
++        }
++
++        //Check event data1
++        if (!checkEventData(event.eventData[0],
++                            entry.data.data1_and,
++                            entry.data.data1_comp1,
++                            entry.data.data1_comp2))
++        {
++            continue;
++        }
++
++        //Check event data2
++        if (!checkEventData(event.eventData[1],
++                            entry.data.data2_and,
++                            entry.data.data2_comp1,
++                            entry.data.data2_comp2))
++        {
++            continue;
++        }
++
++        //Check event data3
++        if (!checkEventData(event.eventData[2],
++                            entry.data.data3_and,
++                            entry.data.data3_comp1,
++                            entry.data.data3_comp2))
++        {
++            continue;
++        }
++
++        matchFound = true;
++        break;
++    }
++
++    log<level::INFO>("[PEF] event check done.");
++    if (matchFound)
++    {
++        // Send alert
++        log<level::INFO>("[PEF] match found.");
++        sendAlert(event.recordId, eventType, event.timestamp, event.msg);
++    }
++}
++
++/** @brief Enqueue an new incoming event for processing
++    */
++void PefManager::enqueueEvent(EventItem& event)
++{
++    log<level::INFO>("[PEF] enqueueEvent");
++
++    if (!isActive)
++    {
++        return;
++    }
++
++    std::chrono::time_point<std::chrono::system_clock> ts = std::chrono::system_clock::now();
++    event.timestamp = std::chrono::duration_cast<std::chrono::microseconds>(ts.time_since_epoch()).count();
++    
++    {
++        std::unique_lock lk(q_mutex);
++        eventQ.push(std::move(event));
++    }
++
++    lastEventId = event.recordId;
++    struct timespec clkTime = {};
++    clock_gettime(CLOCK_REALTIME, &clkTime);
++    lastAddTime = clkTime.tv_sec;
++    cv.notify_one();
++}
++
++/** @brief Get current count down value of Postpone Timer
++    *  @return Current count down value of Postpone Timer
++    */
++uint8_t PefManager::getTimerCountdown()
++{
++    if (postponeTimer == TIMER_DISABLE ||
++        postponeTimer == TIMER_PEF_DISABLE ||
++        !isCounting)
++    {
++        return 0x0;
++    }
++
++    const auto endTime = std::chrono::steady_clock::now();
++    auto diff = std::chrono::duration_cast<std::chrono::seconds>(endTime - startTime).count();
++    return postponeTimer - static_cast<uint8_t>(diff);
++}
++
++/** @brief Send Alert Immediately
++    *  @return Alert Immediate Status
++    */
++void PefManager::alertImmediate()
++{
++    std::chrono::time_point<std::chrono::system_clock> ts = std::chrono::system_clock::now();
++    uint64_t timestamp = std::chrono::duration_cast<std::chrono::microseconds>(ts.time_since_epoch()).count();
++    auto handle = std::async(std::launch::async, &PefManager::sendAlert, this,
++                             (uint16_t)0x01, (uint8_t)EventTypeCodes::threshold, timestamp, "Alert Test");
++    alertStatus = AlertStatus::Pending;
++}
++
++/** @brief Send Alert
++    *  @return Alert Immediate Status
++     *  @param[in] sensorType - Sensor type.
++     *  @param[in] sensorNum - Sensor#.
++     *  @param[in] eventType - Event trigger type.
++    */
++void PefManager::sendAlert(uint16_t eventId, uint8_t eventType, uint64_t timestamp, std::string msg)
++{
++    try
++    {
++        sendTrap<OBMCErrorNotification>(static_cast<uint32_t>(eventId), timestamp, 0, msg);
++    }
++    catch (const InternalFailure& e)
++    {
++        log<level::INFO>(
++            "Failed to send SNMP trap",
++            phosphor::logging::entry("ERROR_ID=%d", eventId),
++            phosphor::logging::entry("TIMESTAMP=%llu", timestamp),
++            phosphor::logging::entry("MESSAGE=%s", msg.c_str()));
++    }
++    alertStatus = AlertStatus::EndNormal;
++}
++
++/** @brief Looper function to dequeue EventItem object for processing
++    */
++void PefManager::pefLooper()
++{
++    log<level::INFO>("[PEF] starting pefLooper");
++    isActive = true;
++    boost::system::error_code ec;
++
++    while (isActive)
++    {
++        {
++            std::unique_lock lk(q_mutex);
++            cv.wait(lk, [this]{return !eventQ.empty() || !isActive;});
++        }
++
++        if (!isActive)
++        {
++            log<level::INFO>("[PEF] Looper deactivated");
++            // Abort due to process exit
++            break;
++        }
++
++        EventItem event{};
++        {
++            std::unique_lock lk(q_mutex);
++            event = eventQ.front();
++            eventQ.pop();
++        }
++
++        while (true)
++        {
++            if (postponeTimer == TIMER_DISABLE || postponeTimer == TIMER_PEF_DISABLE)
++            {
++                log<level::INFO>("[PEF] timer disabled", entry("TMR=0x%x", static_cast<unsigned>(postponeTimer)));
++                break;
++            }
++            log<level::INFO>("[PEF] timer countdown started");
++            isCounting = true;
++            startTime = std::chrono::steady_clock::now();
++            pefPostponeTimer.expires_after(std::chrono::seconds(postponeTimer));
++            pefPostponeTimer.wait(ec);
++            isCounting = false;
++            if (!ec)
++            {
++                break;
++            }
++            log<level::INFO>("[PEF] timer re-armed");
++        }
++
++        if (postponeTimer == TIMER_PEF_DISABLE)
++        {
++            log<level::INFO>("[PEF] PEF disabled");
++            // PEF is disabled temporarily
++            continue;
++        }
++
++        if (lastEventIdSw != event.recordId && lastEventIdBmc != event.recordId)
++        {
++            processEvent(event);
++            lastEventIdBmc = event.recordId;
++        }
++    }
++
++    eventQ = {}; //clear the queue
++    log<level::INFO>("[PEF] exiting pefLooper");
++}
++
++} // namespace pef
++} // namespace sensor_event
++} // namespace ipmi
+diff --git a/src/pef/pef_serialize.cpp b/src/pef/pef_serialize.cpp
+new file mode 100644
+index 0000000..4d5c1d0
+--- /dev/null
++++ b/src/pef/pef_serialize.cpp
+@@ -0,0 +1,119 @@
++/*
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//      http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++*/
++
++#include "eventcommands.hpp"
++#include "pef.hpp"
++#include "pef_serialize.hpp"
++
++#include <cereal/archives/binary.hpp>
++#include <cereal/types/array.hpp>
++#include <phosphor-logging/log.hpp>
++
++#include <fstream>
++
++// Register class version
++// From cereal documentation;
++// "This macro should be placed at global scope"
++CEREAL_CLASS_VERSION(ipmi::sensor_event::pef::EventFilterData, CLASS_VERSION);
++
++namespace ipmi
++{
++namespace sensor_event
++{
++namespace pef
++{
++
++using namespace phosphor::logging;
++
++/** @brief Function required by Cereal to perform serialization.
++ *  @tparam Archive - Cereal archive type (binary in our case).
++ *  @param[in] archive - reference to Cereal archive.
++ *  @param[in] data - event filter data
++ *  @param[in] version - Class version that enables handling
++ *                       a serialized data across code levels
++ */
++template <class Archive>
++void save(Archive& archive, const EventFilterData& data, const std::uint32_t version)
++{
++    for (auto raw : data.bytes)
++    {
++        archive(raw);
++    }
++}
++
++/** @brief Function required by Cereal to perform deserialization.
++ *  @tparam Archive - Cereal archive type (binary in our case).
++ *  @param[in] archive - reference to Cereal archive.
++ *  @param[in] data - event filter data
++ *  @param[in] version - Class version that enables handling
++ *                       a serialized data across code levels
++ */
++template <class Archive>
++void load(Archive& archive, EventFilterData& data, const std::uint32_t version)
++{
++    uint8_t raw;
++
++    for (int i = 0; i < PEF_DATA_SIZE; i++)
++    {
++        archive(raw);
++        data.bytes[i] = raw;
++    }
++}
++
++fs::path serialize(size_t id, const EventFilterData& data, const fs::path& dir)
++{
++    // Do not serialize id 0 since it's volatile defined by spec.
++    if (id == 0)
++    {
++        return dir;
++    }
++    fs::path fileName = dir;
++    fs::create_directories(dir);
++    fileName /= std::to_string(id);
++
++    std::ofstream os(fileName.string(), std::ios::binary);
++    cereal::BinaryOutputArchive oarchive(os);
++    oarchive(data);
++    return fileName;
++}
++
++bool deserialize(const fs::path& path, EventFilterData& data)
++{
++    try
++    {
++        if (fs::exists(path))
++        {
++            std::ifstream is(path.c_str(), std::ios::in | std::ios::binary);
++            cereal::BinaryInputArchive iarchive(is);
++            iarchive(data);
++            return true;
++        }
++        return false;
++    }
++    catch (const cereal::Exception& e)
++    {
++        log<level::ERR>(e.what());
++        std::error_code ec;
++        fs::remove(path, ec);
++        return false;
++    }
++    catch (const fs::filesystem_error& e)
++    {
++        return false;
++    }
++}
++
++} // namespace pef
++} // namespace sensor_event
++} // namespace ipmi
+-- 
+2.33.0
+

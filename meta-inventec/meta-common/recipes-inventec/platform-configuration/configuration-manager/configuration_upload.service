@@ -1,0 +1,12 @@
+[Unit]
+Description=Configuration upload service
+
+[Service]
+Type=simple
+Restart=always
+ExecStart=/usr/bin/configuration_manager
+BusName=xyz.openbmc_project.Configuration.Upload
+
+[Install]
+WantedBy=multi-user.target
+Alias=dbus-xyz.openbmc_project.Configuration.Upload.service

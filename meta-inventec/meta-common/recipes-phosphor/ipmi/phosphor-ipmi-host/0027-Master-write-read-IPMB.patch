@@ -1,0 +1,382 @@
+From d9cd6af1609c07073c8e80a924de3147da9ab12f Mon Sep 17 00:00:00 2001
+From: "sun.cwsun" <sun.cwsun@inventec.com>
+Date: Mon, 21 Feb 2022 10:21:16 +0800
+Subject: [PATCH 27/31] Bug 816 - [SW][Transformers][OpenBMC] Master Write Read
+ command for IPMB messages
+
+    Symptom/Reason :
+        - IPMI Master Write Read command for IPMB Messages
+
+    Root Cause:
+        - None
+
+    Solution/Change:
+        [phosphor-ipmi-host]
+            - implement sending IPMB message to specific i2c port
+
+    Entry Test:
+        - By sending netfn=0x06 cmdid=0x01 (Get Device ID) to ME by IPMB
+	  -- ipmitool -C17 -I lanplus -C17 -H 10.6.141.87 -p 623 -U root -P 0penBmc raw 0x06 0x52 0x00 0x2c 0x00 0x2c 0x18 0xbc 0x20 0x04 0x01 0xdb
+             -- 20 1c c4 2c 04 01 00 50 01 06 02 02 21 57 01 00
+	         18 0b 06 02 20 01 af
+---
+ apphandler.cpp | 329 ++++++++++++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 328 insertions(+), 1 deletion(-)
+
+diff --git a/apphandler.cpp b/apphandler.cpp
+index c1921b5..b641a17 100644
+--- a/apphandler.cpp
++++ b/apphandler.cpp
+@@ -1691,6 +1691,320 @@ static bool populateI2CMasterWRWhitelist()
+ }
+ #endif // ENABLE_I2C_WHITELIST_CHECK
+ 
++
++
++
++constexpr size_t ipmbMaxDataSize = 256;
++constexpr size_t ipmbConnectionHeaderLength = 3;
++constexpr size_t ipmbResponseDataHeaderLength = 4;
++constexpr size_t ipmbRequestDataHeaderLength = 3;
++constexpr size_t ipmbChecksum2StartOffset = 3;
++constexpr size_t ipmbChecksumSize = 1;
++constexpr size_t ipmbMinFrameLength = 7;
++constexpr size_t ipmbMaxFrameLength = ipmbConnectionHeaderLength +
++                                      ipmbResponseDataHeaderLength +
++                                      ipmbChecksumSize + ipmbMaxDataSize;
++
++static constexpr const char* ipmbBus = "xyz.openbmc_project.Ipmi.Channel.Ipmb";
++static constexpr const char* ipmbObj = "/xyz/openbmc_project/Ipmi/Channel/Ipmb";
++static constexpr const char* ipmbIntf = "org.openbmc.Ipmb";
++
++/**
++ * @brief Ipmb misc
++ */
++constexpr uint8_t ipmbLunMask = 0x03;
++constexpr uint8_t ipmbSeqMask = 0x3F;
++
++//(devIndex << 2) | static_cast<uint8_t>(type)
++// devIndex is defined in /usr/share/ipmbbridge/ipmb-channels.json if existing
++//type is defined as ipmbChannelType. ipmb=0, me=1
++uint8_t ipmbChannelNum = 0xFF;
++
++/**
++ * @brief Ipmb getters
++ */
++constexpr uint8_t ipmbNetFnGet(uint8_t netFnLun)
++{
++    return netFnLun >> 2;
++}
++
++constexpr uint8_t ipmbLunFromNetFnLunGet(uint8_t netFnLun)
++{
++    return netFnLun & ipmbLunMask;
++}
++
++constexpr uint8_t ipmbSeqGet(uint8_t seqNumLun)
++{
++    return seqNumLun >> 2;
++}
++
++constexpr uint8_t ipmbLunFromSeqLunGet(uint8_t seqNumLun)
++{
++    return seqNumLun & ipmbLunMask;
++}
++
++/**
++ * @brief Ipmb setters
++ */
++constexpr uint8_t ipmbNetFnLunSet(uint8_t netFn, uint8_t lun)
++{
++    return ((netFn << 2) | (lun & ipmbLunMask));
++}
++
++constexpr uint8_t ipmbSeqLunSet(uint8_t seq, uint8_t lun)
++{
++    return ((seq << 2) | (lun & ipmbLunMask));
++}
++
++static uint8_t ipmbChecksumCompute(uint8_t* data, uint8_t length)
++{
++    uint8_t checksum = 0;
++
++    // compute checksum.
++    for (uint8_t idx = 0; idx < length; idx++)
++    {
++        checksum += data[idx];
++    }
++
++    checksum = (~checksum) + 1;
++
++    // return computed checksum value.
++    return checksum;
++}
++
++/**
++ * @brief Ipmb frame
++ */
++typedef struct
++{
++    /// @brief IPMB frame header
++    union
++    {
++        /// @brief IPMB request header
++        struct
++        {
++            /** @brief IPMB Connection Header Format */
++            uint8_t address;
++            uint8_t rsNetFnLUN;
++            uint8_t checksum1;
++            /** @brief IPMB Header */
++            uint8_t rqSA;
++            uint8_t rqSeqLUN;
++            uint8_t cmd;
++            uint8_t data[];
++        } Req;
++        /// @brief IPMB response header
++        struct
++        {
++            uint8_t address;
++            /** @brief IPMB Connection Header Format */
++            uint8_t rqNetFnLUN;
++            uint8_t checksum1;
++            /** @brief IPMB Header */
++            uint8_t rsSA;
++            uint8_t rsSeqLUN;
++            uint8_t cmd;
++            uint8_t completionCode;
++            uint8_t data[];
++        } Resp;
++    } Header;
++} __attribute__((packed)) ipmbHeader;
++/**
++ * @brief Ipmb messages
++ */
++struct IpmbRequest
++{
++    uint8_t address;
++    uint8_t netFn;
++    uint8_t rsLun;
++    uint8_t rqSA;
++    uint8_t seq;
++    uint8_t rqLun;
++    uint8_t cmd;
++    std::vector<uint8_t> data;
++
++    IpmbRequest(const ipmbHeader* ipmbBuffer, size_t bufferLength)
++    {
++        address = ipmbBuffer->Header.Req.address;
++        netFn = ipmbNetFnGet(ipmbBuffer->Header.Req.rsNetFnLUN);
++        rsLun = ipmbLunFromNetFnLunGet(ipmbBuffer->Header.Req.rsNetFnLUN);
++        rqSA = ipmbBuffer->Header.Req.rqSA;
++        seq = ipmbSeqGet(ipmbBuffer->Header.Req.rqSeqLUN);
++        rqLun = ipmbLunFromSeqLunGet(ipmbBuffer->Header.Req.rqSeqLUN);
++        cmd = ipmbBuffer->Header.Req.cmd;
++
++        size_t dataLength =
++            bufferLength - (ipmbConnectionHeaderLength +
++                            ipmbRequestDataHeaderLength + ipmbChecksumSize);
++
++        if (dataLength > 0)
++        {
++            data.insert(data.end(), ipmbBuffer->Header.Req.data,
++                        &ipmbBuffer->Header.Req.data[dataLength]);
++        }
++    };
++
++    void prepareRequest(sdbusplus::message::message& mesg)
++    {
++        mesg.append(ipmbChannelNum, netFn, rqLun, cmd, data);
++    };
++};
++
++struct IpmbResponse
++{
++    uint8_t address;
++    uint8_t netFn;
++    uint8_t rqLun;
++    uint8_t rsSA;
++    uint8_t seq;
++    uint8_t rsLun;
++    uint8_t cmd;
++    uint8_t completionCode;
++    std::vector<uint8_t> data;
++
++    IpmbResponse(uint8_t address, uint8_t netFn, uint8_t rqLun, uint8_t rsSA,
++                 uint8_t seq, uint8_t rsLun, uint8_t cmd,
++                 uint8_t completionCode, std::vector<uint8_t>& inputData) :
++                address(address),
++                netFn(netFn), rqLun(rqLun), rsSA(rsSA), seq(seq), rsLun(rsLun), cmd(cmd),
++                completionCode(completionCode)
++    {
++        data.reserve(ipmbMaxDataSize);
++
++        if (inputData.size() > 0)
++        {
++            data = std::move(inputData);
++        }
++    }
++
++    void ipmbToi2cConstruct(uint8_t* buffer, size_t* bufferLength)
++    {
++        ipmbHeader* ipmbBuffer = (ipmbHeader*)buffer;
++
++        ipmbBuffer->Header.Resp.address = address;
++        ipmbBuffer->Header.Resp.rqNetFnLUN = ipmbNetFnLunSet(netFn, rqLun);
++        ipmbBuffer->Header.Resp.rsSA = rsSA;
++        ipmbBuffer->Header.Resp.rsSeqLUN = ipmbSeqLunSet(seq, rsLun);
++        ipmbBuffer->Header.Resp.cmd = cmd;
++        ipmbBuffer->Header.Resp.completionCode = completionCode;
++
++        ipmbBuffer->Header.Resp.checksum1 = ipmbChecksumCompute(
++            buffer, ipmbConnectionHeaderLength - ipmbChecksumSize);
++
++        if (data.size() > 0)
++        {
++            std::copy(
++                data.begin(), data.end(),
++                &buffer[ipmbConnectionHeaderLength + ipmbResponseDataHeaderLength]);
++        }
++
++        *bufferLength = data.size() + ipmbResponseDataHeaderLength +
++                        ipmbConnectionHeaderLength + ipmbChecksumSize;
++
++        buffer[*bufferLength - ipmbChecksumSize] =
++            ipmbChecksumCompute(&buffer[ipmbChecksum2StartOffset],
++                                (ipmbResponseDataHeaderLength + data.size()));
++    }
++
++};
++
++
++static bool ifIPMBMessage(const uint8_t& busId, const uint8_t& slaveAddr)
++{
++    constexpr const char* configFilePath =
++        "/usr/share/ipmbbridge/ipmb-channels.json";
++    std::ifstream configFile(configFilePath);
++    if (!configFile.is_open())
++    {
++        phosphor::logging::log<phosphor::logging::level::ERR>(
++            "initializeChannels: Cannot open config path");
++        fprintf(stderr, "%s open failed \n", configFilePath);
++        return false;
++    }
++    try
++    {
++        auto data = nlohmann::json::parse(configFile, nullptr);
++        for (const auto& channelConfig : data["channels"])
++        {
++            const std::string& slavePath = channelConfig["slave-path"];
++            uint8_t reqAddr = channelConfig["remote-addr"];
++            std::stringstream ss;
++            ss << "/dev/ipmb-" << static_cast<uint32_t>(busId);
++            if ((ss.str() == slavePath) && ( (slaveAddr<<1) == reqAddr))
++            {
++                uint8_t devIndex = 0;
++                uint8_t type;
++                if (channelConfig.contains("devIndex"))
++                {
++                    devIndex = channelConfig["devIndex"];
++                }
++                const std::string &typeConfig = channelConfig["type"];
++                type = (typeConfig == "me") ? 1 : 0;
++                ipmbChannelNum = (devIndex << 2) | static_cast<uint8_t>(type);
++                return true;
++            }
++        }
++    }
++    catch (nlohmann::json::exception& e)
++    {
++        phosphor::logging::log<phosphor::logging::level::ERR>(
++            "Error parsing ipmb channel config file");
++        return false;
++    }
++    catch (std::out_of_range& e)
++    {
++        phosphor::logging::log<phosphor::logging::level::ERR>(
++            "Error ipmi channel Error invalid type");
++        return false;
++    }
++
++    return false;
++}
++
++static ipmi::RspType<std::vector<uint8_t>>
++    masterwr_IPMBHnadler(ipmi::Context::ptr ctx, uint8_t busId,
++                         uint8_t slaveAddr, const std::vector<uint8_t>& msgData,
++                         std::vector<uint8_t>& rspData)
++{    
++    auto sendMsgReqData = reinterpret_cast<const ipmbHeader*>(msgData.data());
++
++    auto ipmbRequest = IpmbRequest(sendMsgReqData, msgData.size());
++
++    typedef std::tuple<int, uint8_t, uint8_t, uint8_t, uint8_t, std::vector<uint8_t>>
++        IPMBResponse;
++    
++    // send request to IPMB
++    boost::system::error_code ec;
++    auto ipmbResponse = ctx->bus->yield_method_call<IPMBResponse>(
++        ctx->yield, ec, ipmbBus, ipmbObj, ipmbIntf, "sendRequest",
++        ipmbChannelNum, ipmbRequest.netFn, ipmbRequest.rqLun, ipmbRequest.cmd,
++        ipmbRequest.data);
++    
++    if (ec)
++    {
++        fprintf(stderr, "masterwr_IPMBHnadler, ec=%d\n", ec.value());
++        phosphor::logging::log<phosphor::logging::level::ERR>(
++            "handleIpmbChannel, dbus call exception");
++        return ipmi::responseUnspecifiedError();
++    }
++
++    std::vector<uint8_t> dataReceived(0);
++    int status = -1;
++    uint8_t netFn = 0, lun = 0, cmd = 0, cc = 0;
++
++    std::tie(status, netFn, lun, cmd, cc, dataReceived) = ipmbResponse;
++
++    auto respReceived =
++        IpmbResponse(ipmbRequest.rqSA, netFn, lun, ipmbRequest.address,
++                     ipmbRequest.seq, lun, cmd, cc, dataReceived);
++
++    size_t dataLength = 0;
++    respReceived.ipmbToi2cConstruct(rspData.data(), &dataLength);
++    // resizing the rspData to its correct length
++    rspData.resize(dataLength);
++    return ipmi::responseSuccess(rspData);
++}
++
+ /** @brief implements master write read IPMI command which can be used for
+  * low-level I2C/SMBus write, read or write-read access
+  *  @param isPrivateBus -to indicate private bus usage
+@@ -1705,7 +2019,8 @@ static bool populateI2CMasterWRWhitelist()
+  *   - readData - i2c response data
+  */
+ ipmi::RspType<std::vector<uint8_t>>
+-    ipmiMasterWriteRead(bool isPrivateBus, uint3_t busId, uint4_t channelNum,
++    ipmiMasterWriteRead(ipmi::Context::ptr ctx, 
++                        bool isPrivateBus, uint3_t busId, uint4_t channelNum,
+                         bool reserved, uint7_t slaveAddr, uint8_t readCount,
+                         std::vector<uint8_t> writeData)
+ {
+@@ -1734,6 +2049,18 @@ ipmi::RspType<std::vector<uint8_t>>
+         return ipmi::responseInvalidFieldRequest();
+     }
+ #endif // ENABLE_I2C_WHITELIST_CHECK
++
++    // checking if the busid and slave address are used for IPMB (/dev/ipmb-X device/driver)
++    // if so, let IPMB handle it
++    if (ifIPMBMessage(static_cast<uint8_t>(busId),
++                      static_cast<uint8_t>(slaveAddr)))
++    {
++        std::vector<uint8_t> rspData(ipmbMaxFrameLength);
++        return masterwr_IPMBHnadler(ctx, static_cast<uint8_t>(busId),
++                                    static_cast<uint8_t>(slaveAddr), writeData,
++                                    rspData);
++    }
++
+     std::vector<uint8_t> readBuf(readCount);
+     std::string i2cBus =
+         "/dev/i2c-" + std::to_string(static_cast<uint8_t>(busId));
+-- 
+2.33.0
+

@@ -1,0 +1,290 @@
+From d5b71c0266a75eeb1edbd80ac656de9d1d4dd7de Mon Sep 17 00:00:00 2001
+From: "pj.chen" <chen.pj@inventec.com>
+Date: Mon, 7 Mar 2022 08:58:29 +0000
+Subject: [PATCH 16/25] Bridging - Implement Get/Set global enables, and modify
+ related functions
+
+Symptom/Reason:
+    1.Implement new function Get/Set global enables
+    2.Modify other functions related to global enables
+
+Root Cause:
+    N/A
+
+Solution/Change:
+    [bridgingcommands.cpp]
+        1. Add functions to get/set dbus property for global
+        enable items
+        2. Add to send 'SMS_ATN' flag in 'Send Message' command
+           (for no tracking commands)
+        3. Add to check if Event Message Buffer is support in
+           'Get Message Flags' command
+
+Entry Test:
+1. ipmitool mc getenables
+2. ipmitool mc setenables
+    ex:  ipmitool mc setenables system_event_log=on
+3. ipmitool raw 0x6 0x2f (get global enables)
+4. ipmitool raw 0x6 0x2e
+    ex:ipmitool raw 0x6 0x2e 0x9
+---
+ include/bridgingcommands.hpp |  18 ++++
+ src/bridgingcommands.cpp     | 162 ++++++++++++++++++++++++++++++++++-
+ 2 files changed, 178 insertions(+), 2 deletions(-)
+
+diff --git a/include/bridgingcommands.hpp b/include/bridgingcommands.hpp
+index 6725670..2ecb922 100644
+--- a/include/bridgingcommands.hpp
++++ b/include/bridgingcommands.hpp
+@@ -18,6 +18,24 @@
+ #include <sdbusplus/message.hpp>
+ #include <sdbusplus/server/interface.hpp>
+ 
++/* for global enables related settings*/
++const static constexpr char* SettingService = "xyz.openbmc_project.Settings";
++const static constexpr char* GlobalEnablesObj = 
++"/xyz/openbmc_project/ipmi/global_enables";
++const static constexpr char* GlobalEnableInt = "xyz.openbmc_project.Ipmi.GlobalEnables";
++
++/*SEL related setting*/
++const static constexpr char* SELService = "xyz.openbmc_project.Logging.IPMI";
++const static constexpr char* SELObj = "/xyz/openbmc_project/Logging/IPMI";
++const static constexpr char* SELInt = "xyz.openbmc_project.Logging.IPMI";
++
++/*System interface info related settings*/
++const static constexpr uint8_t SYS_INTF_CHANNEL_NO = 15;
++const static std::string ChannelService_base = "xyz.openbmc_project.Ipmi.Channel.";
++const static std::string ChannelObj_base = "/xyz/openbmc_project/Ipmi/Channel/";
++const static constexpr char* SMSIntf = "xyz.openbmc_project.Ipmi.Channel.SMS";
++
++
+ /**
+  * @brief Response queue defines
+  */
+diff --git a/src/bridgingcommands.cpp b/src/bridgingcommands.cpp
+index 09098c6..b0075f8 100644
+--- a/src/bridgingcommands.cpp
++++ b/src/bridgingcommands.cpp
+@@ -43,6 +43,9 @@ static constexpr const char* ipmbIntf = "org.openbmc.Ipmb";
+ 
+ static Bridging bridging;
+ static bool eventMessageBufferFlag = false;
++/*Currently we do not support event message bufer*/
++static bool EVENT_MSG_BUFFER_SUPPORT = false;
++
+ 
+ void Bridging::clearResponseQueue()
+ {
+@@ -345,6 +348,24 @@ ipmi::Cc Bridging::handleIpmbChannel(ipmi::Context::ptr ctx,
+                 return ipmi::ccBusy;
+             }
+             insertMessageInQueue(respReceived);
++            std::shared_ptr<sdbusplus::asio::connection> dbus = getSdBus();
++            ipmi::Value variant = ipmi::getDbusProperty(*dbus, SettingService, GlobalEnablesObj, GlobalEnableInt, "RcvMsgQueueIntr");
++            bool RcvMsgQIntr = std::get<bool>(variant);
++
++            if(RcvMsgQIntr){
++                std::string channel_name = ipmi::getChannelName(SYS_INTF_CHANNEL_NO);
++                auto method = dbus->new_method_call( (ChannelService_base+channel_name).c_str(), (ChannelObj_base+channel_name).c_str(), SMSIntf, "setAttention");
++                try
++                {
++                    sdbusplus::message::message SetAttnResp = dbus->call(method);
++                }
++                catch(sdbusplus::exception::SdBusError& e)
++                {
++                    // todo: log sel?
++                    fprintf(stderr,"error setting SMS attention: %s\n", e.what());
++                    return ipmi::ccUnspecifiedError;
++                }
++            }
+             break;
+         }
+         case modeTrackRequest:
+@@ -473,6 +494,8 @@ ipmi::RspType<uint8_t,             // channelNumber
+     ipmiAppGetMessage(ipmi::Context::ptr ctx)
+ {
+     ipmi::ChannelInfo chInfo;
++    std::shared_ptr<sdbusplus::asio::connection> dbus = getSdBus();
++    std::string channel_name = ipmi::getChannelName(SYS_INTF_CHANNEL_NO);
+ 
+     try
+     {
+@@ -503,6 +526,19 @@ ipmi::RspType<uint8_t,             // channelNumber
+         constexpr ipmi::Cc ipmiGetMessageCmdDataNotAvailable = 0x80;
+         phosphor::logging::log<phosphor::logging::level::INFO>(
+             "ipmiAppGetMessage, no data available");
++        auto method = dbus->new_method_call((ChannelService_base+channel_name).c_str(), (ChannelObj_base+channel_name).c_str(), SMSIntf, "clearAttention");
++        try
++        {
++            sdbusplus::message::message ClearAttnResp = dbus->call(method);
++        }
++        catch (sdbusplus::exception_t&)
++        {
++            // todo: log sel?
++            phosphor::logging::log<phosphor::logging::level::ERR>(
++                "error clearing SMS attention");
++            return ipmi::responseUnspecifiedError();
++        }     
++
+         return ipmi::response(ipmiGetMessageCmdDataNotAvailable);
+     }
+ 
+@@ -539,7 +575,10 @@ std::size_t Bridging::getResponseQueueSize()
+ **/
+ ipmi::RspType<std::bitset<8>> ipmiAppGetMessageFlags(ipmi::Context::ptr ctx)
+ {
++    bool EvtMsgBuf=false;
++    ipmi::Value variant;
+     ipmi::ChannelInfo chInfo;
++    std::shared_ptr<sdbusplus::asio::connection> dbus = getSdBus();
+ 
+     try
+     {
+@@ -562,9 +601,21 @@ ipmi::RspType<std::bitset<8>> ipmiAppGetMessageFlags(ipmi::Context::ptr ctx)
+     }
+ 
+     std::bitset<8> getMsgFlagsRes;
++    try
++    {
++        variant = ipmi::getDbusProperty(*dbus, SettingService, GlobalEnablesObj, GlobalEnableInt, "EventMsgBuf");
++        EvtMsgBuf = std::get<bool>(variant);
++    }
++    catch (sdbusplus::exception::SdBusError& e)
++    {
++        fprintf(stderr,"ipmiAppGetMessageFlags, dbus call exception: %s", e.what());
++        return ipmi::responseUnspecifiedError();
++    }
++
+ 
+     // set event message buffer bit
+-    if (!eventMessageBufferFlag)
++    //if message buffer not support or not enabled, can't set the flag bit
++    if(EVENT_MSG_BUFFER_SUPPORT && EvtMsgBuf && !eventMessageBufferFlag)
+     {
+         getMsgFlagsRes.set(getMsgFlagEventMessageBit);
+     }
+@@ -769,6 +820,106 @@ uint8_t ipmbSelfTest(ipmi::Context::ptr ctx)
+     return 0x00;
+ }
+ 
++ipmi::RspType<> ipmiAppSetBMCGlobalEnable(
++    ipmi::Context::ptr ctx, bool receiveMessageQueueInterruptEnabled,
++    bool eventMessageBufferFullInterruptEnabled, bool eventMessageBufferEnabled,
++    bool systemEventLogEnable, uint1_t reserved, bool OEM0Enabled,
++    bool OEM1Enabled, bool OEM2Enabled)
++{
++    std::shared_ptr<sdbusplus::asio::connection> dbus = getSdBus();
++    ipmi::ChannelInfo chInfo;
++
++    if (ipmi::getChannelInfo(ctx->channel, chInfo) != ipmi::ccSuccess)
++    {
++        phosphor::logging::log<phosphor::logging::level::ERR>(
++            "Failed to get Channel Info",
++            phosphor::logging::entry("CHANNEL=%d", ctx->channel));
++        return ipmi::responseUnspecifiedError();
++    }
++
++    if (chInfo.mediumType !=
++        static_cast<uint8_t>(ipmi::EChannelMediumType::systemInterface))
++    {
++        phosphor::logging::log<phosphor::logging::level::ERR>(
++            "Error - supported only in system interface");
++        return ipmi::responseCommandNotAvailable();
++    }
++
++    if (OEM0Enabled || OEM1Enabled || OEM2Enabled || reserved)
++    {
++        fprintf(stderr, "Not support to edit reserved bit or oem bits\n");
++        return ipmi::responseInvalidFieldRequest();
++    }
++    if( (eventMessageBufferEnabled||eventMessageBufferFullInterruptEnabled) && !EVENT_MSG_BUFFER_SUPPORT){
++        fprintf(stderr, "Doesn't support Event Message Buffer, related bits can't be enabled\n");
++        return ipmi::responseInvalidFieldRequest();
++    }
++
++    try{
++        /*keep the sel enable setting in both phosphor-setting-manager and phosphor-sel-logger*/
++        ipmi::setDbusProperty(*dbus, SettingService, GlobalEnablesObj,
++                                 GlobalEnableInt, "SEL", systemEventLogEnable );
++        ipmi::setDbusProperty(*dbus, SELService, SELObj, SELInt, "SEL_Enable", systemEventLogEnable );
++
++        ipmi::setDbusProperty(*dbus, SettingService, GlobalEnablesObj,
++                                 GlobalEnableInt, "EventMsgBuf", eventMessageBufferEnabled );
++        /*only set event buffer full interrupt when event message buffer is enabled*/
++        ipmi::setDbusProperty(*dbus, SettingService, GlobalEnablesObj,
++                                 GlobalEnableInt, "EventMsgBufFullIntr", static_cast<bool>(eventMessageBufferEnabled&eventMessageBufferFullInterruptEnabled) );
++
++        if(eventMessageBufferFullInterruptEnabled && !eventMessageBufferEnabled){
++            fprintf(stderr,"Event Message Buffer isn't enabled, can't enable Event Message Buffer Full Interrupt.\n");
++        }
++        ipmi::setDbusProperty(*dbus, SettingService, GlobalEnablesObj,
++                                 GlobalEnableInt, "RcvMsgQueueIntr", receiveMessageQueueInterruptEnabled );
++    }catch (sdbusplus::exception::SdBusError& e)
++    {
++        fprintf(stderr,"error to set property for global enables: %s\n", e.what());
++        return ipmi::responseUnspecifiedError();
++    }
++
++    return ipmi::responseSuccess();
++}
++
++
++ipmi::RspType<bool,    // Receive Message Queue Interrupt Enabled
++              bool,    // Event Message Buffer Full Interrupt Enabled
++              bool,    // Event Message Buffer Enabled
++              bool,    // System Event Logging Enabled
++              uint1_t, // Reserved
++              bool,    // OEM 0 enabled
++              bool,    // OEM 1 enabled
++              bool     // OEM 2 enabled
++              >
++    ipmiAppGetBMCGlobalEnable()
++{
++    ipmi::Value variant;
++    bool RcvMsgQIntr;
++    bool EvtMsgBuf;
++    bool EvtMsgBufIntr;
++    bool SEL;
++    bool rsvd = false;
++    std::shared_ptr<sdbusplus::asio::connection> dbus = getSdBus();
++
++    try{
++        variant = ipmi::getDbusProperty(*dbus, SettingService, GlobalEnablesObj, GlobalEnableInt, "RcvMsgQueueIntr");
++        RcvMsgQIntr = std::get<bool>(variant);
++        variant = ipmi::getDbusProperty(*dbus, SettingService, GlobalEnablesObj, GlobalEnableInt, "EventMsgBufFullIntr");
++        EvtMsgBufIntr = std::get<bool>(variant);
++        variant = ipmi::getDbusProperty(*dbus, SettingService, GlobalEnablesObj, GlobalEnableInt, "EventMsgBuf");
++        EvtMsgBuf = std::get<bool>(variant);
++        variant = ipmi::getDbusProperty(*dbus, SettingService, GlobalEnablesObj,
++                                 GlobalEnableInt, "SEL");
++        SEL = std::get<bool>(variant);
++    }catch (sdbusplus::exception::SdBusError& e)
++    {
++        fprintf(stderr,"error to get global enables property : %s\n", e.what());
++        return ipmi::responseUnspecifiedError();
++    }
++
++    return ipmi::responseSuccess(RcvMsgQIntr, EvtMsgBufIntr, EvtMsgBuf, SEL, rsvd, false, false,
++                                 false);
++}
+ 
+ static void register_bridging_functions() __attribute__((constructor));
+ static void register_bridging_functions()
+@@ -792,6 +943,13 @@ static void register_bridging_functions()
+     ipmi::registerHandler(ipmi::prioOemBase, ipmi::netFnApp,
+                           ipmi::app::cmdReadEventMessageBuffer,
+                           ipmi::Privilege::User, ipmiAppReadEventMessageBuffer);
+-
++    // <Set BMC Global Enables>
++    ipmi::registerHandler(ipmi::prioOemBase, ipmi::netFnApp,
++                          ipmi::app::cmdSetBmcGlobalEnables,
++                          ipmi::Privilege::Admin, ipmiAppSetBMCGlobalEnable);
++    // <Get BMC Global Enables>
++    ipmi::registerHandler(ipmi::prioOemBase, ipmi::netFnApp,
++                          ipmi::app::cmdGetBmcGlobalEnables,
++                          ipmi::Privilege::User, ipmiAppGetBMCGlobalEnable);
+     return;
+ }
+-- 
+2.33.0
+

@@ -1,0 +1,10 @@
+[Unit]
+Description=configure-firmware-status
+
+[Service]
+ExecStart=/usr/bin/configure-firmware-status
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

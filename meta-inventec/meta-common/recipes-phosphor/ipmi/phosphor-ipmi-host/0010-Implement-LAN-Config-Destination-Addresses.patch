@@ -1,0 +1,248 @@
+From c6787229548ef73c4f3e57bfa4d3231ed942298a Mon Sep 17 00:00:00 2001
+From: "Lin.TommySC" <lin.tommysc@inventec.com>
+Date: Fri, 14 May 2021 06:44:49 +0000
+Subject: [PATCH 10/31] Implement LAN Config Destination Addresses
+
+Symptom/Reason :
+    - Implement LAN Config Destination Addresses
+
+Root Cause:
+    - N/A
+
+Solution/Change:
+    [phospher-ipmi-host]
+        - Use xyz.openbmc_project.Network.Client.Create interface to create new manager
+        - Use xyz.openbmc_project.Network.Client interface to get manager properties
+    [phospher-snmp]
+        - Modify xyz.openbmc_project.Network.Client.Create interface to allow destination selector
+        - Do not serialize manager when selector id is 0
+
+Entry Test:
+    - Get Destination Addresses
+        ipmitool raw 0x0c 0x02 0x01 0x13 0x01 0x00
+    - Set Destination Addresses
+        ipmitool raw 0x0c 0x01 0x01 0x13 0x00 0x00 0x00 0x0a 0x6 0x8d 0x21 0x7c 0xd3 0x0a 0xc4 0x90 0xe4
+---
+ transporthandler.cpp | 157 +++++++++++++++++++++++++++++++++++++++++++
+ transporthandler.hpp |   9 +++
+ 2 files changed, 166 insertions(+)
+
+diff --git a/transporthandler.cpp b/transporthandler.cpp
+index b1748ba..04b7a2a 100644
+--- a/transporthandler.cpp
++++ b/transporthandler.cpp
+@@ -909,6 +909,58 @@ void asyncRestartService(const std::string& unit, bool reload)
+     t_restart.detach();
+ }
+ 
++/** @brief Sets destination address
++ *
++ *  @param[in] idx   - Client id
++ *  @param[in] address   - IP address
++ */
++void configureDestAddress(uint8_t idx, std::string& address)
++{
++    try
++    {
++        sdbusplus::bus::bus bus(ipmid_get_sd_bus_connection());
++        std::string objPath = std::string(SNMP_ROOT) + "/" + std::to_string(idx);
++        deleteObjectIfExists(bus, SNMP_BUS, objPath);
++        auto req = bus.new_method_call(SNMP_BUS, SNMP_ROOT, INTF_CLIENT_CREATE, "Client");
++        req.append(address, static_cast<uint16_t>(0), idx);
++        auto reply = bus.call(req);
++        sdbusplus::message::object_path newPath;
++        reply.read(newPath);
++    }
++    catch (InternalFailure& e)
++    {
++        log<level::ERR>(e.what());
++    }
++    catch (const std::exception& e)
++    {
++        log<level::ERR>(e.what());
++    }
++}
++
++/** @brief Gets destination address for specific client id
++ *
++ *  @param[in] idx   - Client id
++ *  @param[out] address   - IP address
++ */
++void getDestAddress(uint8_t idx, std::string& address)
++{
++    try
++    {
++        sdbusplus::bus::bus bus(ipmid_get_sd_bus_connection());
++        std::string path = std::string(SNMP_ROOT) + "/" + std::to_string(idx);
++        address = std::get<std::string>(getDbusProperty(
++        bus, SNMP_BUS, path, INTF_CLIENT, "Address"));
++    }
++    catch (InternalFailure& e)
++    {
++        log<level::ERR>(e.what());
++    }
++    catch (const std::exception& e)
++    {
++        log<level::ERR>(e.what());
++    }
++}
++
+ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
+                  uint8_t parameter, message::Payload& req)
+ {
+@@ -1136,6 +1188,54 @@ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
+             }
+             return responseSuccess();
+         }
++        case LanParam::DestinationNum:
++        {
++            return response(ccParamReadOnly);
++        }
++        case LanParam::DestinationAddresses:
++        {
++            uint8_t selector;
++            uint8_t format;
++            if (req.unpack(selector, format) != 0)
++            {
++                return responseReqDataLenInvalid();
++            }
++            uint8_t client_idx = selector & 0x0f;
++            int ip_format = (int)((format >> 4) & 0x0f);
++            std::string address;
++            if (ip_format == 0) //IPv4 address with MAC
++            {
++                in_addr ip;
++                ether_addr mac;
++                uint8_t gateway_sel;
++                std::array<uint8_t, sizeof(ip)> ipbytes;
++                std::array<uint8_t, sizeof(mac)> macbytes;
++                if (req.unpack(gateway_sel, ipbytes, macbytes) != 0 || !req.fullyUnpacked()) {
++                    return responseReqDataLenInvalid();
++                }
++                copyInto(ip, ipbytes);
++                copyInto(mac, macbytes);
++                address = addrToString<AF_INET>(ip);
++            }
++            else if (ip_format == 1) //IPv6 address
++            {
++                in6_addr ip;
++                std::array<uint8_t, sizeof(ip)> ipv6_bytes;
++                if (req.unpack(ipv6_bytes) != 0 || !req.fullyUnpacked())
++                {
++                    return responseReqDataLenInvalid();
++                }
++                copyInto(ip, ipv6_bytes);
++                address = addrToString<AF_INET6>(ip);
++            }
++            else
++            {
++                return responseInvalidFieldRequest();
++            }
++            std::cout << "[DestinationAddresses] idx " << (int)client_idx << ", addr " << address << std::endl;
++            configureDestAddress(client_idx, address);
++            return responseSuccess();
++        }
+         case LanParam::VLANId:
+         {
+             uint12_t vlanData = 0;
+@@ -1515,6 +1615,63 @@ RspType<message::Payload> getLan(Context::ptr ctx, uint4_t channelBits,
+             ret.pack(dataRef(resp));
+             return responseSuccess(std::move(ret));
+         }
++        case LanParam::DestinationNum:
++        {
++            std::bitset<4> dest_num = 0xf;
++            ret.pack(dest_num, uint4_t{});
++            return responseSuccess(std::move(ret));
++        }
++        case LanParam::DestinationAddresses:
++        {
++            uint8_t format;
++            uint8_t client_idx;
++            std::string ip = "";
++            client_idx = set & 0x0f;
++            getDestAddress(client_idx, ip);
++            std::cout << "[DestinationAddresses] get addr " << ip << std::endl;
++            if (ip.length() == 0)
++            {
++                return responseRetBytesUnavailable();
++            }
++
++            addrinfo hints{0};
++            addrinfo* addr = nullptr;
++            hints.ai_family = AF_UNSPEC;
++            hints.ai_socktype = SOCK_STREAM;
++            hints.ai_flags |= AI_CANONNAME;
++
++            auto result = getaddrinfo(ip.c_str(), NULL, &hints, &addr);
++            if (result)
++            {
++                addr = nullptr;
++                return responseRetBytesUnavailable();
++            }
++            auto family = addr->ai_family;
++            addr = nullptr;
++            if (family == AF_INET) //IPv4
++            {
++                auto ip_addr = maybeStringToAddr<AF_INET>(ip.c_str());
++                if (ip_addr)
++                {
++                    format = 0; //IPv4 with MAC
++                    uint8_t gw_selector = 0; //default gateway
++                    ether_addr mac {};
++                    ret.pack(format, gw_selector, dataRef(ip_addr), dataRef(mac));
++                    return responseSuccess(std::move(ret));
++                }
++            }
++            else if (family == AF_INET6) //IPv6
++            {
++                auto ip6_addr = maybeStringToAddr<AF_INET6>(ip.c_str());
++                if (ip6_addr)
++                {
++                    format = 0x10; //IPv6
++                    ret.pack(format, dataRef(ip6_addr));
++                    return responseSuccess(std::move(ret));
++                }
++            }
++            return responseRetBytesUnavailable();
++        }
+         case LanParam::VLANId:
+         {
+             uint16_t vlan = channelCall<getVLANProperty>(channel);
+diff --git a/transporthandler.hpp b/transporthandler.hpp
+index c645f24..3df9a97 100644
+--- a/transporthandler.hpp
++++ b/transporthandler.hpp
+@@ -34,6 +34,7 @@
+ #include <user_channel/channel_layer.hpp>
+ #include <utility>
+ #include <vector>
++#include <netdb.h>
+ #include <boost/process.hpp>
+ #include <xyz/openbmc_project/Common/error.hpp>
+ #include <xyz/openbmc_project/Network/EthernetInterface/server.hpp>
+@@ -60,6 +61,12 @@ constexpr auto INTF_NEIGHBOR_CREATE_STATIC =
+     "xyz.openbmc_project.Network.Neighbor.CreateStatic";
+ constexpr auto INTF_VLAN = "xyz.openbmc_project.Network.VLAN";
+ constexpr auto INTF_VLAN_CREATE = "xyz.openbmc_project.Network.VLAN.Create";
++constexpr auto SNMP_ROOT = "/xyz/openbmc_project/network/snmp/manager";
++constexpr auto SNMP_BUS = "xyz.openbmc_project.Network.SNMP";
++constexpr auto INTF_CLIENT = "xyz.openbmc_project.Network.Client";
++constexpr auto INTF_CLIENT_CREATE = "xyz.openbmc_project.Network.Client.Create";
++
++
+ using namespace phosphor::logging;
+ 
+ /** @brief IPMI LAN Parameters */
+@@ -76,6 +83,8 @@ enum class LanParam : uint8_t
+     Gateway1 = 12,
+     Gateway1MAC = 13,
+     CommunityStr = 16,
++    DestinationNum = 17,
++    DestinationAddresses = 19,
+     VLANId = 20,
+     CiphersuiteSupport = 22,
+     CiphersuiteEntries = 23,
+-- 
+2.33.0
+

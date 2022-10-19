@@ -1,0 +1,124 @@
+From 2fa0a195a831d4265e499831cb8c7661835831bb Mon Sep 17 00:00:00 2001
+From: "Lin.TommySC" <lin.tommysc@inventec.com>
+Date: Tue, 23 Mar 2021 09:37:22 +0000
+Subject: [PATCH 06/31] Implement LAN Config IPv6 Static Hop Limit
+
+Symptom/Reason :
+    - Implement LAN Config IPv6 Static Hop Limit
+
+Root Cause:
+    - N/A
+
+Solution/Change:
+    [phospher-dbus-interfaces]
+        - Add IPv6HopLimit property in EthernetInterface interface
+    [phospher-ipmi-host]
+        - Add entry for IPv6HopLimit command handler
+    [phospher-network]
+        - Implement Get/Set IPv6HopLimit property
+
+Entry Test:
+    - Get Static Hop Limit
+        ipmitool raw 0x0c 0x02 0x01 0x35 0x00 0x00
+    - Set Static Hop Limit
+        ipmitool raw 0x0c 0x01 0x01 0x35 0x20
+---
+ transporthandler.cpp | 55 ++++++++++++++++++++++++++++++++++++++++++++
+ transporthandler.hpp |  1 +
+ 2 files changed, 56 insertions(+)
+
+diff --git a/transporthandler.cpp b/transporthandler.cpp
+index 0f9f8a3..b543bdd 100644
+--- a/transporthandler.cpp
++++ b/transporthandler.cpp
+@@ -267,6 +267,41 @@ void setDHCPv6Property(sdbusplus::bus::bus& bus, const ChannelParams& params,
+                     "DHCPEnabled", newDhcp);
+ }
+ 
++/** @brief Gets IPv6 header static hop limit
++ *
++ *  @param[in] bus    - The bus object used for lookups
++ *  @param[in] params - The parameters for the channel
++ *  @return IPv6 header static hop limit
++ */
++uint8_t getIPv6HopProperty(sdbusplus::bus::bus& bus, const ChannelParams& params)
++{
++    auto limit = std::get<uint8_t>(getDbusProperty(
++        bus, params.service, params.logicalPath, INTF_ETHERNET, "IPv6HopLimit"));
++    return limit;
++}
++
++/** @brief Sets IPv6 header static hop limit
++ *
++ *  @param[in] bus    - The bus object used for lookups
++ *  @param[in] params - The parameters for the channel
++ *  @param[in] limit   - IPv6 header static hop limit
++ */
++void setIPv6HopProperty(sdbusplus::bus::bus& bus, const ChannelParams& params, uint8_t limit)
++{
++    if (limit == 0)
++    {
++        return;
++    }
++
++    setDbusProperty(bus, params.service, params.logicalPath, INTF_ETHERNET,
++                    "IPv6HopLimit", limit);
++}
++
++/** @brief Converts a human readable MAC string into MAC bytes
++ *
++ *  @param[in] mac - The MAC string
++ *  @return MAC in bytes
++ */
+ ether_addr stringToMAC(const char* mac)
+ {
+     const ether_addr* ret = ether_aton(mac);
+@@ -1241,6 +1276,20 @@ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
+                 return response(resp);
+             }
+         }
++        case LanParam::IPv6HopLimit:
++        {
++            uint8_t limit;
++            if (req.unpack(limit) != 0 || !req.fullyUnpacked())
++            {
++                return responseReqDataLenInvalid();
++            }
++            if (limit == 0)
++            {
++                return responseInvalidFieldRequest();
++            }
++            channelCall<setIPv6HopProperty>(channel, limit);
++            return responseSuccess();
++        }
+     }
+ 
+     if ((parameter >= oemCmdStart) && (parameter <= oemCmdEnd))
+@@ -1528,6 +1577,12 @@ RspType<message::Payload> getLan(Context::ptr ctx, uint4_t channelBits,
+                 return response(resp);
+             }
+         }
++        case LanParam::IPv6HopLimit:
++        {
++            uint8_t limit = channelCall<getIPv6HopProperty>(channel);
++            ret.pack(static_cast<uint8_t>(limit));
++            return responseSuccess(std::move(ret));
++        }
+     }
+ 
+     if ((parameter >= oemCmdStart) && (parameter <= oemCmdEnd))
+diff --git a/transporthandler.hpp b/transporthandler.hpp
+index c2940b4..fd585be 100644
+--- a/transporthandler.hpp
++++ b/transporthandler.hpp
+@@ -73,6 +73,7 @@ enum class LanParam : uint8_t
+     cipherSuitePrivilegeLevels = 24,
+     IPFamilySupport = 50,
+     IPFamilyEnables = 51,
++    IPv6HopLimit = 53,
+     IPv6Status = 55,
+     IPv6StaticAddresses = 56,
+     IPv6DynamicAddresses = 59,
+-- 
+2.33.0
+

@@ -1,0 +1,111 @@
+From 385089554e6091ca39afd50b1a48dbbecfcab17f Mon Sep 17 00:00:00 2001
+From: "Lin.TommySC" <lin.tommysc@inventec.com>
+Date: Mon, 26 Jul 2021 02:20:40 +0000
+Subject: [PATCH 4/4] Add IPv6 Header Traffic Class support
+
+Symptom/Reason :
+    - Add IPv6 Header Traffic Class support
+
+Root Cause:
+    - N/A
+
+Solution/Change:
+    [phosphor-ipmi-host]
+        - Add handler for IPv6TrafficClass command
+    [phosphor-ipmi-config]
+        - Add ipv6_traffic_class config field
+    [phosphor-snmp]
+        - Set IPv6 Header Traffic Class before sending SNMP trap
+    [phosphor-dbus-monitor]
+        - Fix type mismatch when calling sendTrap
+
+Entry Test:
+    - Set IPv6 Header Traffic Class
+        ipmitool raw 0x0c 0x01 0x01 0x34 0x2
+    - Get IPv6 Header Traffic Class
+        ipmitool raw 0x0c 0x02 0x01 0x34 0x00 0x00
+---
+ snmp_notification.cpp | 31 ++++++++++++++++++++++++++++++-
+ snmp_util.hpp         |  1 +
+ 2 files changed, 31 insertions(+), 1 deletion(-)
+
+diff --git a/snmp_notification.cpp b/snmp_notification.cpp
+index 181b713..3d3a73b 100644
+--- a/snmp_notification.cpp
++++ b/snmp_notification.cpp
+@@ -57,6 +57,23 @@ bool Notification::addPDUVar(netsnmp_pdu& pdu, const OID& objID,
+     return (varList == nullptr ? false : true);
+ }
+ 
++bool isIPv6Address(std::string& target)
++{
++    addrinfo hints{0};
++    addrinfo* addr = nullptr;
++    hints.ai_family = AF_UNSPEC;
++    hints.ai_socktype = SOCK_STREAM;
++    hints.ai_flags |= AI_CANONNAME;
++
++    auto result = getaddrinfo(target.c_str(), NULL, &hints, &addr);
++    if (!result)
++    {
++        return addr->ai_family == AF_INET6;
++    }
++
++    return false;
++}
++
+ void Notification::sendTrap()
+ {
+     /* By Tommy. For community string configuration.
+@@ -80,16 +97,27 @@ void Notification::sendTrap()
+     session.community_len = comm.length();
+     session.callback = nullptr;
+     session.callback_magic = nullptr;
++    uint32_t tClass = 0;
++    loadConfigValue<uint32_t>(LAN_CONFIG_IPV6_TCLASS, tClass);
+ 
+     auto mgrs = getManagers();
+ 
+     for (auto& mgr : mgrs)
+     {
+         session.peername = const_cast<char*>(mgr.c_str());
++        netsnmp_transport* transport = netsnmp_transport_open_client("snmptrap", session.peername);
++        if (isIPv6Address(mgr))
++        {
++            log<level::INFO>("Setting up IPv6 socket");
++            if (setsockopt(transport->sock, IPPROTO_IPV6, IPV6_TCLASS, &tClass, sizeof(uint32_t)) == -1)
++            {
++                log<level::ERR>("Failed to set IPV6_TCLASS.");
++            }
++        }
+         // create the session
+         auto ss = snmp_add(
+             &session,
+-            netsnmp_transport_open_client("snmptrap", session.peername),
++            transport,
+             nullptr, nullptr);
+         if (!ss)
+         {
+@@ -102,6 +130,7 @@ void Notification::sendTrap()
+         snmpSessionPtr sessionPtr(ss, &::snmp_close);
+ 
+         ss = nullptr;
++        transport = nullptr;
+ 
+         auto pdu = snmp_pdu_create(SNMP_MSG_TRAP2);
+         if (!pdu)
+diff --git a/snmp_util.hpp b/snmp_util.hpp
+index c208ad3..2a65541 100644
+--- a/snmp_util.hpp
++++ b/snmp_util.hpp
+@@ -60,6 +60,7 @@ namespace network
+ constexpr auto LAN_CFG_FILE = "/usr/share/ipmi-providers/lan_config.json";
+ // Config name for LAN Config Parameters
+ constexpr auto LAN_CONFIG_COMM_STR = "community_str";
++constexpr auto LAN_CONFIG_IPV6_TCLASS = "ipv6_traffic_class";
+ 
+ /** @brief Resolves the given address to IP address.
+  *         Given address could be hostname or IP address.
+-- 
+2.33.0
+

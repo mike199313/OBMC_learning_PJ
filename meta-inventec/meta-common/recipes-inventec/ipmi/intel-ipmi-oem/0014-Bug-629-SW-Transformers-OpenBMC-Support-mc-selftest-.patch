@@ -1,0 +1,653 @@
+From e32ed43f2cdc3a09c3520346e8d0798bf3dc2452 Mon Sep 17 00:00:00 2001
+From: "pj.chen" <chen.pj@inventec.com>
+Date: Mon, 7 Mar 2022 08:07:29 +0000
+Subject: [PATCH 14/25] Bug 629 - [SW][Transformers][OpenBMC] Support mc
+ selftest on transformers
+
+Solution/Change:
+    [inv-ipmi-oem]
+        - Implement the selftest of SDR,SEL,FRU,IPMB,Uboot,Kernel.
+    [u-boot-aspeed-sdk]
+       - Add md5 checksum at the end of binary file.
+       - Save the result of checking the hash code of operational firmware
+
+Entry Test:
+    # systemctl stop xyz.openbmc_project.Logging.IPMI.service
+    # ipmitool mc selftest
+    Selftest: device corrupted
+     -> SEL device not accessible
+
+    # systemctl stop xyz.openbmc_project.ObjectMapper.service
+    # ipmitool mc selftest
+    Selftest: device corrupted
+     -> SDR repository not accessible
+
+    # systemctl stop xyz.openbmc_project.FruDevice.service
+    # ipmitool mc selftest
+    Selftest: device corrupted
+    FRU device not accessible
+
+    # systemctl stop ipmb.service
+    # ipmitool mc selftest
+    Selftest: device corrupted
+    IPMB signal lines do not respond
+
+    # echo "wwwwwwwwwwwwwwwwwww" > /sys/bus/i2c/devices/3-0050/eeprom
+    # ipmitool mc selftest
+    Selftest: device corrupted
+    Internal Use Area corrupted
+
+    # echo "wwwwwwwwwwwwwwwwwww" > /sys/bus/i2c/devices/3-0050/eeprom
+    # echo "wwwwwwwwwwwwwwwwwww" > /sys/bus/i2c/devices/8-0051/eeprom
+    # echo "wwwwwwwwwwwwwwwwwww" > /sys/bus/i2c/devices/8-0053/eeprom
+    Selftest: device corrupted
+     -> SDR repository not accessible
+    SDR repository empty
+    Internal Use Area corrupted
+---
+ include/appcommands.hpp      |  13 ++++
+ include/bridgingcommands.hpp |   2 +
+ include/sdrutils.hpp         |  13 +++-
+ include/sensorcommands.hpp   |   2 +-
+ include/storagecommands.hpp  |  16 +++-
+ src/appcommands.cpp          | 145 +++++++++++++++++++++++++++++++++++
+ src/bridgingcommands.cpp     |  16 ++++
+ src/sensorcommands.cpp       |  42 +++++++---
+ src/storagecommands.cpp      | 144 ++++++++++++++++++++++++++++++++++
+ 9 files changed, 377 insertions(+), 16 deletions(-)
+
+diff --git a/include/appcommands.hpp b/include/appcommands.hpp
+index f4cd0d6..541936b 100644
+--- a/include/appcommands.hpp
++++ b/include/appcommands.hpp
+@@ -40,4 +40,17 @@ extern int getActiveSoftwareVersionInfo(ipmi::Context::ptr ctx,
+                                         const std::string& reqVersionPurpose,
+                                         std::string& version);
+ extern std::optional<MetaRevision> convertIntelVersion(std::string& s);
++
++enum ipmi_app_selftest_masks
++{
++    IPMI_SELFTEST_SEL_ERROR = 0x80,
++    IPMI_SELFTEST_SDR_ERROR = 0x40,
++    IPMI_SELFTEST_FRU_ERROR = 0x20,
++    IPMI_SELFTEST_IPMB_ERROR = 0x10,
++    IPMI_SELFTEST_SDRR_EMPTY = 0x08,
++    IPMI_SELFTEST_FRU_CORRUPTED = 0x04,
++    IPMI_SELFTEST_FW_BOOTBLOCK = 0x02,
++    IPMI_SELFTEST_FW_CORRUPTED = 0x01,
++};
++
+ } // namespace ipmi
+diff --git a/include/bridgingcommands.hpp b/include/bridgingcommands.hpp
+index 545d24a..6725670 100644
+--- a/include/bridgingcommands.hpp
++++ b/include/bridgingcommands.hpp
+@@ -210,3 +210,5 @@ class Bridging
+   private:
+     std::vector<IpmbResponse> responseQueue;
+ };
++
++uint8_t ipmbSelfTest(ipmi::Context::ptr ctx);
+diff --git a/include/sdrutils.hpp b/include/sdrutils.hpp
+index d6e6704..793d35d 100644
+--- a/include/sdrutils.hpp
++++ b/include/sdrutils.hpp
+@@ -219,10 +219,15 @@ class IPMIStatsTable
+ // This object is global singleton, used from a variety of places
+ inline IPMIStatsTable sdrStatsTable;
+ 
+-inline static uint16_t getSensorSubtree(std::shared_ptr<SensorSubTree>& subtree)
++inline static uint16_t getSensorSubtree(std::shared_ptr<SensorSubTree>& subtree, bool reset = false)
+ {
+     static std::shared_ptr<SensorSubTree> sensorTreePtr;
+     static uint16_t sensorUpdatedIndex = 0;
++
++    if(reset && sensorTreePtr) {
++        sensorTreePtr.reset();
++    }
++
+     sd_bus* bus = NULL;
+     int ret = sd_bus_default_system(&bus);
+     if (ret < 0)
+@@ -281,7 +286,7 @@ inline static uint16_t getSensorSubtree(std::shared_ptr<SensorSubTree>& subtree)
+     catch (const sdbusplus::exception_t& e)
+     {
+         phosphor::logging::log<phosphor::logging::level::ERR>(e.what());
+-        return sensorUpdatedIndex;
++        return -1;
+     }
+     subtree = sensorTreePtr;
+     sensorUpdatedIndex++;
+@@ -540,10 +545,10 @@ inline static bool tryGetSensorNumByPath(std::shared_ptr<SensorNumMap>& sensorNu
+ }
+ } // namespace details
+ 
+-inline static bool getSensorSubtree(SensorSubTree& subtree)
++inline static bool getSensorSubtree(SensorSubTree& subtree, bool reset = false)
+ {
+     std::shared_ptr<SensorSubTree> sensorTree;
+-    details::getSensorSubtree(sensorTree);
++    details::getSensorSubtree(sensorTree, reset);
+     if (!sensorTree)
+     {
+         return false;
+diff --git a/include/sensorcommands.hpp b/include/sensorcommands.hpp
+index cb8b70d..e6ca8fb 100644
+--- a/include/sensorcommands.hpp
++++ b/include/sensorcommands.hpp
+@@ -160,5 +160,5 @@ struct IPMIThresholds
+     std::optional<uint8_t> criticalLow;
+     std::optional<uint8_t> criticalHigh;
+ };
+-
++uint8_t sdrSelfTest(ipmi::Context::ptr ctx);
+ } // namespace ipmi
+diff --git a/include/storagecommands.hpp b/include/storagecommands.hpp
+index 5bf3970..6434da0 100644
+--- a/include/storagecommands.hpp
++++ b/include/storagecommands.hpp
+@@ -168,13 +168,25 @@ namespace ipmi
+ namespace storage
+ {
+ 
+-constexpr const size_t nmDiscoverySDRCount = 1;
+-constexpr const size_t type12Count = 2;
++//constexpr const size_t nmDiscoverySDRCount = 1;
++inline size_t getNmDiscoverySDRCount(size_t fruCount = 0) {
++    if(fruCount == 0) return 0;
++    else return 1;
++}
++//constexpr const size_t type12Count = 2;
++inline size_t getType12Count(size_t fruCount = 0) {
++    if(fruCount == 0) return 0;
++    else return 2;
++}
++
+ ipmi_ret_t getFruSdrs(ipmi::Context::ptr ctx, size_t index,
+                       get_sdr::SensorDataFruRecord& resp);
+ 
+ ipmi_ret_t getFruSdrCount(ipmi::Context::ptr ctx, size_t& count);
+ 
++uint8_t fruSelfTest(ipmi::Context::ptr ctx);
++uint8_t selSelfTest(ipmi::Context::ptr ctx);
++
+ std::vector<uint8_t> getType12SDRs(uint16_t index, uint16_t recordId);
+ std::vector<uint8_t> getNMDiscoverySDR(uint16_t index, uint16_t recordId);
+ } // namespace storage
+diff --git a/src/appcommands.cpp b/src/appcommands.cpp
+index 0942d0c..14aa796 100644
+--- a/src/appcommands.cpp
++++ b/src/appcommands.cpp
+@@ -15,14 +15,24 @@
+ */
+ #include <byteswap.h>
+ 
++#include <features.hpp>
+ #include <appcommands.hpp>
++#include <storagecommands.hpp>
++#include <sensorcommands.hpp>
++#include <bridgingcommands.hpp>
+ #include <ipmid/api.hpp>
+ #include <ipmid/utils.hpp>
+ #include <nlohmann/json.hpp>
+ #include <phosphor-logging/log.hpp>
+ 
++#include <openssl/md5.h>
++#include <boost/algorithm/hex.hpp>
++#include <boost/uuid/detail/md5.hpp>
++
++#include <iostream>
+ #include <fstream>
+ #include <regex>
++#include <ctype.h>
+ 
+ namespace ipmi
+ {
+@@ -383,6 +393,137 @@ RspType<uint8_t,  // Device ID
+                                  devId.prodId, devId.aux);
+ }
+ 
++uint8_t bootblockSelfTest(std::string src, ipmi::Context::ptr ctx)
++{
++    const char *keyword = "INVENTEC_UBOOT";
++    int keylen = strlen(keyword);
++    char data[64] = {0};
++    int count = 0;
++    char c;
++    std::ifstream bootblock(src, std::ios::binary);
++    if (!bootblock.is_open()) {
++        return IPMI_SELFTEST_FW_BOOTBLOCK;
++    }
++    while(bootblock.get(c) && count < keylen) {
++        if(c == keyword[count]) {
++            count++;
++        } else count = 0;
++        if(count == keylen) {
++            count = 0;
++            bootblock.get(c);
++
++            while(isascii(c) && count < sizeof(data)) {
++                if(c == 0x0A) c = 0;
++                data[count] = c;
++                bootblock.get(c);
++                count++;
++            }
++            break;
++        }
++    }
++
++    if(data[0] == 0) {
++        bootblock.close();
++        return IPMI_SELFTEST_FW_BOOTBLOCK;
++    }
++
++    int file_size = std::stoi(data+6);
++    std::string str_md5;
++    bootblock.seekg(0, std::ios::beg);
++    std::vector<char> buffer(file_size);
++    bootblock.read(buffer.data(), file_size);
++    unsigned char result[MD5_DIGEST_LENGTH];
++    MD5((unsigned char*)buffer.data(), file_size, result);
++    boost::algorithm::hex_lower(result,result+sizeof(boost::uuids::detail::md5::digest_type), std::back_inserter(str_md5));
++
++    bootblock.close();
++
++    if(strstr(data, str_md5.c_str())==0) {
++        return IPMI_SELFTEST_FW_BOOTBLOCK;
++    }
++    return 0x00;
++}
++
++uint8_t operationalFirmwareSelfTest(std::string src,ipmi::Context::ptr ctx) {
++    uint8_t result = 0x00;
++    std::ifstream env_setting(src, std::ios::binary);
++    env_setting.seekg(4, std::ios::beg);
++    char *value = NULL;
++    std::string line;
++    while( getline(env_setting,line,(char)0) ) {
++        if(line.length() == 0) break;
++        if(strstr(line.c_str(),"kernel_verify=")) {
++            value = (char *)line.c_str()+strlen("kernel_verify=");
++            if(strcmp(value,"OK") != 0) {
++                result = IPMI_SELFTEST_FW_CORRUPTED;
++                break;
++            }
++        }
++        if(strstr(line.c_str(),"ramdisk_verify=")) {
++            value = (char *)line.c_str()+strlen("ramdisk_verify=");
++            if(strcmp(value,"OK") != 0) {
++                result = IPMI_SELFTEST_FW_CORRUPTED;
++                break;
++            }
++        }
++    }
++    env_setting.close();
++    return result;
++}
++
++
++auto ipmiAppGetSelfTestResults(ipmi::Context::ptr ctx) -> ipmi::RspType<uint8_t, uint8_t>
++{
++    // Byte 2:
++    //  55h - No error.
++    //  56h - Self Test function not implemented in this controller.
++    //  57h - Corrupted or inaccesssible data or devices.
++    //  58h - Fatal hardware error.
++    //  FFh - reserved.
++    //  all other: Device-specific 'internal failure'.
++    //  Byte 3:
++    //      For byte 2 = 55h, 56h, FFh:     00h
++    //      For byte 2 = 58h, all other:    Device-specific
++    //      For byte 2 = 57h:   self-test error bitfield.
++    //      Note: returning 57h does not imply that all test were run.
++    //      [7] 1b = Cannot access SEL device.
++    //      [6] 1b = Cannot access SDR Repository.
++    //      [5] 1b = Cannot access BMC FRU device.
++    //      [4] 1b = IPMB signal lines do not respond.
++    //      [3] 1b = SDR Repository empty.
++    //      [2] 1b = Internal Use Area of BMC FRU corrupted.
++    //      [1] 1b = controller update 'boot block' firmware corrupted.
++    //      [0] 1b = controller operational firmware corrupted.
++    constexpr uint8_t notImplemented = 0x56;
++    constexpr uint8_t zero = 0;
++    uint8_t bmcSelfTestResult = 0x00;
++    if(ipmi::featureSelfTestFruSupported)
++    {
++        bmcSelfTestResult |= ipmi::storage::fruSelfTest(ctx);
++    }
++    if(ipmi::featureSelfTestSelSupported)
++    {
++        bmcSelfTestResult |= ipmi::storage::selSelfTest(ctx);
++    }
++    if(ipmi::featureSelfTestSDRSupported)
++    {
++        bmcSelfTestResult |= sdrSelfTest(ctx);
++    }
++    if(ipmi::featureSelfTestIpmbSupported)
++    {
++        bmcSelfTestResult |= ipmbSelfTest(ctx);
++    }
++    if(ipmi::featureSelfTestBootBlockSupported)
++    {
++        bmcSelfTestResult |= bootblockSelfTest("/dev/mtd1",ctx);
++    }
++    if(ipmi::featureSelfTestOperationFWSupported)
++    {
++        bmcSelfTestResult |= operationalFirmwareSelfTest("/dev/mtd2",ctx);
++    }
++    return ipmi::responseSuccess(bmcSelfTestResult == 0x00 ? 0x55 : 0x57, bmcSelfTestResult);
++}
++
+ static void registerAPPFunctions(void)
+ {
+     // <Get Device ID>
+@@ -390,6 +531,10 @@ static void registerAPPFunctions(void)
+     registerHandler(prioOemBase, netFnApp, app::cmdGetDeviceId, Privilege::User,
+                     ipmiAppGetDeviceId);
+     */
++   // <Get Self Test Results>
++    ipmi::registerHandler(ipmi::prioOemBase, ipmi::netFnApp,
++                          ipmi::app::cmdGetSelfTestResults,
++                          ipmi::Privilege::User, ipmiAppGetSelfTestResults);
+ }
+ 
+ } // namespace ipmi
+diff --git a/src/bridgingcommands.cpp b/src/bridgingcommands.cpp
+index 916ba15..09098c6 100644
+--- a/src/bridgingcommands.cpp
++++ b/src/bridgingcommands.cpp
+@@ -15,6 +15,7 @@
+ */
+ 
+ #include <bridgingcommands.hpp>
++#include <appcommands.hpp>
+ #include <ipmid/api.hpp>
+ #include <ipmid/utils.hpp>
+ #include <manufacturingcommands.hpp>
+@@ -754,6 +755,21 @@ ipmi::RspType<uint16_t, // Record ID
+                         static_cast<uint7_t>(0), false, eventData});
+ }
+ 
++uint8_t ipmbSelfTest(ipmi::Context::ptr ctx)
++{
++    ipmi::Cc returnVal;
++    std::vector<uint8_t> reqData = {0x2C, 0x18, 0xBC, 0x81, 0x18, 0x01, 0x66}; //Get Device Id
++    std::vector<uint8_t> rspData(ipmbMaxFrameLength);
++
++    returnVal = bridging.handleIpmbChannel(ctx, 0x01, reqData, rspData);
++
++    if(returnVal != ipmi::ccSuccess) {
++        return ipmi::IPMI_SELFTEST_IPMB_ERROR;
++    }
++    return 0x00;
++}
++
++
+ static void register_bridging_functions() __attribute__((constructor));
+ static void register_bridging_functions()
+ {
+diff --git a/src/sensorcommands.cpp b/src/sensorcommands.cpp
+index 4d87108..d091402 100644
+--- a/src/sensorcommands.cpp
++++ b/src/sensorcommands.cpp
+@@ -15,6 +15,7 @@
+ */
+ 
+ #include "sensorcommands.hpp"
++#include "appcommands.hpp"
+ 
+ #include "commandutils.hpp"
+ #include "ipmi_to_redfish_hooks.hpp"
+@@ -1208,8 +1209,8 @@ static int getSensorDataRecord(ipmi::Context::ptr ctx,
+     }
+ 
+     size_t lastRecord = getNumberOfSensors() + fruCount +
+-                        ipmi::storage::type12Count +
+-                        ipmi::storage::nmDiscoverySDRCount - 1;
++                        ipmi::storage::getType12Count(fruCount) +
++                        ipmi::storage::getNmDiscoverySDRCount(fruCount) - 1;
+     if (recordID == lastRecordIndex)
+     {
+         recordID = lastRecord;
+@@ -1224,13 +1225,13 @@ static int getSensorDataRecord(ipmi::Context::ptr ctx,
+     if (recordID >= getNumberOfSensors())
+     {
+         size_t fruIndex = recordID - getNumberOfSensors();
+-        size_t type12End = fruCount + ipmi::storage::type12Count;
++        size_t type12End = fruCount + ipmi::storage::getType12Count(fruCount);
+ 
+         if (fruIndex >= type12End)
+         {
+             // NM discovery SDR
+             size_t nmDiscoveryIndex = fruIndex - type12End;
+-            if (nmDiscoveryIndex >= ipmi::storage::nmDiscoverySDRCount)
++            if (nmDiscoveryIndex >= ipmi::storage::getNmDiscoverySDRCount(fruCount))
+             {
+                 phosphor::logging::log<phosphor::logging::level::ERR>(
+                     "getSensorDataRecord: NM DiscoveryIndex error");
+@@ -1243,7 +1244,7 @@ static int getSensorDataRecord(ipmi::Context::ptr ctx,
+         {
+             // handle type 12 hardcoded records
+             size_t type12Index = fruIndex - fruCount;
+-            if (type12Index >= ipmi::storage::type12Count)
++            if (type12Index >= ipmi::storage::getType12Count(fruCount))
+             {
+                 phosphor::logging::log<phosphor::logging::level::ERR>(
+                     "getSensorDataRecord: type12Index error");
+@@ -1689,8 +1690,8 @@ ipmi::RspType<uint8_t,  // sdr version
+     }
+ 
+     uint16_t recordCount = getNumberOfSensors() + fruCount +
+-                           ipmi::storage::type12Count +
+-                           ipmi::storage::nmDiscoverySDRCount;
++                           ipmi::storage::getType12Count(fruCount) +
++                           ipmi::storage::getNmDiscoverySDRCount(fruCount);
+ 
+     uint8_t operationSupport = static_cast<uint8_t>(
+         SdrRepositoryInfoOps::overflow); // write not supported
+@@ -1788,8 +1789,8 @@ ipmi::RspType<uint16_t,            // next record ID
+ 
+     /* Inventec - Fix set sensor threshold command fail issue */
+     size_t lastRecord = sensorTree.size() + fruCount +
+-                        ipmi::storage::type12Count +
+-                        ipmi::storage::nmDiscoverySDRCount - 1;
++                        ipmi::storage::getType12Count(fruCount) +
++                        ipmi::storage::getNmDiscoverySDRCount(fruCount) - 1;
+     uint16_t nextRecordId = lastRecord > recordID ? recordID + 1 : 0XFFFF;
+ 
+     std::vector<uint8_t> record;
+@@ -1828,6 +1829,29 @@ ipmi::RspType<uint16_t,            // next record ID
+ }
+ /* end storage commands */
+ 
++uint8_t sdrSelfTest(ipmi::Context::ptr ctx) {
++	uint8_t result = 0x00;
++
++    size_t fruCount = 0;
++    ipmi::Cc ret = ipmi::storage::getFruSdrCount(ctx, fruCount);
++    if (ret != ipmi::ccSuccess)
++    {
++       result |= IPMI_SELFTEST_FRU_ERROR;
++    }
++
++    std::shared_ptr<SensorSubTree> dummyTree;
++    if(details::getSensorSubtree(dummyTree, true) == (uint16_t)-1)
++    {
++        result |= IPMI_SELFTEST_SDR_ERROR;
++    }
++
++    uint16_t amount = sensorTree.size() + fruCount + ipmi::storage::getType12Count(fruCount);
++    if(amount == 0) {
++        result |= IPMI_SELFTEST_SDRR_EMPTY;
++    }
++    return result;
++}
++
+ void registerSensorFunctions()
+ {
+     // <Platform Event>
+diff --git a/src/storagecommands.cpp b/src/storagecommands.cpp
+index 0af38f9..c5830b6 100644
+--- a/src/storagecommands.cpp
++++ b/src/storagecommands.cpp
+@@ -15,6 +15,7 @@
+ */
+ 
+ #include "storagecommands.hpp"
++#include "appcommands.hpp"
+ 
+ #include "commandutils.hpp"
+ #include "ipmi_to_redfish_hooks.hpp"
+@@ -727,6 +728,149 @@ void checkTimer()
+     }
+ }
+ 
++inline int8_t getProperty(const std::string& service,
++                                  const std::string& path,
++                                  const std::string& interface,
++                                  const std::string& propertyName,
++                                  ipmi::Value* reply)
++{
++    try
++    {
++        *reply = ipmi::getDbusProperty(*getSdBus(), service, path, interface,
++                                       propertyName);
++    }
++    catch (const sdbusplus::exception::SdBusError& e)
++    {
++        phosphor::logging::log<phosphor::logging::level::INFO>(
++            "ERROR: getProperty");
++        return -1;
++    }
++
++    return 0;
++}
++
++inline unsigned char calculateCRC(std::vector<char>data, size_t len)
++{
++    char crc = 0;
++    size_t byte = 0;
++
++    for (byte = 0; byte < len; byte++)
++    {
++        crc += (unsigned char)data[byte];
++    }
++
++    return (-crc);
++}
++
++
++bool CheckFru(ipmi::Context::ptr ctx){
++    std::shared_ptr<sdbusplus::asio::connection> dbus = ctx->bus;
++
++    sdbusplus::message::message writeFru = dbus->new_method_call(
++        fruDeviceServiceName, "/xyz/openbmc_project/FruDevice",
++        "xyz.openbmc_project.FruDeviceManager", "ReScan");
++    try
++    {
++        sdbusplus::message::message writeFruResp = dbus->call(writeFru);
++    }
++    catch (sdbusplus::exception_t&)
++    {
++        phosphor::logging::log<phosphor::logging::level::ERR>(
++            "error update fru\n");
++        return false;
++    }
++
++    return true;
++}
++
++uint8_t fruSelfTest(ipmi::Context::ptr ctx)
++{
++    std::shared_ptr<sdbusplus::asio::connection> bus = ctx->bus;
++    uint8_t result = 0x00;
++    if (!CheckFru(ctx))
++    {
++       result |= IPMI_SELFTEST_FRU_ERROR;
++    }
++
++    using pathsOfServiceAndObject = std::pair<std::string, std::string>;
++    std::vector<pathsOfServiceAndObject> serviceAndObjectList;
++    
++    GetSubTreeType resp;
++    //If no FRU dbus object is found it is empty/invalid error
++    std::map<std::string, std::vector<std::string>> interfacesResponse;
++    std::vector<std::string> interfaces = {"xyz.openbmc_project.FruDevice"};
++    auto method = bus->new_method_call(
++        "xyz.openbmc_project.ObjectMapper",
++        "/xyz/openbmc_project/object_mapper",
++        "xyz.openbmc_project.ObjectMapper", "GetSubTree");
++
++    method.append("/", 0, interfaces);
++    try{
++        auto reply = bus->call(method);
++        reply.read(resp);
++    }catch(const sdbusplus::exception_t& e){
++        fprintf(stderr, "%s:%d exception:%s \n", __func__, __LINE__, e.what());
++        result |= IPMI_SELFTEST_FRU_ERROR;
++        return result;
++    }
++
++    for(auto p1 : resp)
++    {
++        auto objPath = p1.first;
++        auto vect1 = p1.second;
++        for(auto p2 : vect1)
++        {
++            auto service = p2.first;
++            pathsOfServiceAndObject val = {service, objPath};
++            serviceAndObjectList.push_back(val);
++        }
++    }
++
++    for(auto p : serviceAndObjectList)
++    {
++        //Check if the bus/address of the FRU is working by trying opening the mapped file in /sys/bus/i2c/devices
++        auto busProperty = getDbusProperty(*bus, p.first, p.second, "xyz.openbmc_project.FruDevice", "BUS");
++        auto addressProperty = getDbusProperty(*bus, p.first, p.second, "xyz.openbmc_project.FruDevice", "ADDRESS");
++	    std::stringstream output;
++	    output << "/sys/bus/i2c/devices/" << std::get<uint32_t>(busProperty) << "-" << std::right
++		   << std::setfill('0') << std::setw(4) << std::hex << std::get<uint32_t>(addressProperty)
++		   << "/eeprom";
++        std::cerr << "open fru" << output.str() << std::endl;
++        std::ifstream eeprom(output.str(), std::ios::binary);
++        if (eeprom.is_open())
++        {
++            std::vector<char> buffer(8);
++            eeprom.read(buffer.data(), 8);
++            #define IPMI_FRU_HDR_BYTE_ZERO 1
++            if (buffer[0] != IPMI_FRU_HDR_BYTE_ZERO) {
++                result |= IPMI_SELFTEST_FRU_CORRUPTED;
++                std::cerr << "IPMI_FRU_HDR_BYTE_ZERO" << output.str() << std::endl;
++                break;
++            }
++
++            if(calculateCRC(buffer, 7) != buffer[7]) {
++                result |= IPMI_SELFTEST_FRU_CORRUPTED;
++                std::cerr << "FRU CRC error" << output.str() << std::endl;
++                break;
++            }
++        }
++    }
++    return result;
++}
++
++uint8_t selSelfTest(ipmi::Context::ptr ctx) {
++	uint8_t result = 0x00;
++    ipmi::Value recordId;
++    if(getProperty("xyz.openbmc_project.Logging.IPMI", "/xyz/openbmc_project/Logging/IPMI",
++                    "xyz.openbmc_project.Logging.IPMI",
++                    "RecordID", &recordId) <0 ) {
++        result |= IPMI_SELFTEST_SEL_ERROR;
++    }
++
++	return result;
++}
++
++
+ ipmi_ret_t getFruSdrs(ipmi::Context::ptr ctx, size_t index,
+                       get_sdr::SensorDataFruRecord& resp)
+ {
+-- 
+2.33.0
+

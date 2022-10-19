@@ -1,0 +1,267 @@
+From 3f07d9105ef87fbe148183b046d5e854347a53dd Mon Sep 17 00:00:00 2001
+From: bonnie <Liu.Bonnie@inventec.com>
+Date: Fri, 24 Jun 2022 15:15:55 +0800
+Subject: [PATCH 25/25] =get sensor enable after setting
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Bug 1079 - [Transformers][OpenBMC][IPMI] Set Sensor Event Enable dose not work
+Symptom/Reason：
+        After setting sensor event by ipmi command,getting event status didn't match.
+Root Cause：
+	Get Sensor Event Enable function have not been modified to get the value after setting.
+Solution/Change：
+        1.Caculate the event enable status after sending ipmi command.
+	2.Set the status value to dbus property.
+	3.Get sensor event enable value from dbus.
+	(Extra fixed)Seperate the scanning and event message generation function.
+Entry Test：
+        #ipmitool raw 0x04 0x29 0x68	->default
+ 	 c0 ff 0f ff 0f
+	#ipmitool raw 0x04 0x28 0x68 0x20 0x01 0x00 0x00 0x00	-> disable message,disable scanning,disable warning low
+	#ipmitool raw 0x04 0x29 0x68	->disable warnig low,other events still enable
+ 	 c0 fe 0f ff 0f
+	#ipmitool sensor thresh THERMAL_U6 lower '' 45 50	->set threshold to trigger
+	#ipmitool sensor get THERMAL_U6		->no scan,no change, no sel,status still ok
+	Locating sensor record...
+	Sensor ID              : THERMAL_U6 (0x68)
+	Entity ID             : 7.0
+	Sensor Type (Threshold)  : Temperature
+	Sensor Reading        : 37 (+/- 0) degrees C
+	Status                : ok
+	Lower Non-Recoverable : na
+	Lower Critical        : 45.000
+	Lower Non-Critical    : 50.000
+	Upper Non-Critical    : 37.000
+	Upper Critical        : 37.000
+	Upper Non-Recoverable : na
+	Positive Hysteresis   : Unspecified
+	Negative Hysteresis   : Unspecified
+	Assertion Events      :
+	Event Enable          : Event Messages Disabled
+	Assertions Enabled    : lnc+ lcr- lcr+ lnr- lnr+ unc- unc+ ucr- ucr+ unr- unr+
+	Deassertions Enabled  : lnc- lnc+ lcr- lcr+ lnr- lnr+ unc- unc+ ucr- ucr+ unr- unr+
+	#ipmitool raw 0x04 0x28 0x68 0xc0 0x00 0x00 0x00 0x00 ->enable message,enable scanning
+	#ipmitool sel elist
+	1 | 06/23/22 | 09:46:41 UTC | Temperature THERMAL_U6 | Lower Non-critical going low  | Asserted | Reading 36 < Threshold 45 degrees C
+	2 | 06/23/22 | 09:46:42 UTC | Temperature THERMAL_U6 | Lower Critical going low  | Asserted | Reading 36 < Threshold 50 degrees C
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+---
+ include/sensorcommands.hpp |   3 +
+ src/sensorcommands.cpp     | 143 +++++++++++++++++++------------------
+ 2 files changed, 78 insertions(+), 68 deletions(-)
+
+diff --git a/include/sensorcommands.hpp b/include/sensorcommands.hpp
+index e6ca8fb..858f1a1 100644
+--- a/include/sensorcommands.hpp
++++ b/include/sensorcommands.hpp
+@@ -67,6 +67,8 @@ enum class IPMISensorEventEnableByte2 : uint8_t
+ {
+     eventMessagesEnable = (1 << 7),
+     sensorScanningEnable = (1 << 6),
++    eventDisableSelect = (1 << 5),
++    eventEnableSelect = (1 << 4),
+ };
+ 
+ enum class IPMISensorEventEnableThresholds : uint8_t
+@@ -111,6 +113,7 @@ enum class IPMINetfnSensorCmds : ipmi_cmd_t
+     ipmiCmdReserveDeviceSDRRepo = 0x22,
+     ipmiCmdSetSensorThreshold = 0x26,
+     ipmiCmdGetSensorThreshold = 0x27,
++    ipmiCmdSetSensorEventEnable = 0x28,
+     ipmiCmdGetSensorEventEnable = 0x29,
+     ipmiCmdGetSensorEventStatus = 0x2B,
+     ipmiCmdGetSensorReading = 0x2D,
+diff --git a/src/sensorcommands.cpp b/src/sensorcommands.cpp
+index 1c09189..461225a 100644
+--- a/src/sensorcommands.cpp
++++ b/src/sensorcommands.cpp
+@@ -51,7 +51,22 @@ namespace ipmi
+ using ManagedObjectType =
+     std::map<sdbusplus::message::object_path,
+              std::map<std::string, std::map<std::string, DbusVariant>>>;
+-
++template <typename U>
++struct VariantToNumericVisitor
++{
++    template <typename T>
++    U operator()(const T& t) const
++    {
++        if constexpr (std::is_arithmetic_v<T>)
++        {
++            return static_cast<U>(t);
++        }
++        throw std::invalid_argument(
++            "Cannot translate type " +
++            boost::typeindex::type_id<T>().pretty_name() + " to " +
++            boost::typeindex::type_id<U>().pretty_name());
++    }
++};
+ static constexpr int sensorMapUpdatePeriod = 10;
+ static constexpr int sensorMapSdrUpdatePeriod = 60;
+ 
+@@ -1127,7 +1142,7 @@ ipmi::RspType<uint8_t, // readable
+  *   - deassertionEnabledLsb - Deassertion event messages
+  *   - deassertionEnabledMsb - Deassertion event messages
+  */
+-
++using VariantToUnsignedIntVisitor = VariantToNumericVisitor<unsigned int>;
+ ipmi::RspType<uint8_t, // enabled
+               uint8_t, // assertionEnabledLsb
+               uint8_t, // assertionEnabledMsb
+@@ -1174,59 +1189,29 @@ ipmi::RspType<uint8_t, // enabled
+                                      deassertionEnabledMsb);
+     }
+ 
+-    auto warningInterface =
+-        sensorMap.find("xyz.openbmc_project.Sensor.Threshold.Warning");
+-    auto criticalInterface =
+-        sensorMap.find("xyz.openbmc_project.Sensor.Threshold.Critical");
+-    if ((warningInterface != sensorMap.end()) ||
+-        (criticalInterface != sensorMap.end()))
++    auto sensorObject = sensorMap.find("xyz.openbmc_project.Sensor.Value");
++    if (sensorObject != sensorMap.end())
+     {
+-        enabled = static_cast<uint8_t>(
+-            IPMISensorEventEnableByte2::sensorScanningEnable);
+-        if (warningInterface != sensorMap.end())
+-        {
+-            auto& warningMap = warningInterface->second;
+-
+-            auto warningHigh = warningMap.find("WarningHigh");
+-            auto warningLow = warningMap.find("WarningLow");
+-            if (warningHigh != warningMap.end())
+-            {
+-                assertionEnabledLsb |= static_cast<uint8_t>(
+-                    IPMISensorEventEnableThresholds::upperNonCriticalGoingHigh);
+-                deassertionEnabledLsb |= static_cast<uint8_t>(
+-                    IPMISensorEventEnableThresholds::upperNonCriticalGoingLow);
+-            }
+-            if (warningLow != warningMap.end())
+-            {
+-                assertionEnabledLsb |= static_cast<uint8_t>(
+-                    IPMISensorEventEnableThresholds::lowerNonCriticalGoingLow);
+-                deassertionEnabledLsb |= static_cast<uint8_t>(
+-                    IPMISensorEventEnableThresholds::lowerNonCriticalGoingHigh);
+-            }
+-        }
+-        if (criticalInterface != sensorMap.end())
+-        {
+-            auto& criticalMap = criticalInterface->second;
+-
+-            auto criticalHigh = criticalMap.find("CriticalHigh");
+-            auto criticalLow = criticalMap.find("CriticalLow");
+-
+-            if (criticalHigh != criticalMap.end())
+-            {
+-                assertionEnabledMsb |= static_cast<uint8_t>(
+-                    IPMISensorEventEnableThresholds::upperCriticalGoingHigh);
+-                deassertionEnabledMsb |= static_cast<uint8_t>(
+-                    IPMISensorEventEnableThresholds::upperCriticalGoingLow);
+-            }
+-            if (criticalLow != criticalMap.end())
+-            {
+-                assertionEnabledLsb |= static_cast<uint8_t>(
+-                    IPMISensorEventEnableThresholds::lowerCriticalGoingLow);
+-                deassertionEnabledLsb |= static_cast<uint8_t>(
+-                    IPMISensorEventEnableThresholds::lowerCriticalGoingHigh);
+-            }
+-        }
+-    }
++        auto eventEnableObj = sensorObject->second.find("SensorEventEnable");
++		auto eventStatusObj = sensorObject->second.find("SensorEventStatus");
++		if (eventEnableObj != sensorObject->second.end())
++		{
++            auto SensorEventEnable = static_cast<int>(std::numeric_limits<uint8_t>::max());
++            SensorEventEnable = std::visit(VariantToUnsignedIntVisitor(), eventEnableObj->second);
++            enabled |= 
++                (SensorEventEnable & static_cast<uint8_t>(IPMISensorReadingByte2::eventMessagesEnable)) |
++                (SensorEventEnable & static_cast<uint8_t>(IPMISensorReadingByte2::sensorScanningEnable));
++		}
++        if (eventStatusObj != sensorObject->second.end())
++		{
++            auto SensorEventStatus = static_cast<int>(std::numeric_limits<uint32_t>::max());
++            SensorEventStatus = std::visit(VariantToUnsignedIntVisitor(), eventStatusObj->second);
++            assertionEnabledLsb |= (SensorEventStatus >> 24);
++            assertionEnabledMsb |= (SensorEventStatus >> 16);
++            deassertionEnabledLsb |= (SensorEventStatus >> 8);
++            deassertionEnabledMsb |= SensorEventStatus;
++		}
++	}
+ 
+     return ipmi::responseSuccess(enabled, assertionEnabledLsb,
+                                  assertionEnabledMsb, deassertionEnabledLsb,
+@@ -1286,8 +1271,38 @@ ipmi::RspType<> ipmiSenSetSensorEventEnable(
+         return ipmi::responseSuccess();
+     }
+ 
+-    uint32_t SensorEventStatus = 0;
+-
++    //transfer four uint8_t commands to a uint32_t setSensorEventStatus
++    uint32_t setSensorEventStatus = 0;
++    setSensorEventStatus |= (assertionEnabledLsb << 24);
++    setSensorEventStatus |= (assertionEnabledMsb << 16);
++    setSensorEventStatus |= (deassertionEnabledLsb << 8);
++    setSensorEventStatus |= deassertionEnabledMsb;
++    
++    auto sensorObject = sensorMap.find("xyz.openbmc_project.Sensor.Value");
++    if (sensorObject != sensorMap.end())
++    {
++        auto eventStatusObj = sensorObject->second.find("SensorEventStatus");
++        if (eventStatusObj != sensorObject->second.end())
++		{
++            // get present sensor event status 
++            auto nowSensorEventStatus = static_cast<int>(std::numeric_limits<uint32_t>::max());
++            nowSensorEventStatus = std::visit(VariantToUnsignedIntVisitor(), eventStatusObj->second);
++            
++            if ((enabled & static_cast<uint8_t>(IPMISensorEventEnableByte2::eventDisableSelect)) &&
++                !(enabled & static_cast<uint8_t>(IPMISensorEventEnableByte2::eventEnableSelect)))//disable select
++            {
++                nowSensorEventStatus &= ~setSensorEventStatus;
++            }
++            else if ((enabled & static_cast<uint8_t>(IPMISensorEventEnableByte2::eventEnableSelect)) && 
++                !(enabled & static_cast<uint8_t>(IPMISensorEventEnableByte2::eventDisableSelect)))//enable select
++            {
++                nowSensorEventStatus |= setSensorEventStatus;
++            }
++            setSensorEventStatus = nowSensorEventStatus;
++		}
++	}
++    
++    // set porperties
+     auto warningInterface =
+         sensorMap.find("xyz.openbmc_project.Sensor.Threshold.Warning");
+     auto criticalInterface =
+@@ -1295,22 +1310,14 @@ ipmi::RspType<> ipmiSenSetSensorEventEnable(
+     if ((warningInterface != sensorMap.end()) ||
+         (criticalInterface != sensorMap.end()))
+     {
+-        bool bEnable = false;
+-        if (enabled & (1 << EventEnableBit)) // sensor event all open
+-        {
+-            bEnable = true;
+-        }
+         if (!setProperty(connection, path, "xyz.openbmc_project.Sensor.Value",
+-                         "SensorEventEnable", bEnable))
++                         "SensorEventStatus", setSensorEventStatus))
+         {
+-            return ipmi::responseResponseError();
++                return ipmi::responseResponseError();
+         }
+-        SensorEventStatus |= (assertionEnabledLsb << 24);
+-        SensorEventStatus |= (assertionEnabledMsb << 16);
+-        SensorEventStatus |= (deassertionEnabledLsb << 8);
+-        SensorEventStatus |= deassertionEnabledMsb;
++        
+         if (!setProperty(connection, path, "xyz.openbmc_project.Sensor.Value",
+-                         "SensorEventStatus", SensorEventStatus))
++                         "SensorEventEnable", enabled))
+         {
+             return ipmi::responseResponseError();
+         }
+-- 
+2.33.0
+

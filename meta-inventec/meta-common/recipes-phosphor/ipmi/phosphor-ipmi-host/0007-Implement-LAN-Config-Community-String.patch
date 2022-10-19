@@ -1,0 +1,172 @@
+From 6e58df43102247bf8295ab3f91ef2cfad6a24aad Mon Sep 17 00:00:00 2001
+From: "Lin.TommySC" <lin.tommysc@inventec.com>
+Date: Wed, 28 Apr 2021 08:06:17 +0000
+Subject: [PATCH 07/31] Implement LAN Config Community String
+
+Symptom/Reason :
+    - Implement LAN Config Community String
+
+Root Cause:
+    - N/A
+
+Solution/Change:
+    [phospher-ipmi-config]
+        - Create lan_config.json to store lan config parameters
+        - Add community_str config name with default value "public"
+    [phospher-ipmi-host]
+        - Add entry for command handler and read/write fonfig value from/to lan_config.json
+    [phospher-snmp]
+        - Reads community_str value from lan_config.json before sending trap
+
+Entry Test:
+    - Get Community String
+        ipmitool raw 0x0c 0x02 0x01 0x10 0x00 0x00
+    - Set Community String
+        ipmitool raw 0x0c 0x01 0x01 0x10 0x50 0x74 0x74 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
+---
+ transporthandler.cpp | 25 +++++++++++++++++
+ transporthandler.hpp | 64 ++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 89 insertions(+)
+
+diff --git a/transporthandler.cpp b/transporthandler.cpp
+index b543bdd..7002df5 100644
+--- a/transporthandler.cpp
++++ b/transporthandler.cpp
+@@ -1066,6 +1066,22 @@ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
+             channelCall<reconfigureGatewayMAC<AF_INET>>(channel, gatewayMAC);
+             return responseSuccess();
+         }
++        case LanParam::CommunityStr:
++        {
++            std::array<uint8_t, 18> bytes;
++            std::array<uint8_t, 19> raw_str = {0};
++            if (req.unpack(bytes) != 0 || !req.fullyUnpacked())
++            {
++                return responseReqDataLenInvalid();
++            }
++            std::copy(bytes.begin(), bytes.end(), raw_str.begin());
++            std::string comm_str((char*)raw_str.data());
++            if (updateConfigValue<std::string>(LAN_CONFIG_COMM_STR, comm_str))
++            {
++                return responseResponseError();
++            }
++            return responseSuccess();
++        }
+         case LanParam::VLANId:
+         {
+             uint12_t vlanData = 0;
+@@ -1429,6 +1445,15 @@ RspType<message::Payload> getLan(Context::ptr ctx, uint4_t channelBits,
+             ret.pack(dataRef(mac));
+             return responseSuccess(std::move(ret));
+         }
++        case LanParam::CommunityStr:
++        {
++            std::string comm_str("public");
++            std::array<uint8_t, 18> resp = {0};
++            loadConfigValue<std::string>(LAN_CONFIG_COMM_STR, comm_str);
++            std::copy(comm_str.begin(), comm_str.end(), resp.begin());
++            ret.pack(dataRef(resp));
++            return responseSuccess(std::move(ret));
++        }
+         case LanParam::VLANId:
+         {
+             uint16_t vlan = channelCall<getVLANProperty>(channel);
+diff --git a/transporthandler.hpp b/transporthandler.hpp
+index fd585be..e19b54e 100644
+--- a/transporthandler.hpp
++++ b/transporthandler.hpp
+@@ -37,6 +37,10 @@
+ #include <xyz/openbmc_project/Network/EthernetInterface/server.hpp>
+ #include <xyz/openbmc_project/Network/IP/server.hpp>
+ #include <xyz/openbmc_project/Network/Neighbor/server.hpp>
++#include <iomanip>
++#include <fstream>
++#include <nlohmann/json.hpp>
++#include <phosphor-logging/log.hpp>
+ 
+ namespace ipmi
+ {
+@@ -54,6 +58,7 @@ constexpr auto INTF_NEIGHBOR_CREATE_STATIC =
+     "xyz.openbmc_project.Network.Neighbor.CreateStatic";
+ constexpr auto INTF_VLAN = "xyz.openbmc_project.Network.VLAN";
+ constexpr auto INTF_VLAN_CREATE = "xyz.openbmc_project.Network.VLAN.Create";
++using namespace phosphor::logging;
+ 
+ /** @brief IPMI LAN Parameters */
+ enum class LanParam : uint8_t
+@@ -67,6 +72,7 @@ enum class LanParam : uint8_t
+     SubnetMask = 6,
+     Gateway1 = 12,
+     Gateway1MAC = 13,
++    CommunityStr = 16,
+     VLANId = 20,
+     CiphersuiteSupport = 22,
+     CiphersuiteEntries = 23,
+@@ -165,6 +171,64 @@ constexpr uint8_t MAX_IPV4_PREFIX_LENGTH = 32;
+ constexpr uint8_t MIN_IPV6_PREFIX_LENGTH = 1;
+ constexpr uint8_t MAX_IPV6_PREFIX_LENGTH = 128;
+ 
++// Config file for LAN Config Parameters
++constexpr auto LAN_CFG_FILE = "/usr/share/ipmi-providers/lan_config.json";
++// Config name for LAN Config Parameters
++constexpr auto LAN_CONFIG_COMM_STR = "community_str";
++
++/** @brief get config value from LAN configuration file.
++ *  @param[in] name - config name.
++ *  @param[in] val - value of the given config name.
++ */
++template <typename T> int loadConfigValue(const std::string& name, T& val)
++{
++    std::ifstream configFile(LAN_CFG_FILE);
++    if (!configFile.is_open())
++    {
++        log<level::ERR>("loadConfigValue : Cannot open config path");
++        return -1;
++    }
++
++    auto data = nlohmann::json::parse(configFile, nullptr);
++
++    if (data.is_discarded())
++    {
++        log<level::ERR>("loadConfigValue JSON parser failure");
++        return -2;
++    }
++
++    if (data.contains(name))
++    {
++        val = data[name];
++        return 0;
++    }
++
++    return -3;
++}
++
++template <typename T> int updateConfigValue(const std::string& name, T val)
++{
++    std::ifstream configFile(LAN_CFG_FILE);
++    if (!configFile.is_open())
++    {
++        log<level::ERR>("loadConfigValue : Cannot open config path");
++        return -1;
++    }
++    auto data = nlohmann::json::parse(configFile, nullptr);
++
++    if (data.is_discarded())
++    {
++        log<level::ERR>("loadConfigValue JSON parser failure");
++        return -2;
++    }
++
++    data[name] = val;
++    std::ofstream configStream(LAN_CFG_FILE);
++    configStream << std::setw(4) << data << std::endl;
++    configStream.close();
++    return 0;
++}
++
+ /** @brief The dbus parameters for the interface corresponding to a channel
+  *         This helps reduce the number of mapper lookups we need for each
+  *         query and simplifies finding the VLAN interface if needed.
+-- 
+2.33.0
+

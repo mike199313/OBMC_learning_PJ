@@ -1,0 +1,94 @@
+{
+    "GPIOCHIPS": [
+        {
+            "SOC": "ast2600",
+            "BaseRegAddr": "1e780000",
+            "GPIO_definitions": [
+                {
+                    "GPIO": "M0",
+                    "Name": "POWER_GOOD",
+                    "Direction": "in",
+                    "ActiveLow": false
+                },
+                {
+                    "GPIO": "R6",
+                    "Name": "POWER_BUTTON",
+                    "Direction": "in",
+                    "ActiveLow": true
+                },
+                {
+                    "GPIO": "F1",
+                    "Name": "POWER_OUT",
+                    "Direction": "out",
+                    "ActiveLow": true
+                },
+                {
+                    "GPIO": "P0",
+                    "Name": "RESET_BUTTON",
+                    "Direction": "in",
+                    "ActiveLow": true
+                },
+                {
+                    "GPIO": "P1",
+                    "Name": "RESET_OUT",
+                    "Direction": "out",
+                    "ActiveLow": true
+                },
+                {
+                    "GPIO": "V4",
+                    "Name": "POST_COMPLETE",
+                    "Direction": "in",
+                    "ActiveLow": true
+                },
+                {
+                    "GPIO": "N0",
+                    "Name": "NMI_OUT",
+                    "Direction": "out",
+                    "ActiveLow": false
+                },
+                {
+                    "GPIO": "M2",
+                    "Name": "NMI_BUTTON",
+                    "Direction": "in",
+                    "ActiveLow": true
+                },
+                {
+                    "GPIO": "I7",
+                    "Name": "CPU_PROCHOT",
+                    "Direction": "in",
+                    "ActiveLow": true
+                },
+                {
+                    "GPIO": "O6",
+                    "Name": "MEM_HOT",
+                    "Direction": "in",
+                    "ActiveLow": true
+                },
+                {
+                    "GPIO": "P4",
+                    "Name": "PCH_THERMAL_TRIP",
+                    "Direction": "in",
+                    "ActiveLow": true
+                },
+                {
+                    "GPIO": "N2",
+                    "Name": "CPU_THERMAL_TRIP",
+                    "Direction": "in",
+                    "ActiveLow": true
+                }
+            ]
+        },
+        {
+            "SOC": "ast2600",
+            "BaseRegAddr": "1e780800",
+            "GPIO_definitions": [
+                {
+                    "GPIO": "",
+                    "Name": "",
+                    "Direction": "in",
+                    "ActiveLow": false
+                }
+            ]
+        }
+    ]
+}

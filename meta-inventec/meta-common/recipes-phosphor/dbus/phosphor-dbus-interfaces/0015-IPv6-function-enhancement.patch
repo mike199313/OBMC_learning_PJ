@@ -1,0 +1,163 @@
+From 90e19a1fae5ca95489ef92afecb05dcec2eed2ba Mon Sep 17 00:00:00 2001
+From: "sun.cwsun" <sun.cwsun@inventec.com>
+Date: Fri, 18 Feb 2022 09:47:25 +0800
+Subject: [PATCH 15/20] Bug 809 - [SW][Transformers][OpenBMC] IPv6 function
+ enhancement
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+    Symptom/Reason :
+        - IPv6 function enhancement
+
+    Root Cause:
+        - None
+
+    Solution/Change:
+        [phosphor-ipmi-host]
+            - config ipv4/ipv6/dual statck mode
+            - config ipv6 address by dhcp/static
+            - config ipv6 static router1 value/prefix
+
+        [phosphor-dbus-interfaces]
+            - support ipv6 router1 value/prefix attributes
+
+        [phosphor-network]
+            - manage systemd-networkd configuration of IPv6
+
+    Entry Test:
+    .Config ipv4/ipv6/dual statck mode
+        . ipv4
+            - run
+                ipmitool raw 0x0c 0x01 0x01 0x33 0x00
+            - check
+                -- ipmitool raw 0x0c 0x02 0x01 0x33 0x00 0x00
+                    11 00
+                -- cat /usr/share/ipmi-providers/lan_config.json
+                    "ip_family": "v4"
+        . ipv6
+            - run
+                ipmitool raw 0x0c 0x01 0x01 0x33 0x01
+            - check
+                -- ipmitool raw 0x0c 0x02 0x01 0x33 0x00 0x00
+                    11 01
+                -- cat /usr/share/ipmi-providers/lan_config.json
+                    "ip_family": "v6"
+
+        . dual stack
+            - run
+                 ipmitool raw 0x0c 0x01 0x01 0x33 0x02
+            - check
+                -- ipmitool raw 0x0c 0x02 0x01 0x33 0x00 0x00
+                    11 02
+                -- cat /usr/share/ipmi-providers/lan_config.json
+                    "ip_family": "both"
+
+    .Get IPv6 address by DHCP
+        STEP 1 config dhcp addressing mode
+        - run
+            -- ipmitool lan set 0x01 ipsrc dhcp
+        - check
+            -- ipmi lan print
+                IP Address Source       : DHCP Addres
+            -- cat /etc/systemd/network/00-bmc-eth0.network
+                IPv6AcceptRA=true
+                DHCP=yes
+
+        STEP 2 Confirm IPv6 address
+        - run
+            -- ipmitool lan6 print
+                IPv6 Dynamic Address 0:
+                Source/Type:    DHCPv6
+                Address:        2001:b011:700c:10d9:ba27:ebff:fe05:70db/64
+                Status:         active
+
+    .Get IPv6 address by Static
+        STEP 1 : config the static addressing mode
+        - run
+            ipmitool lan set 0x01 ipsrc static
+        - check
+            -- ipmitool lan print
+                IP Address Source       : Static Address
+            -- cat /etc/systemd/network/00-bmc-eth0.network
+                IPv6AcceptRA=false
+                DHCP=no
+
+        STEP 2 : config static ipv6 address
+        - run
+            -- ipmitool lan6 set 0x01 static_addr 0 enable 2001:b011:700c:1699:3a68:ddff:fe3e:99ec 64
+                --- set 0x00 => set channel 0x00
+                --- static_addr 0x00 => 0x00 slot
+                --- enable => activate the ipv6 address
+                --- 2001:b011:700c:1924:ba27:ebff:fe05:70db => The static ipv6 address。
+                --- 64 network => prefix length bit.
+        - check
+            -- ipmitool lan6 print
+                IPv6 Static Address 0:
+                Enabled:        yes
+                Address:        2001:b011:700c:10d9:ba27:ebff:fe05:1234/64
+                Status:         active
+
+        STEP 3 : config static router
+        - run
+            -- ipmitool lan6 set 0x01 static_rtr 0x01 fe80::c6e9:aff:fef9:7806 A0:AB:1B:87:10:9F ::1 0
+                --- set 0x01 => set static router 1
+                --- fe80::a2ab:1bff:fe87:109c => the static router 1 address
+                --- A0:AB:1B:87:10:9F the mac address of the static router 1
+                --- ::1 the static router1 prefix value
+                --- 0 the static router1 prefix length
+                    ---- the static router 1 prefix value and length will be updated by openbmc from the system routing table regularly.
+
+        STEP 3 : remove static ipv6 address
+        - run
+            -- ipmitool lan6 set 0x01 static_addr 0 disable ::0 0
+        - check
+            -- ipmitool lan6 print
+                IPv6 Static Address 0:
+                Enabled:        no
+                Address:        ::/64
+                Status:         disabled
+
+    Test static hop limit (default value of hop limit is 64)
+        STEP 1 : Config hop limit to 32
+        - run
+            -- ipmitool raw 0x0c 0x01 0x01 0x35 0x20
+        - check
+            -- cat /etc/systemd/network/00-bmc-eth0.network
+               IPv6HopLimit=32
+
+[comment for 2.12 upgrade]
+Only whitespaces is added inSystemConfiguration.interface.yaml in original patch
+Remove when upgrade
+---
+ .../Network/EthernetInterface.interface.yaml       | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/yaml/xyz/openbmc_project/Network/EthernetInterface.interface.yaml b/yaml/xyz/openbmc_project/Network/EthernetInterface.interface.yaml
+index 8a9f82a..155faa7 100644
+--- a/yaml/xyz/openbmc_project/Network/EthernetInterface.interface.yaml
++++ b/yaml/xyz/openbmc_project/Network/EthernetInterface.interface.yaml
+@@ -115,6 +115,20 @@ properties:
+       type: enum[self.IPFamilyConf]
+       description: >
+           IPv4/IPv6 Addressing supported of the ethernet interface.
++          
++    - name: gateway6PrefixValue
++      type: string
++      description: >
++          default IPv6 gateway prefix value
++      errors:
++        - xyz.openbmc_project.Common.Error.InvalidArgument
++
++    - name: gateway6PrefixLength
++      type: byte
++      description: >
++          default IPv6 gateway prefix length, value from 0 to 128
++      errors:
++        - xyz.openbmc_project.Common.Error.InvalidArgument
+ 
+ enumerations:
+     - name: LinkLocalConf
+-- 
+2.33.0
+

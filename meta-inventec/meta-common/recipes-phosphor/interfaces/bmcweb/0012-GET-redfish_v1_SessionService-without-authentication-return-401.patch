@@ -1,0 +1,54 @@
+From 084109582367d2287fbe98bc2a0da60b07a8c454 Mon Sep 17 00:00:00 2001
+From: "sun.cwsun" <sun.cwsun@inventec.com>
+Date: Tue, 1 Mar 2022 10:01:10 +0800
+Subject: [PATCH 12/17] Bug 788 - [Transformer][OpenBMC][Redfish][Service Root]
+ GET Redfish SessionService Without Login, Status code should be 401
+
+    Symptom/Reason :
+        - HTTP GET /redfish/v1/SessionService without correct authorization will return HTTP STATUS 200
+
+    Root Cause:
+        - The move statement code of bmcweb does not move the http status code correctly.
+
+    Solution/Change:
+        [bmcweb]
+            - keep the real http status code before move and restore it into new struct after move statement.
+
+    Entry Test:
+        - curl  -k -i   -X GET https://${bmc}/redfish/v1/SessionService
+		HTTP/1.1 401 Unauthorized
+		Strict-Transport-Security: max-age=31536000; includeSubdomains; preload
+		X-Frame-Options: DENY
+		Pragma: no-cache
+		Cache-Control: no-Store,no-Cache
+		X-XSS-Protection: 1; mode=block
+		X-Content-Type-Options: nosniff
+		Content-Security-Policy: default-src 'none'; img-src 'self' data:; font-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self' wss:; form-action 'none'; frame-ancestors 'none'; plugin-types 'none'; base-uri 'none'
+		Date: Tue, 01 Mar 2022 01:54:28 GMT
+		Content-Length: 12
+---
+ http/http_connection.hpp | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/http/http_connection.hpp b/http/http_connection.hpp
+index d923d59f..f5e60e0d 100644
+--- a/http/http_connection.hpp
++++ b/http/http_connection.hpp
+@@ -431,7 +431,14 @@ class Connection :
+         {
+             return;
+         }
++
++        //bug788
++        //calling move will reset the thisRes.result() to 200
++        //The move constructor does not move the http respose code prefrectly.
++        auto rstatus = thisRes.result();
+         res = std::move(thisRes);
++        res.result(rstatus);
++
+         BMCWEB_LOG_INFO << "Response: " << this << ' ' << req->url << ' '
+                         << res.resultInt() << " keepalive=" << req->keepAlive();
+ 
+-- 
+2.33.0
+

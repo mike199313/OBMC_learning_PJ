@@ -1,0 +1,123 @@
+From 61090dd5e4d546c9d48605a0ce47d2d2a1c8504f Mon Sep 17 00:00:00 2001
+From: "Lin.TommySC" <lin.tommysc@inventec.com>
+Date: Fri, 18 Jun 2021 07:41:15 +0000
+Subject: [PATCH 14/31] Refine IPFamilyEnables command
+
+Symptom/Reason :
+    - Enable IPv6 and disable IPv4 in raw command does not work
+
+Root Cause:
+    - OpenBMC's implementation supports only IPv4/IPv6 dual mode
+
+Solution/Change:
+    [phosphor-dbus-interfaces]
+        - Add IPFamily property in EthernetInterface
+    [phosphor-ipmi-host]
+        - Add function call to get/set IPFamily property
+    [phosphor-network]
+        - Implementation of get/set IPFamily property
+
+Entry Test:
+    - Set to IPv6 only mode
+        ipmitool raw 0x0c 0x01 0x01 0x33 0x01
+    - Get current IP addressing mode
+        ipmitool raw 0x0c 0x02 0x01 0x33 0x00 0x00
+---
+ transporthandler.cpp | 60 ++++++++++++++++++++++++++++++++++++++++++--
+ 1 file changed, 58 insertions(+), 2 deletions(-)
+
+diff --git a/transporthandler.cpp b/transporthandler.cpp
+index 9c551eb..f171f91 100644
+--- a/transporthandler.cpp
++++ b/transporthandler.cpp
+@@ -624,6 +624,58 @@ void setVLANPriority(sdbusplus::bus::bus& bus, const ChannelParams& params, uint
+                     "Priority", priority);
+ }
+ 
++/** @brief Gets the IPFamilyEnables configured on the interface
++ *
++ *  @param[in] bus    - The bus object used for lookups
++ *  @param[in] params - The parameters for the channel
++ *  @return IPFamilyEnables configured on the interface
++ */
++IPFamilyEnables getIPFamily(sdbusplus::bus::bus& bus, const ChannelParams& params)
++{
++    std::string familystr = std::get<std::string>(getDbusProperty(
++        bus, params.service, params.logicalPath, INTF_ETHERNET, "IPFamily"));
++    EthernetInterface::IPFamilyConf familyConf =
++        EthernetInterface::convertIPFamilyConfFromString(familystr);
++    IPFamilyEnables enables = IPFamilyEnables::DualStack;
++
++    if (familyConf == EthernetInterface::IPFamilyConf::v4)
++    {
++        enables = IPFamilyEnables::IPv4Only;
++    }
++    else if (familyConf == EthernetInterface::IPFamilyConf::v6)
++    {
++        enables = IPFamilyEnables::IPv6Only;
++    }
++
++    return enables;
++}
++
++/** @brief Gets the vlan priority configured on the interface
++ *
++ *  @param[in] bus    - The bus object used for lookups
++ *  @param[in] params - The parameters for the channel
++ *  @return VLAN priority or the standard 0 for no VLAN
++ */
++void setIPFamily(sdbusplus::bus::bus& bus, const ChannelParams& params, IPFamilyEnables enables)
++{
++    EthernetInterface::IPFamilyConf family = EthernetInterface::IPFamilyConf::both;
++
++    if (enables == IPFamilyEnables::IPv4Only)
++    {
++        family = EthernetInterface::IPFamilyConf::v4;
++    }
++    else if (enables == IPFamilyEnables::IPv6Only)
++    {
++        family = EthernetInterface::IPFamilyConf::v6;
++    }
++
++    std::string newFamily =
++        sdbusplus::xyz::openbmc_project::Network::server::convertForMessage(
++            family);
++    setDbusProperty(bus, params.service, params.logicalPath, INTF_ETHERNET,
++                    "IPFamily", newFamily);
++}
++
+ /** @brief Deletes all of the possible configuration parameters for a channel
+  *
+  *  @param[in] bus    - The bus object used for lookups
+@@ -1338,6 +1390,7 @@ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
+             {
+                 return responseReqDataLenInvalid();
+             }
++            /* Tommy. Refine OpenBMC's hard coded implementation
+             switch (static_cast<IPFamilyEnables>(enables))
+             {
+                 case IPFamilyEnables::DualStack:
+@@ -1346,7 +1399,9 @@ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
+                 case IPFamilyEnables::IPv6Only:
+                     return response(ccParamNotSupported);
+             }
+-            return response(ccParamNotSupported);
++            */
++            channelCall<setIPFamily>(channel, static_cast<IPFamilyEnables>(enables));
++            return responseSuccess();
+         }
+         case LanParam::IPv6Status:
+         {
+@@ -1788,7 +1843,8 @@ RspType<message::Payload> getLan(Context::ptr ctx, uint4_t channelBits,
+         }
+         case LanParam::IPFamilyEnables:
+         {
+-            ret.pack(static_cast<uint8_t>(IPFamilyEnables::DualStack));
++            IPFamilyEnables enables = channelCall<getIPFamily>(channel);
++            ret.pack(static_cast<uint8_t>(enables));
+             return responseSuccess(std::move(ret));
+         }
+         case LanParam::IPv6Status:
+-- 
+2.33.0
+

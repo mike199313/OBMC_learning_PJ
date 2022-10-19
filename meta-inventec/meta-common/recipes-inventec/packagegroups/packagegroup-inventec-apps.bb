@@ -9,20 +9,17 @@ PACKAGES = " \
         ${PN}-fans \
         ${PN}-flash \
         ${PN}-system \
-        ${PN}-ipmi-oem \
         "
 
 PROVIDES += "virtual/obmc-chassis-mgmt"
 PROVIDES += "virtual/obmc-fan-mgmt"
 PROVIDES += "virtual/obmc-flash-mgmt"
 PROVIDES += "virtual/obmc-system-mgmt"
-PROVIDES += "virtual/obmc-ipmi-oem"
 
 RPROVIDES:${PN}-chassis += "virtual-obmc-chassis-mgmt"
 RPROVIDES:${PN}-fans += "virtual-obmc-fan-mgmt"
 RPROVIDES:${PN}-flash += "virtual-obmc-flash-mgmt"
 RPROVIDES:${PN}-system += "virtual-obmc-system-mgmt"
-RPROVIDES:${PN}-ipmi-oem += "virtual-obmc-ipmi-oem"
 
 SUMMARY:${PN}-chassis = "Inventec Chassis"
 RDEPENDS:${PN}-chassis = " \
@@ -46,6 +43,7 @@ SUMMARY:${PN}-system = "Inventec System"
 RDEPENDS:${PN}-system = " \
         bmcweb \
         entity-manager \
+        intel-ipmi-oem \
         dbus-sensors \
         webui-vue \
         phosphor-snmp \
@@ -53,4 +51,13 @@ RDEPENDS:${PN}-system = " \
         phosphor-gpio-monitor \
         phosphor-gpio-monitor-monitor \
         vlan \
+        tzdata \
+        phosphor-host-postd \
+        e2fsprogs \
+        phosphor-post-code-manager \
+	iptables \
+	nbd-server \
+        nfs-utils \
+	libtirpc \
         "
+

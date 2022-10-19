@@ -1,0 +1,153 @@
+From c527f32f2669e42f25794dbe1cf1d81f71cad75c Mon Sep 17 00:00:00 2001
+From: cynthia <wu.cynthia@inventec.com>
+Date: Fri, 12 Nov 2021 11:19:50 +0800
+Subject: [PATCH 15/25] Implement Get system GUID function
+
+    Sympton/Reason:
+            Implement Get system GUID function
+
+    Root Cause:
+            N/A
+
+    Solution/Change:
+	    [appcommands.cpp]
+             Add new function to parse GUID from dbus property, and
+	    change to IPMI format (originally in RFC format)
+
+    Entry Test:
+	    1. ipmitool mc guid
+	    2. ipmitool raw 0x6 0x37
+---
+ include/appcommands.hpp |  7 ++++
+ src/appcommands.cpp     | 83 +++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 90 insertions(+)
+
+diff --git a/include/appcommands.hpp b/include/appcommands.hpp
+index 541936b..23daacb 100644
+--- a/include/appcommands.hpp
++++ b/include/appcommands.hpp
+@@ -36,6 +36,13 @@ static constexpr const char* versionPurposeBMC =
+ static constexpr const char* versionPurposeME =
+     "xyz.openbmc_project.Software.Version.VersionPurpose.ME";
+ 
++/*for guid info*/
++static constexpr const char* SMBiosService = "xyz.openbmc_project.Smbios.MDR_V2";
++static constexpr const char* BiosObj = "/xyz/openbmc_project/inventory/system/chassis/motherboard/bios";
++static constexpr const char* UUIDInt = "xyz.openbmc_project.Common.UUID";
++static constexpr size_t uuidBinaryLength = 16;
++
++
+ extern int getActiveSoftwareVersionInfo(ipmi::Context::ptr ctx,
+                                         const std::string& reqVersionPurpose,
+                                         std::string& version);
+diff --git a/src/appcommands.cpp b/src/appcommands.cpp
+index 14aa796..f8dd8a3 100644
+--- a/src/appcommands.cpp
++++ b/src/appcommands.cpp
+@@ -55,6 +55,7 @@ static constexpr const char* bmcStateReadyStr =
+ 
+ static std::unique_ptr<sdbusplus::bus::match::match> bmcStateChangedSignal;
+ static uint8_t bmcDeviceBusy = true;
++static int GUID_ONE_BYTE_DATA_LEN = 2;
+ 
+ int initBMCDeviceState(ipmi::Context::ptr ctx)
+ {
+@@ -524,6 +525,82 @@ auto ipmiAppGetSelfTestResults(ipmi::Context::ptr ctx) -> ipmi::RspType<uint8_t,
+     return ipmi::responseSuccess(bmcSelfTestResult == 0x00 ? 0x55 : 0x57, bmcSelfTestResult);
+ }
+ 
++static std::array<uint8_t, uuidBinaryLength> rfc4122ToIpmi(std::string rfc4122_uuid )
++{
++    // UUID is in RFC4122 format. Ex: 61a39523-78f2-11e5-9862-e6402cfc3223
++    // Per IPMI Spec 2.0 need to convert to 16 hex bytes and reverse the byte
++    // order
++    // Ex: 0x2332fc2c40e66298e511f2782395a361
++    constexpr size_t uuidHexLength = (2 * uuidBinaryLength);
++    constexpr size_t uuidRfc4122Length = (uuidHexLength + 4);
++    std::array<uint8_t, uuidBinaryLength> uuid;
++    if (rfc4122_uuid.size() == uuidRfc4122Length)
++    {
++        rfc4122_uuid.erase(std::remove(rfc4122_uuid.begin(), rfc4122_uuid.end(), '-'),
++                      rfc4122_uuid.end());
++    }
++    if (rfc4122_uuid.size() != uuidHexLength)
++    {
++        fprintf(stderr,"wrong size of rfc4122 string\n");
++    }
++    for (size_t ind = 0; ind < uuidHexLength; ind += 2)
++    {
++        std::string s = rfc4122_uuid.substr( 0, GUID_ONE_BYTE_DATA_LEN );
++        rfc4122_uuid.erase( rfc4122_uuid.begin(), rfc4122_uuid.begin()+GUID_ONE_BYTE_DATA_LEN);
++        size_t err;
++        long b;
++        try
++        {
++            b = std::stoul(s, &err, 16);
++        }
++         catch (std::exception& e)
++        {
++            fprintf(stderr,"can't change string to long\n");
++        }
++        // check that exactly two ascii bytes were converted
++        if (err != 2)
++        {
++            fprintf(stderr,"wrong number of bytes were converted\n");
++        }
++        uuid[uuidBinaryLength - (ind / 2) - 1] = static_cast<uint8_t>(b);
++    }
++    
++    return uuid;
++}
++
++auto ipmiAppGetSystemGuid() -> ipmi::RspType<std::array<uint8_t, 16>>
++{
++    auto bus = getSdBus();  
++    std::string rfc4122Uuid;
++    std::array<uint8_t, uuidBinaryLength> uuid;
++
++    try
++    {
++        ipmi::Value UUID =
++            getDbusProperty(*bus, SMBiosService, BiosObj, UUIDInt, "UUID");
++        rfc4122Uuid = std::get<std::string>(UUID);
++    }
++    catch (sdbusplus::exception::SdBusError& e)
++    {
++        fprintf(stderr,"Fail to get guid property: %s\n", e.what() );
++        return ipmi::responseUnspecifiedError();
++    }
++
++
++    try
++    {
++        // convert to IPMI format
++        uuid = rfc4122ToIpmi(rfc4122Uuid);
++    }
++    catch (std::exception& e)
++    {
++        fprintf(stderr, "Can't change uuid to ipmi format\n");
++        return ipmi::responseUnspecifiedError();
++    }
++    
++    return ipmi::responseSuccess(uuid);
++}
++
+ static void registerAPPFunctions(void)
+ {
+     // <Get Device ID>
+@@ -535,6 +612,12 @@ static void registerAPPFunctions(void)
+     ipmi::registerHandler(ipmi::prioOemBase, ipmi::netFnApp,
+                           ipmi::app::cmdGetSelfTestResults,
+                           ipmi::Privilege::User, ipmiAppGetSelfTestResults);
++    
++    // <Get System GUID Command>
++    ipmi::registerHandler(ipmi::prioOemBase, ipmi::netFnApp,
++                          ipmi::app::cmdGetSystemGuid, ipmi::Privilege::User,
++                          ipmiAppGetSystemGuid);
++
+ }
+ 
+ } // namespace ipmi
+-- 
+2.33.0
+

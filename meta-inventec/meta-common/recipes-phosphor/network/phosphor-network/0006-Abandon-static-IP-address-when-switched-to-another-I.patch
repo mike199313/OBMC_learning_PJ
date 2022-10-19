@@ -1,0 +1,76 @@
+From 187055eadaae52cd32cb4ccb68e5c24e784a33a8 Mon Sep 17 00:00:00 2001
+From: Tommy Lin <lin.tommysc@inventec.com>
+Date: Mon, 7 Mar 2022 09:43:15 +0000
+Subject: [PATCH 06/10] Abandon static IP address when switched to another IP
+
+Symptom/Reason :
+    - Command not working when IP address source is static
+
+Root Cause:
+    - Static IP address was not abandoned when switched to another IP addressing family
+
+Solution/Change:
+    [phosphor-ipmi-host]
+        - Add IPv6Only mode support in IPFamilySupport command
+    [phosphor-network]
+        - Abandon static IP address when switched to another IP addressing family
+
+Entry Test:
+    - Set static IP address
+        ipmitool lan set 1 ipsrc static
+        ipmitool lan set 1 ipaddr 10.6.0.177
+    - Set to IPv6 only mode
+        ipmitool raw 0x0c 0x01 0x01 0x33 0x01
+    - Check lan config
+        ipmitool lan print
+---
+ src/ethernet_interface.cpp | 19 +++++++++++++++++--
+ 1 file changed, 17 insertions(+), 2 deletions(-)
+
+diff --git a/src/ethernet_interface.cpp b/src/ethernet_interface.cpp
+index c4eef5d..053dfe4 100644
+--- a/src/ethernet_interface.cpp
++++ b/src/ethernet_interface.cpp
+@@ -1204,6 +1204,19 @@ void EthernetInterface::writeConfigurationFile()
+     // Static IP addresses
+     for (const auto& addr : addrs)
+     {
++        if (EthernetInterfaceIntf::ipFamily() == EthernetInterfaceIntf::IPFamilyConf::v6
++            && addr.second->type() == IP::Protocol::IPv4)
++        {
++            // Abandon IPv4 static address because IPFamily is set to IPv6 mode
++            continue;
++        }
++        else if (EthernetInterfaceIntf::ipFamily() == EthernetInterfaceIntf::IPFamilyConf::v4
++            && addr.second->type() == IP::Protocol::IPv6)
++        {
++            // Abandon IPv6 static address because IPFamily is set to IPv4 mode
++            continue;
++        }
++
+         if (originIsManuallyAssigned(addr.second->origin()) &&
+             !dhcpIsEnabled(addr.second->type()))
+         {
+@@ -1221,7 +1234,8 @@ void EthernetInterface::writeConfigurationFile()
+     if (!dhcpIsEnabled(IP::Protocol::IPv4))
+     {
+         auto gateway = EthernetInterfaceIntf::defaultGateway();
+-        if (!gateway.empty())
++        if (!gateway.empty()
++            && EthernetInterfaceIntf::ipFamily() != EthernetInterfaceIntf::IPFamilyConf::v6)
+         {
+             stream << "[Route]\n";
+             stream << "Gateway=" << gateway << "\n";
+@@ -1231,7 +1245,8 @@ void EthernetInterface::writeConfigurationFile()
+     if (!dhcpIsEnabled(IP::Protocol::IPv6))
+     {
+         auto gateway6 = EthernetInterfaceIntf::defaultGateway6();
+-        if (!gateway6.empty())
++        if (!gateway6.empty()
++            && EthernetInterfaceIntf::ipFamily() != EthernetInterfaceIntf::IPFamilyConf::v4)
+         {
+             stream << "[Route]\n";
+             stream << "Gateway=" << gateway6 << "\n";
+-- 
+2.33.0
+

@@ -1,0 +1,25 @@
+From a46dbab56e2ac70efa62b60d7ed312e854a5dd3e Mon Sep 17 00:00:00 2001
+From: cynthia <wu.cynthia@inventec.com>
+Date: Fri, 28 Oct 2022 01:51:34 +0000
+Subject: [PATCH] fix nscd issue
+
+---
+ nscd/nscd.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/nscd/nscd.h b/nscd/nscd.h
+index 368091aef8..f15321585b 100644
+--- a/nscd/nscd.h
++++ b/nscd/nscd.h
+@@ -65,7 +65,7 @@ typedef enum
+ struct traced_file
+ {
+   /* Tracks the last modified time of the traced file.  */
+-  time_t mtime;
++  __time64_t mtime;
+   /* Support multiple registered files per database.  */
+   struct traced_file *next;
+   int call_res_init;
+-- 
+2.33.0
+

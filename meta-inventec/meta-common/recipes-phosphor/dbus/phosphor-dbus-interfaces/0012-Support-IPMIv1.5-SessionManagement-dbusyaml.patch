@@ -1,0 +1,91 @@
+From 76c34f7c98ec643a9bfb589c3a2793d8a15cf52b Mon Sep 17 00:00:00 2001
+From: cwsun <sun.cwsun@inventec.com>
+Date: Thu, 5 Aug 2021 09:52:06 +0800
+Subject: [PATCH 12/20] Support IPMI v1.5 Session Management
+
+    Symptom/Reason :
+        - The OpenBMC does not support IPMI v1.5 RMCP type Session Management
+
+    Root Cause:
+        - The OpenBMC does not support IPMI v1.5 RMCP type Session Management
+
+    Solution/Change:
+        [phosphor-dbus-interfaces]
+            - add rmcpType into SessionInfo.interface.yaml
+              -- the rmcpType will indicate if the session is RMCP or RMCP+ type.
+
+        [phosphor-ipmi-host]
+            - support RMCP type session of "Get Session Info" command
+              -- ipmiAppGetSessionInfo()
+              -- getSessionDetails()
+
+        [phosphor-ipmi-net]
+            - When user assign into the system via netipmid and register a session.
+              The registered session will be record its type of RMCP or RMCP+ and be kept
+              in the dbus system.
+
+    Entry Test:
+        - Open RMCP(-Ilan) and RMCP+(-Ilanplus) sessions with IPMI shell
+          -- ipmitool -I lan -H myqemu -U root -P 0penBmc -p 2623 shell
+          -- ipmitool -I lanplus -H myqemu -U root -P 0penBmc -p 2623 -C17 shell
+          -- ipmitool -I lanplus -H myqemu -U root -P 0penBmc -p 2623 -C17 shell
+          -- ipmitool -I lan -H myqemu -U root -P 0penBmc -p 2623
+
+        - then view the session info
+          session info all
+          >
+            session handle                : 13
+            slot count                    : 15
+            active sessions               : 4
+            user id                       : 2
+            privilege level               : ADMINISTRATOR
+            session type                  : IPMIv1.5
+            channel number                : 0x01
+
+            session handle                : 3
+            slot count                    : 15
+            active sessions               : 4
+            user id                       : 2
+            privilege level               : ADMINISTRATOR
+            session type                  : IPMIv1.5
+            channel number                : 0x01
+
+            session handle                : 1
+            slot count                    : 15
+            active sessions               : 4
+            user id                       : 2
+            privilege level               : ADMINISTRATOR
+            session type                  : IPMIv2/RMCP+
+            channel number                : 0x01
+
+            session handle                : 14
+            slot count                    : 15
+            active sessions               : 4
+            user id                       : 2
+            privilege level               : ADMINISTRATOR
+            session type                  : IPMIv2/RMCP+
+            channel number                : 0x01
+---
+ yaml/xyz/openbmc_project/Ipmi/SessionInfo.interface.yaml | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/yaml/xyz/openbmc_project/Ipmi/SessionInfo.interface.yaml b/yaml/xyz/openbmc_project/Ipmi/SessionInfo.interface.yaml
+index 6d8a899..ba44159 100644
+--- a/yaml/xyz/openbmc_project/Ipmi/SessionInfo.interface.yaml
++++ b/yaml/xyz/openbmc_project/Ipmi/SessionInfo.interface.yaml
+@@ -4,6 +4,12 @@ description: >
+     with sessionID_sessionHandle(unique identifier)as path suffix.
+ 
+ properties:
++    - name: rmcpType
++      type: byte
++      description: >
++           Session created RMCP+(1) or RMCP(0)
++      errors:
++          - xyz.openbmc_project.Common.Error.InternalFailure
+     - name: SessionHandle
+       type: byte
+       description: >
+-- 
+2.33.0
+

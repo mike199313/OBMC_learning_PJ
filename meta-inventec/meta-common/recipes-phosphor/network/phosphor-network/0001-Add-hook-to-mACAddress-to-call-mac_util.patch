@@ -1,0 +1,69 @@
+From c5635468888eff4063501ae5dd00d312f56e933c Mon Sep 17 00:00:00 2001
+From: Tommy Lin <lin.tommysc@inventec.com>
+Date: Mon, 7 Mar 2022 01:48:21 +0000
+Subject: [PATCH 01/10] Add hook to mACAddress to call mac_util
+
+---
+ src/ethernet_interface.cpp | 39 ++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 39 insertions(+)
+
+diff --git a/src/ethernet_interface.cpp b/src/ethernet_interface.cpp
+index 1e63a48..aa31e1b 100644
+--- a/src/ethernet_interface.cpp
++++ b/src/ethernet_interface.cpp
+@@ -45,6 +45,33 @@ constexpr auto PROPERTY_INTERFACE = "org.freedesktop.DBus.Properties";
+ constexpr auto RESOLVED_SERVICE_PATH = "/org/freedesktop/resolve1/link/";
+ constexpr auto METHOD_GET = "Get";
+ 
++
++constexpr char SYSTEMD_BUSNAME[] = "org.freedesktop.systemd1";
++constexpr char SYSTEMD_PATH[] = "/org/freedesktop/systemd1";
++constexpr char SYSTEMD_INTERFACE[] = "org.freedesktop.systemd1.Manager";
++
++struct EthernetIntfSocket
++{
++    EthernetIntfSocket(int domain, int type, int protocol)
++    {
++        if ((sock = socket(domain, type, protocol)) < 0)
++        {
++            log<level::ERR>("socket creation failed:",
++                            entry("ERROR=%s", strerror(errno)));
++        }
++    }
++
++    ~EthernetIntfSocket()
++    {
++        if (sock >= 0)
++        {
++            close(sock);
++        }
++    }
++
++    int sock{-1};
++};
++
+ std::map<EthernetInterface::DHCPConf, std::string> mapDHCPToSystemd = {
+     {EthernetInterface::DHCPConf::both, "true"},
+     {EthernetInterface::DHCPConf::v4, "ipv4"},
+@@ -1212,6 +1239,18 @@ std::string EthernetInterface::macAddress(std::string value)
+         // and those having more than 6 bytes. eg: AA:AA:AA:AA:AA:AA:BB
+         execute("/sbin/fw_setenv", "fw_setenv", envVar->c_str(),
+                 validMAC.c_str());
++        /* Inventec hook for mac setting */
++        try{
++            auto method = bus.new_method_call(SYSTEMD_BUSNAME, SYSTEMD_PATH,
++                                          SYSTEMD_INTERFACE, "StartUnit");
++            method.append("mac_util_config@" + value + "_"+ interface + ".service", "replace");
++            bus.call_noreply(method);
++        }catch (const sdbusplus::exception::SdBusError& ex){
++            log<level::ERR>("Failed to hook for mac setting",
++                        entry("UNIT=%s", "mac_util_config@.service"),
++                        entry("ERR=%s", ex.what()));
++            elog<InternalFailure>();
++        }
+     }
+ #endif // HAVE_UBOOT_ENV
+ 
+-- 
+2.33.0
+

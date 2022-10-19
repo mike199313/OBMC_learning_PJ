@@ -1,0 +1,513 @@
+From d44c998e66f6b015c7c3a36dd7f5d3c0e933d76e Mon Sep 17 00:00:00 2001
+From: "pj.chen" <chen.pj@inventec.com>
+Date: Tue, 1 Mar 2022 03:10:10 +0000
+Subject: [PATCH 07/27] EventSensor - Create EventSensor to setup event only
+ sensor on dbus
+
+Sympton/Reason:
+    For ipmi sensor, ipmi may need to get properites from dbus.
+    Create EventSensor to read config from entity-manager and post to dbus.
+
+Root Cause:
+    N/A
+
+Solution/Change:
+    [EventSensor]
+        Initial commit.
+
+Entry Test:
+
+Config example in Entity-manager:
+        {
+            "Name": "DCMI_Power_Threshold",
+            "ReadingType": "discrete",
+            "SensorType": "power_unit",
+            "SensorInfo": [
+                {
+                    "Label": "DCMI_Power_Threshold",
+                    "SensorModel": "Event",
+                    "SensorNum": "0x78",
+                    "EntityId": "0x13",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+        {
+            "Name": "CPU_HOT",
+            "ReadingType": "specific",
+            "SensorType": "processor",
+            "SensorInfo": [
+                {
+                    "Label": "CPU_HOT",
+                    "SensorModel": "Event",
+                    "SensorNum": "0x79",
+                    "EntityId": "0x3",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        }
+Dbus:
+sysadmin@transformers:~# busctl tree xyz.openbmc_project.EventSensor
+`-/xyz
+  `-/xyz/openbmc_project
+    `-/xyz/openbmc_project/sensors
+      |-/xyz/openbmc_project/sensors/discrete
+      | `-/xyz/openbmc_project/sensors/discrete/power_unit
+      |   `-/xyz/openbmc_project/sensors/discrete/power_unit/DCMI_Power_Threshold
+      `-/xyz/openbmc_project/sensors/specific
+        `-/xyz/openbmc_project/sensors/specific/processor
+          `-/xyz/openbmc_project/sensors/specific/processor/CPU_HOT
+
+sysadmin@transformers:~# busctl introspect xyz.openbmc_project.EventSensor /xyz/openbmc_project/sensors/discrete_05h/power_unit/DCMI_Power_Threshold
+NAME                                        TYPE      SIGNATURE RESULT/VALUE                             FLAGS
+org.freedesktop.DBus.Introspectable         interface -         -                                        -
+.Introspect                                 method    -         s                                        -
+org.freedesktop.DBus.Peer                   interface -         -                                        -
+.GetMachineId                               method    -         s                                        -
+.Ping                                       method    -         -                                        -
+org.freedesktop.DBus.Properties             interface -         -                                        -
+.Get                                        method    ss        v                                        -
+.GetAll                                     method    s         a{sv}                                    -
+.Set                                        method    ssv       -                                        -
+.PropertiesChanged                          signal    sa{sv}as  -                                        -
+xyz.openbmc_project.Association.Definitions interface -         -                                        -
+.Associations                               property  a(sss)    1 "chassis" "all_sensors" "/xyz/openb... emits-change
+xyz.openbmc_project.Sensor.IpmiSensor       interface -         -                                        -
+.entityID                                   property  t         19                                       emits-change
+.entityInstance                             property  t         0                                        emits-change
+.sensorNumber                               property  t         120                                      emits-change
+xyz.openbmc_project.Sensor.Value            interface -         -                                        -
+.Value                                      property  d         0                                        emits-change
+---
+ include/EventSensor.hpp                       |  29 ++
+ meson_options.txt                             |   1 +
+ service_files/meson.build                     |   1 +
+ .../xyz.openbmc_project.eventsensor.service   |  12 +
+ src/EventSensor.cpp                           | 305 ++++++++++++++++++
+ src/meson.build                               |  17 +
+ 6 files changed, 365 insertions(+)
+ create mode 100644 include/EventSensor.hpp
+ create mode 100644 service_files/xyz.openbmc_project.eventsensor.service
+ create mode 100644 src/EventSensor.cpp
+
+diff --git a/include/EventSensor.hpp b/include/EventSensor.hpp
+new file mode 100644
+index 0000000..ea5cad7
+--- /dev/null
++++ b/include/EventSensor.hpp
+@@ -0,0 +1,29 @@
++#pragma once
++
++#include "IpmiInfo.hpp"
++#include "sensor.hpp"
++
++#include <sdbusplus/asio/object_server.hpp>
++
++#include <string>
++#include <vector>
++
++class EventSensor : public std::enable_shared_from_this<EventSensor>
++{
++  public:
++    EventSensor(sdbusplus::asio::object_server& objectServer,
++                std::shared_ptr<sdbusplus::asio::connection>& conn,
++                const std::string& eventName,
++                const std::string& readingType, const std::string& sensorType,
++                const std::string& configurationPath,
++                std::vector<ipmidata::IpmiConfig>&& ipmiinfo);
++    ~EventSensor();
++
++  private:
++    sdbusplus::asio::object_server& objServer;
++    std::string configurationPath;
++    std::shared_ptr<sdbusplus::asio::connection> conn;
++    std::shared_ptr<sdbusplus::asio::dbus_interface> association;
++    std::shared_ptr<sdbusplus::asio::dbus_interface> sensorInterface;
++    std::shared_ptr<sdbusplus::asio::dbus_interface> ipmiInterface;
++};
+diff --git a/meson_options.txt b/meson_options.txt
+index f9d25e7..231c0cd 100644
+--- a/meson_options.txt
++++ b/meson_options.txt
+@@ -3,6 +3,7 @@ option('cpu', type: 'feature', value: 'enabled', description: 'Enable CPU sensor
+ option('exit-air', type: 'feature', value: 'enabled', description: 'Enable exit air sensor.',)
+ option('fan', type: 'feature', value: 'enabled', description: 'Enable fan sensor.',)
+ option('hwmon-temp', type: 'feature', value: 'enabled', description: 'Enable HWMON temperature sensor.',)
++option('event', type: 'feature', value: 'enabled', description: 'Enable General event sensor.',)
+ option('intrusion', type: 'feature', value: 'enabled', description: 'Enable intrusion sensor.',)
+ option('ipmb', type: 'feature', value: 'enabled', description: 'Enable IPMB sensor.',)
+ option('mcu', type: 'feature', value: 'enabled', description: 'Enable MCU sensor.',)
+diff --git a/service_files/meson.build b/service_files/meson.build
+index 37bb261..5f0af4b 100644
+--- a/service_files/meson.build
++++ b/service_files/meson.build
+@@ -5,6 +5,7 @@ unit_files = [
+     ['fan', 'xyz.openbmc_project.fansensor.service'],
+     ['hwmon-temp', 'xyz.openbmc_project.hwmontempsensor.service'],
+     ['ipmb', 'xyz.openbmc_project.ipmbsensor.service'],
++    ['event', 'xyz.openbmc_project.eventsensor.service'],
+     ['intrusion', 'xyz.openbmc_project.intrusionsensor.service'],
+     ['mcu', 'xyz.openbmc_project.mcutempsensor.service'],
+     ['nvme', 'xyz.openbmc_project.nvmesensor.service'],
+diff --git a/service_files/xyz.openbmc_project.eventsensor.service b/service_files/xyz.openbmc_project.eventsensor.service
+new file mode 100644
+index 0000000..1bcf053
+--- /dev/null
++++ b/service_files/xyz.openbmc_project.eventsensor.service
+@@ -0,0 +1,12 @@
++[Unit]
++Description=IPMI Event Sensor
++Wants=mapper-wait@-xyz-openbmc_project-Logging-IPMI.service
++After=mapper-wait@-xyz-openbmc_project-Logging-IPMI.service
++
++[Service]
++Restart=always
++RestartSec=5
++ExecStart=/usr/bin/eventsensor
++
++[Install]
++WantedBy=multi-user.target
+diff --git a/src/EventSensor.cpp b/src/EventSensor.cpp
+new file mode 100644
+index 0000000..3840c14
+--- /dev/null
++++ b/src/EventSensor.cpp
+@@ -0,0 +1,305 @@
++#include "EventSensor.hpp"
++#include "Utils.hpp"
++
++#include <array>
++#include <boost/algorithm/string/predicate.hpp>
++#include <boost/algorithm/string/replace.hpp>
++#include <boost/container/flat_map.hpp>
++#include <boost/container/flat_set.hpp>
++#include <filesystem>
++#include <fstream>
++#include <functional>
++#include <memory>
++#include <regex>
++#include <sdbusplus/asio/connection.hpp>
++#include <sdbusplus/asio/object_server.hpp>
++#include <sdbusplus/bus/match.hpp>
++#include <stdexcept>
++#include <string>
++#include <utility>
++#include <variant>
++#include <vector>
++
++
++namespace fs = std::filesystem;
++
++static constexpr bool DEBUG = true;
++
++static constexpr const char* sensorPathPrefix = "/xyz/openbmc_project/sensors/";
++
++static constexpr std::array<const char*, 1> eventSensorTypes = {
++    "xyz.openbmc_project.Configuration.EventSensor"};
++
++
++EventSensor::EventSensor(sdbusplus::asio::object_server& objectServer,
++                    std::shared_ptr<sdbusplus::asio::connection>& conn,
++                    const std::string& eventName,
++                    const std::string& readingType,
++                    const std::string& sensorType,
++                    const std::string& configurationPath,
++                    std::vector<ipmidata::IpmiConfig>&& ipmiinfo):
++                    objServer(objectServer), conn(conn)
++{
++    std::string dbusPath = sensorPathPrefix + 
++        readingType +"/"+ sensorType + "/" + eventName;
++
++    if (!conn)
++    {
++        std::cerr << "Connection not created\n";
++        return;
++    }
++
++    association = objectServer.add_interface(
++        sensorPathPrefix + readingType +"/"+ sensorType + "/" + eventName,
++        association::interface);
++
++    createAssociation(association, configurationPath);
++
++    sensorInterface = objectServer.add_interface(
++        dbusPath, "xyz.openbmc_project.Sensor.Value");
++
++    double value = 0;
++    sensorInterface->register_property("Value", value);
++
++    sensorInterface->initialize();
++
++    ipmiInterface = objectServer.add_interface(
++        dbusPath, "xyz.openbmc_project.Sensor.IpmiSensor");
++
++    if (ipmiinfo.empty())
++    {
++        // Default
++        ipmiInterface->register_property("sensorNumber", 0);
++        ipmiInterface->register_property("entityID", 0);
++        ipmiInterface->register_property("entityInstance", 0);
++    }
++    else
++    {
++        for (auto& ipmi : ipmiinfo)
++        {
++            ipmiInterface->register_property("sensorNumber", ipmi.number);
++            ipmiInterface->register_property("entityID", ipmi.entityId);
++            ipmiInterface->register_property("entityInstance", ipmi.entityIns);
++        }
++    }
++    ipmiInterface->initialize();
++}
++
++EventSensor::~EventSensor()
++{
++    objServer.remove_interface(sensorInterface);
++    objServer.remove_interface(ipmiInterface);
++}
++
++void createSensors(
++    boost::asio::io_service& io, sdbusplus::asio::object_server& objectServer,
++    boost::container::flat_map<std::string, std::unique_ptr<EventSensor>>&
++        sensors,
++    std::shared_ptr<sdbusplus::asio::connection>& dbusConnection,
++    const std::unique_ptr<boost::container::flat_set<std::string>>&
++        sensorsChanged)
++{
++    auto getter = std::make_shared<GetSensorConfiguration>(
++        dbusConnection,
++        std::move([&io, &objectServer, &sensors, &dbusConnection,
++                   &sensorsChanged](
++                      const ManagedObjectType& sensorConfigurations) {
++
++            // search for each sensor
++            for (const std::pair<sdbusplus::message::object_path,
++                                    SensorData>& sensorConf : sensorConfigurations)
++            {
++                const SensorData *sensorData = nullptr;
++          //      const char *eventSensorType = nullptr;
++                const std::string *interfacePath = nullptr;
++                const std::pair<std::string,
++                    boost::container::flat_map<std::string, BasicVariantType>>*
++                    baseConfiguration = nullptr;
++
++
++                // find base configuration
++                for (const char* type : eventSensorTypes)
++                {
++                    auto sensorBase = sensorConf.second.find(type);
++                    if (sensorBase != sensorConf.second.end())
++                    {
++                        baseConfiguration = &(*sensorBase);
++            //            eventSensorType = type;
++                        break;
++                    }
++                }
++                if (baseConfiguration == nullptr)
++                {
++                    continue;
++                }
++
++                auto findSensorName = baseConfiguration->second.find("Name");
++                if (findSensorName == baseConfiguration->second.end())
++                {
++                    std::cerr << "Base configuration missing Name"
++                                << baseConfiguration->first << "\n";
++                    continue;
++                }
++
++                std::string sensorName;
++                try
++                {
++                    sensorName = std::visit(
++                        VariantToStringVisitor(), findSensorName->second);
++                }
++                catch(const std::exception& e)
++                {
++                    std::cerr << e.what() << '\n';
++                    continue;
++                }
++
++                auto findReadingType = baseConfiguration->second.find("ReadingType");
++                if (findReadingType == baseConfiguration->second.end())
++                {
++                    std::cerr << "Base configuration missing ReadingType"
++                                << baseConfiguration->first << "\n";
++                    continue;
++                }
++
++                std::string readingType;
++                try
++                {
++                    readingType = std::visit(
++                        VariantToStringVisitor(), findReadingType->second);
++                }
++                catch(const std::exception& e)
++                {
++                    std::cerr << e.what() << '\n';
++                    continue;
++                }
++
++                auto findSensorType = baseConfiguration->second.find("SensorType");
++                if (findSensorType == baseConfiguration->second.end())
++                {
++                    std::cerr << "Base configuration missing SensorType"
++                                << baseConfiguration->first << "\n";
++                    continue;
++                }
++
++                std::string sensorType;
++                try
++                {
++                    sensorType = std::visit(
++                        VariantToStringVisitor(), findSensorType->second);
++                }
++                catch(const std::exception& e)
++                {
++                    std::cerr << e.what() << '\n';
++                    continue;
++                }
++
++                sensorData = &(sensorConf.second);
++                interfacePath = &(sensorConf.first.str);
++
++                if (sensorData == nullptr)
++                {
++                    std::cerr << "failed to find match for " << sensorName
++                              << "\n";
++                    continue;
++                }
++
++                if (interfacePath == nullptr)
++                {
++                    std::cerr << "failed to find match for " << sensorName
++                              << "\n";
++                    continue;
++                }
++
++                // Get Sensor define for IPMI
++                std::vector<ipmidata::IpmiConfig> sensorIpmiConfig;
++                if (!parseIpmiDataFromConfig(*sensorData, sensorIpmiConfig, &sensorName))
++                {
++                    std::cerr << "error populating ipmi for " 
++                              << sensorName << "\n";
++                }
++
++                if (DEBUG)
++                {
++                    std::cerr <<"SensorName: " << sensorName << '\n'
++                        << "ReadingType: " << readingType << '\n'
++                        << "SensorType: " << sensorType << '\n'
++                        << "Interface:" << *interfacePath << '\n';
++                }
++
++                // Make up Sensor DBUS interface
++                auto& sensor = sensors[sensorName];
++                sensor = nullptr;
++                sensor = std::make_unique<EventSensor>(
++                    objectServer, dbusConnection, 
++                    sensorName, readingType, sensorType, *interfacePath,
++                    std::move(sensorIpmiConfig));
++            }
++        }));
++    getter->getConfiguration(
++        std::vector<std::string>(eventSensorTypes.begin(), eventSensorTypes.end()));
++}
++
++int main()
++{
++    boost::asio::io_service io;
++    auto systemBus = std::make_shared<sdbusplus::asio::connection>(io);
++
++    systemBus->request_name("xyz.openbmc_project.EventSensor");
++    sdbusplus::asio::object_server objectServer(systemBus);
++
++    boost::container::flat_map<std::string, std::unique_ptr<EventSensor>>
++        sensors;
++    std::vector<std::unique_ptr<sdbusplus::bus::match::match>> matches;
++
++    std::unique_ptr<boost::container::flat_set<std::string>> sensorsChanged =
++        std::make_unique<boost::container::flat_set<std::string>>();
++
++    if (DEBUG)
++    {
++        std::cout << "xyz.openbmc_project.EventSensor" << "\n";
++    }
++
++    io.post([&]() {
++        createSensors(io, objectServer, sensors, systemBus, nullptr);
++    });
++
++    boost::asio::deadline_timer filterTimer(io);
++    std::function<void(sdbusplus::message::message&)> eventHandler =
++        [&](sdbusplus::message::message& message) {
++            if (message.is_method_error())
++            {
++                std::cerr << "callback method error\n";
++                return;
++            }
++            sensorsChanged->insert(message.get_path());
++            // this implicitly cancels the timer
++            filterTimer.expires_from_now(boost::posix_time::seconds(1));
++
++            filterTimer.async_wait([&](const boost::system::error_code& ec) {
++                if (ec == boost::asio::error::operation_aborted)
++                {
++                    /* we were canceled*/
++                    return;
++                }
++                else if (ec)
++                {
++                    std::cerr << "timer error\n";
++                    return;
++                }
++                createSensors(io, objectServer, sensors, systemBus,
++                              sensorsChanged);
++            });
++        };
++
++    for (const char* type : eventSensorTypes)
++    {
++        auto match = std::make_unique<sdbusplus::bus::match::match>(
++            static_cast<sdbusplus::bus::bus&>(*systemBus),
++            "type='signal',member='PropertiesChanged',path_namespace='" +
++                std::string(inventoryPath) + "',arg0namespace='" + type + "'",
++            eventHandler);
++        matches.emplace_back(std::move(match));
++    }
++
++    io.run();
++}
+diff --git a/src/meson.build b/src/meson.build
+index 199857b..dffb916 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -93,6 +93,23 @@ if get_option('hwmon-temp').enabled()
+     )
+ endif
+ 
++if get_option('event').enabled()
++    executable(
++        'eventsensor',
++        'EventSensor.cpp',
++        'IpmiInfo.cpp',
++        dependencies: [
++            default_deps,
++            thresholds_dep,
++            utils_dep,
++        ],
++        implicit_include_directories: false,
++        include_directories: '../include',
++        install: true,
++    )
++endif
++
++
+ if get_option('intrusion').enabled()
+     executable(
+         'intrusionsensor',
+-- 
+2.33.0
+

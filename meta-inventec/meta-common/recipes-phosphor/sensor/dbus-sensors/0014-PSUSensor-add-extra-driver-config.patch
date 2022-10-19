@@ -1,0 +1,93 @@
+From c04282be56fd55a555f747a5753cf7425fb233ff Mon Sep 17 00:00:00 2001
+From: "pj.chen" <chen.pj@inventec.com>
+Date: Tue, 1 Mar 2022 07:10:34 +0000
+Subject: [PATCH 14/27] PSUSensor - add extra driver config
+
+Symptom/Reason:
+    Add extra driver config
+
+Root Cause:
+    N/A
+
+Solution/Change:
+    [PSUSensor]
+    - add pac1934/2/1 driver config
+    - add SBRMI driver config
+
+Entry Test:
+
+ipmitool sdr elist
+PSU1_VIN         | 70h | ok  | 10.0 | 216.80 Volts
+PSU1_VOUT        | 71h | ok  | 10.1 | 12.10 Volts
+PSU1_Input_Power | 72h | ok  | 10.2 | 315.40 Watts
+PSU1_Out_Power   | 73h | ok  | 10.3 | 283.50 Watts
+PSU1_IIN         | 79h | ok  | 10.4 | 1.47 Amps
+PSU1_IOUT        | 7Ah | ok  | 10.5 | 23.92 Amps
+PSU1_Fan1        | 7Bh | ok  | 10.6 | 6254 RPM
+PSU1_Temp1       | 7Ch | lnc | 10.7 | 25.14 degrees C
+PSU1_Temp2       | 7Dh | ok  | 10.8 | 35.18 degrees C
+PSU1_Temp3       | 7Eh | ok  | 10.9 | 42.74 degrees C
+Pwm_PSU1_Fan_1   | 7Fh | ok  | 10.10 | 30.18 unspecifi
+FAN0_V           | 86h | ok  | 29.12 | 12.19 Volts
+FAN1_V           | 87h | ok  | 29.13 | 12.19 Volts
+FAN2_V           | 88h | ok  | 29.14 | 12.19 Volts
+FAN3_V           | 89h | ok  | 29.15 | 12.19 Volts
+FAN4_V           | 8Ah | ok  | 29.16 | 12.19 Volts
+FAN5_V           | 8Bh | ok  | 29.17 | 12.19 Volts
+FAN0_Power       | 76h | ok  | 29.18 | 0 Watts
+FAN1_Power       | 77h | ok  | 29.19 | 0 Watts
+FAN2_Power       | 78h | ok  | 29.20 | 0 Watts
+FAN3_Power       | 79h | ok  | 29.21 | 0 Watts
+FAN4_Power       | 98h | ok  | 29.22 | 0 Watts
+FAN5_Power       | 99h | ok  | 29.23 | 0 Watts
+
+[comment for 2.12 upgrade]
+some power config in propertyInitialize is already set, remove code in this patch
+---
+ src/PSUSensorMain.cpp | 16 ++++++++++++----
+ 1 file changed, 12 insertions(+), 4 deletions(-)
+
+diff --git a/src/PSUSensorMain.cpp b/src/PSUSensorMain.cpp
+index eeb9818..3f732b6 100644
+--- a/src/PSUSensorMain.cpp
++++ b/src/PSUSensorMain.cpp
+@@ -43,6 +43,10 @@ static constexpr bool debug = false;
+ static constexpr auto sensorTypes{std::to_array<const char*>(
+     {
+      "xyz.openbmc_project.Configuration.VIRTUAL_PSU",
++     "xyz.openbmc_project.Configuration.PAC1934",
++     "xyz.openbmc_project.Configuration.PAC1932",
++     "xyz.openbmc_project.Configuration.PAC1931",
++     "xyz.openbmc_project.Configuration.SBRMI",
+      "xyz.openbmc_project.Configuration.ADM1266",
+      "xyz.openbmc_project.Configuration.ADM1272",
+      "xyz.openbmc_project.Configuration.ADM1275",
+@@ -81,6 +85,10 @@ static constexpr auto sensorTypes{std::to_array<const char*>(
+ // clang-format off
+ static constexpr auto pmbusNames{std::to_array<const char*>({
+     "virtual_psu",
++    "pac1934",
++    "pac1932",
++    "pac1931",
++    "sbrmi",
+     "adm1266",
+     "adm1272",
+     "adm1275",
+@@ -1052,10 +1060,10 @@ void propertyInitialize(void)
+         {"vout32", PSUProperty("Output Voltage", 255, 0, 3, 0)},
+         {"vmon", PSUProperty("Auxiliary Input Voltage", 255, 0, 3, 0)},
+         {"in0", PSUProperty("Output Voltage", 255, 0, 3, 0)},
+-        {"in1", PSUProperty("Output Voltage", 255, 0, 3, 0)},
+-        {"in2", PSUProperty("Output Voltage", 255, 0, 3, 0)},
+-        {"in3", PSUProperty("Output Voltage", 255, 0, 3, 0)},
+-        {"in4", PSUProperty("Output Voltage", 255, 0, 3, 0)},
++        {"in1", PSUProperty("Input Current", 255, 0, 3, 0)},
++        {"in2", PSUProperty("Input Current", 255, 0, 3, 0)},
++        {"in3", PSUProperty("Input Current", 255, 0, 3, 0)},
++        {"in4", PSUProperty("Input Current", 255, 0, 3, 0)},
+         {"in5", PSUProperty("Output Voltage", 255, 0, 3, 0)},
+         {"in6", PSUProperty("Output Voltage", 255, 0, 3, 0)},
+         {"in7", PSUProperty("Output Voltage", 255, 0, 3, 0)},
+-- 
+2.33.0
+

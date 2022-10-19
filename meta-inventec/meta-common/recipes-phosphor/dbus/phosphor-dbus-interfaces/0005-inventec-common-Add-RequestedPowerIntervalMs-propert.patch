@@ -1,0 +1,45 @@
+From 0220f1fcbe06d1ecf2311c9820cc54df7e9c5a38 Mon Sep 17 00:00:00 2001
+From: "Lin.TommySC" <lin.tommysc@inventec.com>
+Date: Fri, 5 Mar 2021 01:42:17 +0000
+Subject: [PATCH 05/20] -Add RequestedPowerIntervalMs property
+
+Symptom/Reason:
+	To support Set Power Cycle Interval command.
+
+Root Cause:
+	N/A
+
+Solution/Change:
+	[phosphor-dbus-interfaces]
+	- Add RequestedPowerIntervalMs property
+	[x86-power-control]
+	- Implement RequestedPowerIntervalMs property set function
+	[inv-impi-oem]
+	- Register ipmiChassisSetPowerInterval command handler
+
+Entry Test:
+	sudo ipmitool raw 0x00 0x0b 0x03
+---
+ yaml/xyz/openbmc_project/State/Chassis.interface.yaml | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/yaml/xyz/openbmc_project/State/Chassis.interface.yaml b/yaml/xyz/openbmc_project/State/Chassis.interface.yaml
+index 0d1fb45..d3a8edc 100644
+--- a/yaml/xyz/openbmc_project/State/Chassis.interface.yaml
++++ b/yaml/xyz/openbmc_project/State/Chassis.interface.yaml
+@@ -32,6 +32,12 @@ properties:
+           in milliseconds.  This can be used to tell when the chassis
+           was last powered on or off.
+ 
++    - name: RequestedPowerIntervalMs
++      type: uint32
++      description: >
++          The desired power cycle interval in milliseconds on this chassis.
++          This will be preserved across AC power cycles of the BMC.
++
+ enumerations:
+     - name: Transition
+       description: >
+-- 
+2.33.0
+

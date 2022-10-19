@@ -1,0 +1,465 @@
+From 69ede30c39b40dbecff6dac0268bbea79229f61b Mon Sep 17 00:00:00 2001
+From: "Lin.TommySC" <lin.tommysc@inventec.com>
+Date: Thu, 29 Jul 2021 08:57:02 +0000
+Subject: [PATCH 18/31] Add encoding byte support for System Info Parameters
+
+Symptom/Reason :
+    - Add encoding byte support for Get/Set System Info Parameters IPMI command
+
+Root Cause:
+    - Not supported in origin OpenBMC
+
+Solution/Change:
+    [phosphor-ipmi-host]
+        - Add new data structure to store encoding info
+        - Add non-volatile parameters support
+
+Entry Test:
+    - Set System Firmware Version
+        ipmitool raw 0x06 0x58 0x01 0x00 0x01 0x04 0x03 0x04 0x40 0x41
+    - Get System Firmware Version
+        ipmitool raw 0x06 0x59 0x00 0x01 0x00 0x00
+    - Set System name
+        ipmitool raw 0x06 0x58 0x02 0x00 0x01 0x0e 0x03 0x04 0x40 0x41 0x42 0x43 0x40 0x41 0x42 0x43 0x40 0x41 0x42 0x43
+    - Get System name
+        ipmitool raw 0x06 0x59 0x00 0x02 0x00 0x00
+---
+ apphandler.cpp          | 64 ++++++++++++++++++++++++++++++++++++++++-
+ include/ipmid/utils.hpp | 61 +++++++++++++++++++++++++++++++++++++++
+ sys_info_param.cpp      | 51 +++++++++++++++++++++++++++++++-
+ sys_info_param.hpp      | 33 +++++++++++++++++++--
+ transporthandler.hpp    | 57 +++++++-----------------------------
+ 5 files changed, 215 insertions(+), 51 deletions(-)
+
+diff --git a/apphandler.cpp b/apphandler.cpp
+index 71b291e..fc960c9 100644
+--- a/apphandler.cpp
++++ b/apphandler.cpp
+@@ -1246,6 +1246,41 @@ static std::string sysInfoReadSystemName()
+     return hostname;
+ }
+ 
++static std::string sysInfoReadOSName()
++{
++    std::string osname = "OpenBMC";
++    return osname;
++}
++
++static std::string sysInfoReadOSVersion()
++{
++    std::string os_version = "0.0";
++    std::ifstream infile("/etc/os-release");
++    if (infile.is_open()) {
++        std::string line;
++        size_t location;
++        while (std::getline(infile, line)) {
++            location = line.find("VERSION=");
++            if (location != std::string::npos)
++            {
++                location = line.find_first_of('"');
++                if (location != std::string::npos)
++                {
++                    os_version = line.substr(location + 1);
++                    location = os_version.find_first_of('-');
++                    if (location != std::string::npos)
++                    {
++                        os_version = os_version.substr(0, location);
++                    }
++                }
++                break;
++            }
++        }
++        infile.close();
++    }
++    return os_version;
++}
++
+ static constexpr uint8_t paramRevision = 0x11;
+ static constexpr size_t configParameterLength = 16;
+ 
+@@ -1262,6 +1297,7 @@ static constexpr uint8_t configDataOverhead = 2;
+ 
+ // For EFI based system, 256 bytes is recommended.
+ static constexpr size_t maxBytesPerParameter = 256;
++static constexpr size_t maxSetPerParameter = maxBytesPerParameter / fullChunkSize;
+ 
+ namespace ipmi
+ {
+@@ -1303,6 +1339,10 @@ ipmi::RspType<uint8_t,                // Parameter revision
+     {
+         return ipmi::responseSuccess(paramRevision, std::nullopt, std::nullopt);
+     }
++    if ((paramSelector >= IPMI_SYSINFO_BMC_URL) && (paramSelector <= IPMI_SYSINFO_OS_HYP_URL))
++    {
++        return ipmi::responseParmNotSupported();
++    }
+ 
+     if (paramSelector == 0)
+     {
+@@ -1320,6 +1360,12 @@ ipmi::RspType<uint8_t,                // Parameter revision
+         sysInfoParamStore = std::make_unique<SysInfoParamStore>();
+         sysInfoParamStore->update(IPMI_SYSINFO_SYSTEM_NAME,
+                                   sysInfoReadSystemName);
++        sysInfoParamStore->update(IPMI_SYSINFO_OS_NAME,
++                                  sysInfoReadOSName);
++        sysInfoParamStore->update(IPMI_SYSINFO_SYSTEM_FW_VERSION,
++                                  sysInfoReadOSVersion);
++        sysInfoParamStore->update(IPMI_SYSINFO_OS_VERSION,
++                                  sysInfoReadOSVersion);
+     }
+ 
+     // Parameters other than Set In Progress are assumed to be strings.
+@@ -1335,7 +1381,7 @@ ipmi::RspType<uint8_t,                // Parameter revision
+     size_t count = 0;
+     if (setSelector == 0)
+     {                               // First chunk has only 14 bytes.
+-        configData.emplace_back(0); // encoding
++        configData.emplace_back(sysInfoParamStore->getEncoding(paramSelector)); // encoding
+         configData.emplace_back(paramString.length()); // string length
+         count = std::min(paramString.length(), smallChunkSize);
+         configData.resize(count + configDataOverhead);
+@@ -1354,6 +1400,11 @@ ipmi::RspType<uint8_t,                // Parameter revision
+         size_t offset = (setSelector * fullChunkSize) - configDataOverhead;
+         if (offset >= paramString.length())
+         {
++            if (setSelector < maxSetPerParameter)
++            {
++                configData.resize(fullChunkSize);
++                return ipmi::responseSuccess(paramRevision, setSelector, configData);
++            }
+             return ipmi::responseParmOutOfRange();
+         }
+         count = std::min(paramString.length() - offset, fullChunkSize);
+@@ -1376,6 +1427,10 @@ ipmi::RspType<> ipmiAppSetSystemInfo(uint8_t paramSelector, uint8_t data1,
+     {
+         return ipmi::responseParmNotSupported();
+     }
++    if ((paramSelector >= IPMI_SYSINFO_BMC_URL) && (paramSelector <= IPMI_SYSINFO_OS_HYP_URL))
++    {
++        return ipmi::responseParmNotSupported();
++    }
+ 
+     if (paramSelector == 0)
+     {
+@@ -1414,6 +1469,12 @@ ipmi::RspType<> ipmiAppSetSystemInfo(uint8_t paramSelector, uint8_t data1,
+         sysInfoParamStore = std::make_unique<SysInfoParamStore>();
+         sysInfoParamStore->update(IPMI_SYSINFO_SYSTEM_NAME,
+                                   sysInfoReadSystemName);
++        sysInfoParamStore->update(IPMI_SYSINFO_OS_NAME,
++                                  sysInfoReadOSName);
++        sysInfoParamStore->update(IPMI_SYSINFO_SYSTEM_FW_VERSION,
++                                  sysInfoReadOSVersion);
++        sysInfoParamStore->update(IPMI_SYSINFO_OS_VERSION,
++                                  sysInfoReadOSVersion);
+     }
+ 
+     // lookup
+@@ -1431,6 +1492,7 @@ ipmi::RspType<> ipmiAppSetSystemInfo(uint8_t paramSelector, uint8_t data1,
+     size_t count = 0;
+     if (setSelector == 0) // First chunk has only 14 bytes.
+     {
++        sysInfoParamStore->setEncoding(paramSelector, configData.at(0));
+         size_t stringLen = configData.at(1); // string length
+         // maxBytesPerParamter is 256. It will always be greater than stringLen
+         // (unit8_t) if maxBytes changes in future, then following line is
+diff --git a/include/ipmid/utils.hpp b/include/ipmid/utils.hpp
+index b8b59bf..b037505 100644
+--- a/include/ipmid/utils.hpp
++++ b/include/ipmid/utils.hpp
+@@ -7,6 +7,9 @@
+ #include <ipmid/types.hpp>
+ #include <optional>
+ #include <sdbusplus/server.hpp>
++#include <iomanip>
++#include <fstream>
++#include <nlohmann/json.hpp>
+ 
+ namespace ipmi
+ {
+@@ -449,4 +452,62 @@ void callDbusMethod(sdbusplus::bus::bus& bus, const std::string& service,
+ ipmi::Cc i2cWriteRead(std::string i2cBus, const uint8_t slaveAddr,
+                       std::vector<uint8_t> writeData,
+                       std::vector<uint8_t>& readBuf);
++
++/** @brief get config value from config file specified.
++ *  @param[in] file - full path of config file.
++ *  @param[in] name - field name.
++ *  @param[in] val - value of the given field.
++ *  @return 0 if success, else returns none-zero value.
++ */
++template <typename T> int loadConfigValue(const std::string& file, const std::string& name, T& val)
++{
++    std::ifstream configFile(file);
++    if (!configFile.is_open())
++    {
++        return -1;
++    }
++
++    auto data = nlohmann::json::parse(configFile, nullptr);
++
++    if (data.is_discarded())
++    {
++        return -2;
++    }
++
++    if (data.contains(name))
++    {
++        val = (T)data[name];
++        return 0;
++    }
++
++    return -3;
++}
++
++/** @brief set config value to config file specified.
++ *  @param[in] file - full path of config file.
++ *  @param[in] name - field name.
++ *  @param[in] val - value of the given field.
++ *  @return 0 if success, else returns none-zero value.
++ */
++template <typename T> int updateConfigValue(const std::string& file, const std::string& name, T val)
++{
++    std::ifstream configFile(file);
++    if (!configFile.is_open())
++    {
++        return -1;
++    }
++    auto data = nlohmann::json::parse(configFile, nullptr);
++
++    if (data.is_discarded())
++    {
++        return -2;
++    }
++
++    data[name] = val;
++    std::ofstream configStream(file);
++    configStream << std::setw(4) << data << std::endl;
++    configStream.close();
++    return 0;
++}
++
+ } // namespace ipmi
+diff --git a/sys_info_param.cpp b/sys_info_param.cpp
+index c9bee32..4a28c71 100644
+--- a/sys_info_param.cpp
++++ b/sys_info_param.cpp
+@@ -1,11 +1,37 @@
+ #include "sys_info_param.hpp"
++#include <apphandler.hpp>
++
++static bool isPersisted(uint8_t paramSelector)
++{
++    return paramSelector == IPMI_SYSINFO_PRIMARY_OS_NAME
++    || paramSelector == IPMI_SYSINFO_BMC_URL;
++}
+ 
+ std::tuple<bool, std::string>
+-    SysInfoParamStore::lookup(uint8_t paramSelector) const
++    SysInfoParamStore::lookup(uint8_t paramSelector)
+ {
+     const auto iterator = params.find(paramSelector);
+     if (iterator == params.end())
+     {
++        if (isPersisted(paramSelector))
++        {
++            // Tommy. Trys to lookup none volatile params from config file.
++            std::tuple<uint8_t, std::string> ret;
++            if (loadSysConfigValue<std::tuple<uint8_t, std::string>>(paramSelector, ret) == 0)
++            {
++                uint8_t encode = std::get<0>(ret);
++                std::string s = std::get<1>(ret);
++                setEncoding(paramSelector, encode);
++
++                // clang-format off
++                update(paramSelector, [s]() {
++                    return s;
++                });
++                // clang-format on
++
++                return std::make_tuple(true, s);
++            }
++        }
+         return std::make_tuple(false, "");
+     }
+ 
+@@ -16,6 +42,13 @@ std::tuple<bool, std::string>
+ 
+ void SysInfoParamStore::update(uint8_t paramSelector, const std::string& s)
+ {
++    if (isPersisted(paramSelector))
++    {
++        // Tommy. Persist none volatile params.
++        std::tuple<uint8_t, std::string> ret = std::make_tuple(getEncoding(paramSelector), s);
++        updateSysConfigValue<std::tuple<uint8_t, std::string>>(paramSelector, ret);
++    }
++
+     // Add a callback that captures a copy of the string passed and returns it
+     // when invoked.
+ 
+@@ -31,3 +64,19 @@ void SysInfoParamStore::update(uint8_t paramSelector,
+ {
+     params[paramSelector] = callback;
+ }
++
++uint8_t SysInfoParamStore::getEncoding(uint8_t paramSelector)
++{
++    const auto iterator = encodings.find(paramSelector);
++    if (iterator == encodings.end())
++    {
++        return 0;
++    }
++
++    return iterator->second;
++}
++
++void SysInfoParamStore::setEncoding(uint8_t paramSelector, uint8_t encoding)
++{
++    encodings[paramSelector] = encoding & 0x0f;
++}
+diff --git a/sys_info_param.hpp b/sys_info_param.hpp
+index 6088626..9a12e45 100644
+--- a/sys_info_param.hpp
++++ b/sys_info_param.hpp
+@@ -5,6 +5,7 @@
+ #include <map>
+ #include <string>
+ #include <tuple>
++#include <ipmid/utils.hpp>
+ 
+ /**
+  * Key-value store for string-type system info parameters.
+@@ -25,7 +26,7 @@ class SysInfoParamStoreIntf
+      * string set accordingly.
+      */
+     virtual std::tuple<bool, std::string>
+-        lookup(uint8_t paramSelector) const = 0;
++        lookup(uint8_t paramSelector) = 0;
+ 
+     /**
+      * Update a parameter by its code with a string value.
+@@ -56,11 +57,39 @@ class SysInfoParamStoreIntf
+ class SysInfoParamStore : public SysInfoParamStoreIntf
+ {
+   public:
+-    std::tuple<bool, std::string> lookup(uint8_t paramSelector) const override;
++    std::tuple<bool, std::string> lookup(uint8_t paramSelector) override;
+     void update(uint8_t paramSelector, const std::string& s) override;
+     void update(uint8_t paramSelector,
+                 const std::function<std::string()>& callback) override;
++    uint8_t getEncoding(uint8_t paramSelector);
++    void setEncoding(uint8_t paramSelector, uint8_t encoding);
+ 
+   private:
+     std::map<uint8_t, std::function<std::string()>> params;
++    std::map<uint8_t, uint8_t> encodings;
+ };
++
++constexpr auto SYS_INFO_FILE = "/usr/share/ipmi-providers/sys_info.json";
++constexpr auto PARAM_PREFIX = "sys_param_";
++
++/** @brief get config value from system information config file.
++ *  @param[in] paramSelector - Parameter selector of system information.
++ *  @param[in] val - value of the given paramSelector.
++ *  @return 0 if success, else returns none-zero value.
++ */
++template <typename T> int loadSysConfigValue(uint8_t paramSelector, T& val)
++{
++    std::string name = PARAM_PREFIX + std::to_string(paramSelector);
++    return ipmi::loadConfigValue<T>(SYS_INFO_FILE, name, val);
++}
++
++/** @brief set config value to system information config file.
++ *  @param[in] paramSelector - Parameter selector of system information.
++ *  @param[in] val - value of the given paramSelector.
++ *  @return 0 if success, else returns none-zero value.
++ */
++template <typename T> int updateSysConfigValue(uint8_t paramSelector, T val)
++{
++    std::string name = PARAM_PREFIX + std::to_string(paramSelector);
++    return ipmi::updateConfigValue<T>(SYS_INFO_FILE, name, val);
++}
+diff --git a/transporthandler.hpp b/transporthandler.hpp
+index 360364b..3737cce 100644
+--- a/transporthandler.hpp
++++ b/transporthandler.hpp
+@@ -40,10 +40,6 @@
+ #include <xyz/openbmc_project/Network/EthernetInterface/server.hpp>
+ #include <xyz/openbmc_project/Network/IP/server.hpp>
+ #include <xyz/openbmc_project/Network/Neighbor/server.hpp>
+-#include <iomanip>
+-#include <fstream>
+-#include <nlohmann/json.hpp>
+-#include <phosphor-logging/log.hpp>
+ 
+ namespace ipmi
+ {
+@@ -196,56 +192,23 @@ constexpr auto LAN_CONFIG_PRI_RMCP_PORT = "primary_rmcp_port";
+ constexpr auto LAN_CONFIG_IPV6_TCLASS = "ipv6_traffic_class";
+ 
+ /** @brief get config value from LAN configuration file.
+- *  @param[in] name - config name.
+- *  @param[in] val - value of the given config name.
++ *  @param[in] name - field name.
++ *  @param[in] val - value of the given field.
++ *  @return 0 if success, else returns none-zero value.
+  */
+ template <typename T> int loadConfigValue(const std::string& name, T& val)
+ {
+-    std::ifstream configFile(LAN_CFG_FILE);
+-    if (!configFile.is_open())
+-    {
+-        log<level::ERR>("loadConfigValue : Cannot open config path");
+-        return -1;
+-    }
+-
+-    auto data = nlohmann::json::parse(configFile, nullptr);
+-
+-    if (data.is_discarded())
+-    {
+-        log<level::ERR>("loadConfigValue JSON parser failure");
+-        return -2;
+-    }
+-
+-    if (data.contains(name))
+-    {
+-        val = (T)data[name];
+-        return 0;
+-    }
+-
+-    return -3;
++    return ipmi::loadConfigValue<T>(LAN_CFG_FILE, name, val);
+ }
+ 
++/** @brief set config value to LAN configuration file.
++ *  @param[in] name - field name.
++ *  @param[in] val - value of the given field.
++ *  @return 0 if success, else returns none-zero value.
++ */
+ template <typename T> int updateConfigValue(const std::string& name, T val)
+ {
+-    std::ifstream configFile(LAN_CFG_FILE);
+-    if (!configFile.is_open())
+-    {
+-        log<level::ERR>("loadConfigValue : Cannot open config path");
+-        return -1;
+-    }
+-    auto data = nlohmann::json::parse(configFile, nullptr);
+-
+-    if (data.is_discarded())
+-    {
+-        log<level::ERR>("loadConfigValue JSON parser failure");
+-        return -2;
+-    }
+-
+-    data[name] = val;
+-    std::ofstream configStream(LAN_CFG_FILE);
+-    configStream << std::setw(4) << data << std::endl;
+-    configStream.close();
+-    return 0;
++    return ipmi::updateConfigValue<T>(LAN_CFG_FILE, name, val);
+ }
+ 
+ /** @brief The dbus parameters for the interface corresponding to a channel
+-- 
+2.33.0
+

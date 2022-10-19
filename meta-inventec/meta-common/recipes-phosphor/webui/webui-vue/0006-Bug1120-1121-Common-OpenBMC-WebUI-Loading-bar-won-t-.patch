@@ -1,0 +1,102 @@
+From eac1a46ca5a2838e619a5ac14ae3e405a522df02 Mon Sep 17 00:00:00 2001
+From: Jason Lin <lin.jasonyy@inventec.com>
+Date: Thu, 15 Sep 2022 22:46:07 +0800
+Subject: [PATCH 6/6] Bug1120,1121-[Common][OpenBMC][WebUI]Loading bar won't
+ dispear in overview page.
+
+Symptom/Reason:
+    The Promise object does not receive a message of resolve or reject, so the stopping function of the loading bar will not execute.
+
+Root Cause:
+    The dump section of the overview page will not be shown in specific circumstances, but the Promise of dump section does not support this mechanism.
+
+Solution/Change:
+    Let the Promise only append to the waiting list if the dump section is confirmed to show.
+
+Entry Test:
+    https://{ip}/#/
+---
+ src/store/index.js                                    |  2 ++
+ .../modules/ResourceManagement/PowerControlStore.js   |  2 +-
+ src/views/Overview/Overview.vue                       | 11 ++++++++---
+ src/views/Overview/OverviewQuickLinks.vue             |  2 +-
+ 4 files changed, 12 insertions(+), 5 deletions(-)
+
+diff --git a/src/store/index.js b/src/store/index.js
+index ba248c5..0e5e789 100644
+--- a/src/store/index.js
++++ b/src/store/index.js
+@@ -28,6 +28,7 @@ import PostCodeLogsStore from './modules/Logs/PostCodeLogsStore';
+ import PoliciesStore from './modules/SecurityAndAccess/PoliciesStore';
+ import FactoryResetStore from './modules/Operations/FactoryResetStore';
+ import KeyClearStore from './modules/Operations/KeyClearStore';
++import DumpsStore from './modules/Logs/DumpsStore';
+ 
+ import WebSocketPlugin from './plugins/WebSocketPlugin';
+ import DateTimeStore from './modules/Settings/DateTimeStore';
+@@ -69,6 +70,7 @@ export default new Vuex.Store({
+     policies: PoliciesStore,
+     factoryReset: FactoryResetStore,
+     keyClear: KeyClearStore,
++    dumps: DumpsStore,
+   },
+   plugins: [WebSocketPlugin],
+ });
+diff --git a/src/store/modules/ResourceManagement/PowerControlStore.js b/src/store/modules/ResourceManagement/PowerControlStore.js
+index 94c570f..39c7036 100644
+--- a/src/store/modules/ResourceManagement/PowerControlStore.js
++++ b/src/store/modules/ResourceManagement/PowerControlStore.js
+@@ -37,7 +37,7 @@ const PowerControlStore = {
+       const collection = await dispatch('getChassisCollection');
+       if (!collection || collection.length === 0) return;
+       return await api
+-        .get(`${collection[0]}`)
++        .get('/redfish/v1/Chassis/motherboard/Power')
+         .then((response) => api.get(response.data.Power['@odata.id']))
+         .then((response) => {
+           const powerControl = response.data.PowerControl;
+diff --git a/src/views/Overview/Overview.vue b/src/views/Overview/Overview.vue
+index 9960f37..3256f31 100644
+--- a/src/views/Overview/Overview.vue
++++ b/src/views/Overview/Overview.vue
+@@ -85,8 +85,7 @@ export default {
+       this.$root.$on('overview-server-complete', () => resolve());
+     });
+ 
+-    Promise.all([
+-      dumpsPromise,
++    var promises = [
+       eventsPromise,
+       firmwarePromise,
+       inventoryPromise,
+@@ -94,7 +93,13 @@ export default {
+       powerPromise,
+       quicklinksPromise,
+       serverPromise,
+-    ]).finally(() => this.endLoader());
++    ];
++
++    if (this.showDumps) {
++      promises.push(dumpsPromise);
++    }
++
++    Promise.all(promises).finally(() => this.endLoader());
+   },
+ };
+ </script>
+diff --git a/src/views/Overview/OverviewQuickLinks.vue b/src/views/Overview/OverviewQuickLinks.vue
+index bc579b0..0742fd8 100644
+--- a/src/views/Overview/OverviewQuickLinks.vue
++++ b/src/views/Overview/OverviewQuickLinks.vue
+@@ -41,7 +41,7 @@ export default {
+     },
+   },
+   created() {
+-    Promise.all([this.$store.dispatch('global/getBmcTime')]).finally(() => {
++    this.$store.dispatch('global/getBmcTime').finally(() => {
+       this.$root.$emit('overview-quicklinks-complete');
+     });
+   },
+-- 
+2.33.0
+

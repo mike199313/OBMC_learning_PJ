@@ -1,0 +1,11 @@
+/xyz/openbmc_project/ipmi/global_enables:
+    - Interface: xyz.openbmc_project.Ipmi.GlobalEnables
+      Properties:
+         EventMsgBuf: 
+            Default: 'false'
+         EventMsgBufFullIntr:
+            Default: 'false'
+         SEL:
+            Default: 'true'
+         RcvMsgQueueIntr:
+            Default: 'false'

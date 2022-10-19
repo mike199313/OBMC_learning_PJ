@@ -1,0 +1,2164 @@
+{
+    "Exposes": [
+        {
+            "Class": "METemp",
+            "Bus": 0,
+            "Address": "0x8",
+            "Name": "PCH_Temp",
+            "SensorInfo": [
+                {
+                    "Label": "PCH_Temp",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x2C",
+                    "EntityId": "3",
+                    "EntityInstance": "28"
+                }
+            ],
+            "Thresholds": [
+                {
+                    "Direction": "greater than",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 70
+                },
+                {
+                    "Direction": "greater than",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 65
+                },
+                {
+                    "Direction": "less than",
+                    "Name": "upper critical",
+                    "Severity": 0,
+                    "Value": 5
+                },
+                {
+                    "Direction": "less than",
+                    "Name": "upper non critical",
+                    "Severity": 1,
+                    "Value": 0
+                }
+            ],
+            "Type": "IpmbSensor"
+        },    
+        {
+            "Bus": 0,
+            "Address": "0x30",
+            "CpuID": 1,
+            "Name": "CPU1",
+            "Thresholds": [
+                {
+                    "Direction": "greater than",
+                    "Label": "DTS",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 90
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "DTS",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 85
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "DTS",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 5
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "DTS",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 0
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "Die",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 90
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "Die",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 85
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "Die",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 5
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "Die",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 0
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "DIMM",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 90
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "DIMM",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 85
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "DIMM",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 5
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "DIMM",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 0
+                }
+            ],
+            "SensorInfo": [
+                {
+                    "Label": "DTS_CPU1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x10",
+                    "EntityId": "3",
+                    "EntityInstance": "0"
+                },
+                {
+                    "Label": "Die_CPU1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x11",
+                    "EntityId": "3",
+                    "EntityInstance": "1"
+                },
+                {
+                    "Label": "DIMM_A0_CPU1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x90",
+                    "EntityId": "8",
+                    "EntityInstance": "2"
+                },
+                {
+                    "Label": "DIMM_B0_CPU1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x91",
+                    "EntityId": "8",
+                    "EntityInstance": "3"
+                },
+                {
+                    "Label": "DIMM_C0_CPU1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x92",
+                    "EntityId": "8",
+                    "EntityInstance": "4"
+                },
+                {
+                    "Label": "DIMM_D0_CPU1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x93",
+                    "EntityId": "8",
+                    "EntityInstance": "5"
+                },
+                {
+                    "Label": "DIMM_E0_CPU1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x94",
+                    "EntityId": "8",
+                    "EntityInstance": "6"
+                },
+                {
+                    "Label": "DIMM_F0_CPU1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x95",
+                    "EntityId": "8",
+                    "EntityInstance": "7"
+                },
+                {
+                    "Label": "DIMM_G0_CPU1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x96",
+                    "EntityId": "8",
+                    "EntityInstance": "8"
+                },
+                {
+                    "Label": "DIMM_H0_CPU1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x97",
+                    "EntityId": "8",
+                    "EntityInstance": "9"
+                },
+                {
+                    "Label": "DIMM_A1_CPU1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x98",
+                    "EntityId": "8",
+                    "EntityInstance": "10"
+                },
+                {
+                    "Label": "DIMM_B1_CPU1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x99",
+                    "EntityId": "8",
+                    "EntityInstance": "11"
+                },
+                {
+                    "Label": "DIMM_C1_CPU1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x9A",
+                    "EntityId": "8",
+                    "EntityInstance": "12"
+                },
+                {
+                    "Label": "DIMM_D1_CPU1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x9B",
+                    "EntityId": "8",
+                    "EntityInstance": "13"
+                },
+                {
+                    "Label": "DIMM_E1_CPU1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x9C",
+                    "EntityId": "8",
+                    "EntityInstance": "14"
+                },
+                {
+                    "Label": "DIMM_F1_CPU1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x9D",
+                    "EntityId": "8",
+                    "EntityInstance": "15"
+                },
+                {
+                    "Label": "DIMM_G1_CPU1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x9E",
+                    "EntityId": "8",
+                    "EntityInstance": "16"
+                },
+                {
+                    "Label": "DIMM_H1_CPU1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x9F",
+                    "EntityId": "8",
+                    "EntityInstance": "17"
+                }
+            ],
+            "Type": "XeonCPU"
+        },
+        {
+            "Name": "DTS_CPU1",
+            "SensorInfo": [
+                {
+                    "Label": "DTS_CPU1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x10",
+                    "EntityId": "3",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "XeonCPU"
+        },
+        {
+            "Name": "Die_CPU1",
+            "SensorInfo": [
+                {
+                    "Label": "Die_CPU1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x11",
+                    "EntityId": "3",
+                    "EntityInstance": "1"
+                }
+            ],
+            "Type": "XeonCPU"
+        },
+	{
+            "Name": "DIMM_A0_CPU1",
+            "SensorInfo": [
+                {
+                    "Label": "DIMM_A0_CPU1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x90",
+                    "EntityId": "8",
+                    "EntityInstance": "2"
+                }
+            ],
+            "Type": "XeonCPU"
+        },
+	{
+            "Name": "DIMM_B0_CPU1",
+            "SensorInfo": [
+                {
+                    "Label": "DIMM_B0_CPU1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x91",
+                    "EntityId": "8",
+                    "EntityInstance": "3"
+                }
+            ],
+            "Type": "XeonCPU"
+        },
+	{
+            "Name": "DIMM_C0_CPU1",
+            "SensorInfo": [
+                {
+                    "Label": "DIMM_C0_CPU1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x92",
+                    "EntityId": "8",
+                    "EntityInstance": "4"
+                }
+            ],
+            "Type": "XeonCPU"
+        },
+	{
+            "Name": "DIMM_D0_CPU1",
+            "SensorInfo": [
+                {
+                    "Label": "DIMM_D0_CPU1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x93",
+                    "EntityId": "8",
+                    "EntityInstance": "5"
+                }
+            ],
+            "Type": "XeonCPU"
+        },
+	{
+            "Name": "DIMM_E0_CPU1",
+            "SensorInfo": [
+                {
+                    "Label": "DIMM_E0_CPU1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x94",
+                    "EntityId": "8",
+                    "EntityInstance": "6"
+                }
+            ],
+            "Type": "XeonCPU"
+        },
+	{
+            "Name": "DIMM_F0_CPU1",
+            "SensorInfo": [
+                {
+                    "Label": "DIMM_F0_CPU1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x95",
+                    "EntityId": "8",
+                    "EntityInstance": "7"
+                }
+            ],
+            "Type": "XeonCPU"
+        },
+	{
+            "Name": "DIMM_G0_CPU1",
+            "SensorInfo": [
+                {
+                    "Label": "DIMM_G0_CPU1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x96",
+                    "EntityId": "8",
+                    "EntityInstance": "8"
+                }
+            ],
+            "Type": "XeonCPU"
+        },
+	{
+            "Name": "DIMM_H0_CPU1",
+            "SensorInfo": [
+                {
+                    "Label": "DIMM_H0_CPU1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x97",
+                    "EntityId": "8",
+                    "EntityInstance": "9"
+                }
+            ],
+            "Type": "XeonCPU"
+        },
+	{
+            "Name": "DIMM_A1_CPU1",
+            "SensorInfo": [
+                {
+                    "Label": "DIMM_A1_CPU1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x98",
+                    "EntityId": "8",
+                    "EntityInstance": "10"
+                }
+            ],
+            "Type": "XeonCPU"
+        },
+	{
+            "Name": "DIMM_B1_CPU1",
+            "SensorInfo": [
+                {
+                    "Label": "DIMM_B1_CPU1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x99",
+                    "EntityId": "8",
+                    "EntityInstance": "11"
+                }
+            ],
+            "Type": "XeonCPU"
+        },
+	{
+            "Name": "DIMM_C1_CPU1",
+            "SensorInfo": [
+                {
+                    "Label": "DIMM_C1_CPU1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x9A",
+                    "EntityId": "8",
+                    "EntityInstance": "12"
+                }
+            ],
+            "Type": "XeonCPU"
+        },
+	{
+            "Name": "DIMM_D1_CPU1",
+            "SensorInfo": [
+                {
+                    "Label": "DIMM_D1_CPU1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x9B",
+                    "EntityId": "8",
+                    "EntityInstance": "13"
+                }
+            ],
+            "Type": "XeonCPU"
+        },
+	{
+            "Name": "DIMM_E1_CPU1",
+            "SensorInfo": [
+                {
+                    "Label": "DIMM_E1_CPU1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x9C",
+                    "EntityId": "8",
+                    "EntityInstance": "14"
+                }
+            ],
+            "Type": "XeonCPU"
+        },
+	{
+            "Name": "DIMM_F1_CPU1",
+            "SensorInfo": [
+                {
+                    "Label": "DIMM_F1_CPU1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x9D",
+                    "EntityId": "8",
+                    "EntityInstance": "15"
+                }
+            ],
+            "Type": "XeonCPU"
+        },
+	{
+            "Name": "DIMM_G1_CPU1",
+            "SensorInfo": [
+                {
+                    "Label": "DIMM_G1_CPU1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x9E",
+                    "EntityId": "8",
+                    "EntityInstance": "16"
+                }
+            ],
+            "Type": "XeonCPU"
+        },
+	{
+            "Name": "DIMM_H1_CPU1",
+            "SensorInfo": [
+                {
+                    "Label": "DIMM_H1_CPU1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x9F",
+                    "EntityId": "8",
+                    "EntityInstance": "17"
+                }
+            ],
+            "Type": "XeonCPU"
+        },
+        {
+            "Bus": 0,
+            "Address": "0x31",
+            "CpuID": 2,
+            "Name": "CPU2",
+            "Thresholds": [
+                {
+                    "Direction": "greater than",
+                    "Label": "DTS",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 90
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "DTS",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 85
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "DTS",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 5
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "DTS",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 0
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "Die",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 90
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "Die",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 85
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "Die",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 5
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "Die",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 0
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "DIMM",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 90
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "DIMM",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 85
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "DIMM",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 5
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "DIMM",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 0
+                }
+            ],
+            "SensorInfo": [
+                {
+                    "Label": "DTS_CPU2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x12",
+                    "EntityId": "3",
+                    "EntityInstance": "2"
+                },
+                {
+                    "Label": "Die_CPU2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x13",
+                    "EntityId": "3",
+                    "EntityInstance": "3"
+                },
+                {
+                    "Label": "DIMM_A0_CPU2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0xA0",
+                    "EntityId": "8",
+                    "EntityInstance": "2"
+                },
+                {
+                    "Label": "DIMM_B0_CPU2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0xA1",
+                    "EntityId": "8",
+                    "EntityInstance": "3"
+                },
+                {
+                    "Label": "DIMM_C0_CPU2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0xA2",
+                    "EntityId": "8",
+                    "EntityInstance": "4"
+                },
+                {
+                    "Label": "DIMM_D0_CPU2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0xA3",
+                    "EntityId": "8",
+                    "EntityInstance": "5"
+                },
+                {
+                    "Label": "DIMM_E0_CPU2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0xA4",
+                    "EntityId": "8",
+                    "EntityInstance": "6"
+                },
+                {
+                    "Label": "DIMM_F0_CPU2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0xA5",
+                    "EntityId": "8",
+                    "EntityInstance": "7"
+                },
+                {
+                    "Label": "DIMM_G0_CPU2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0xA6",
+                    "EntityId": "8",
+                    "EntityInstance": "8"
+                },
+                {
+                    "Label": "DIMM_H0_CPU2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0xA7",
+                    "EntityId": "8",
+                    "EntityInstance": "9"
+                },
+                {
+                    "Label": "DIMM_A1_CPU2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0xA8",
+                    "EntityId": "8",
+                    "EntityInstance": "10"
+                },
+                {
+                    "Label": "DIMM_B1_CPU2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0xA9",
+                    "EntityId": "8",
+                    "EntityInstance": "11"
+                },
+                {
+                    "Label": "DIMM_C1_CPU2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0xAA",
+                    "EntityId": "8",
+                    "EntityInstance": "12"
+                },
+                {
+                    "Label": "DIMM_D1_CPU2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0xAB",
+                    "EntityId": "8",
+                    "EntityInstance": "13"
+                },
+                {
+                    "Label": "DIMM_E1_CPU2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0xAC",
+                    "EntityId": "8",
+                    "EntityInstance": "14"
+                },
+                {
+                    "Label": "DIMM_F1_CPU2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0xAD",
+                    "EntityId": "8",
+                    "EntityInstance": "15"
+                },
+                {
+                    "Label": "DIMM_G1_CPU2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0xAE",
+                    "EntityId": "8",
+                    "EntityInstance": "16"
+                },
+                {
+                    "Label": "DIMM_H1_CPU2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0xAF",
+                    "EntityId": "8",
+                    "EntityInstance": "17"
+                }
+            ],
+            "Type": "XeonCPU"
+        },
+        {
+            "Name": "DTS_CPU2",
+            "SensorInfo": [
+                {
+                    "Label": "DTS_CPU2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x12",
+                    "EntityId": "3",
+                    "EntityInstance": "2"
+                }
+            ],
+            "Type": "XeonCPU"
+        },
+        {
+            "CpuID": 2,
+            "Name": "Die_CPU2",
+            "SensorInfo": [
+                {
+                    "Label": "Die_CPU2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x13",
+                    "EntityId": "3",
+                    "EntityInstance": "3"
+                }
+            ],
+            "Type": "XeonCPU"
+        },
+	{
+            "Name": "DIMM_A0_CPU2",
+            "SensorInfo": [
+                {
+                    "Label": "DIMM_A0_CPU2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0xA0",
+                    "EntityId": "8",
+                    "EntityInstance": "2"
+                }
+            ],
+            "Type": "XeonCPU"
+        },
+	{
+            "Name": "DIMM_B0_CPU2",
+            "SensorInfo": [
+                {
+                    "Label": "DIMM_B0_CPU2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0xA1",
+                    "EntityId": "8",
+                    "EntityInstance": "3"
+                }
+            ],
+            "Type": "XeonCPU"
+        },
+	{
+            "Name": "DIMM_C0_CPU2",
+            "SensorInfo": [
+                {
+                    "Label": "DIMM_C0_CPU2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0xA2",
+                    "EntityId": "8",
+                    "EntityInstance": "4"
+                }
+            ],
+            "Type": "XeonCPU"
+        },
+	{
+            "Name": "DIMM_D0_CPU2",
+            "SensorInfo": [
+                {
+                    "Label": "DIMM_D0_CPU2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0xA3",
+                    "EntityId": "8",
+                    "EntityInstance": "5"
+                }
+            ],
+            "Type": "XeonCPU"
+        },
+	{
+            "Name": "DIMM_E0_CPU2",
+            "SensorInfo": [
+                {
+                    "Label": "DIMM_E0_CPU2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0xA4",
+                    "EntityId": "8",
+                    "EntityInstance": "6"
+                }
+            ],
+            "Type": "XeonCPU"
+        },
+	{
+            "Name": "DIMM_F0_CPU2",
+            "SensorInfo": [
+                {
+                    "Label": "DIMM_F0_CPU2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0xA5",
+                    "EntityId": "8",
+                    "EntityInstance": "7"
+                }
+            ],
+            "Type": "XeonCPU"
+        },
+	{
+            "Name": "DIMM_G0_CPU2",
+            "SensorInfo": [
+                {
+                    "Label": "DIMM_G0_CPU2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0xA6",
+                    "EntityId": "8",
+                    "EntityInstance": "8"
+                }
+            ],
+            "Type": "XeonCPU"
+        },
+	{
+            "Name": "DIMM_H0_CPU2",
+            "SensorInfo": [
+                {
+                    "Label": "DIMM_H0_CPU2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0xA7",
+                    "EntityId": "8",
+                    "EntityInstance": "9"
+                }
+            ],
+            "Type": "XeonCPU"
+        },
+	{
+            "Name": "DIMM_A1_CPU2",
+            "SensorInfo": [
+                {
+                    "Label": "DIMM_A1_CPU2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0xA8",
+                    "EntityId": "8",
+                    "EntityInstance": "10"
+                }
+            ],
+            "Type": "XeonCPU"
+        },
+	{
+            "Name": "DIMM_B1_CPU2",
+            "SensorInfo": [
+                {
+                    "Label": "DIMM_B1_CPU2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0xA9",
+                    "EntityId": "8",
+                    "EntityInstance": "11"
+                }
+            ],
+            "Type": "XeonCPU"
+        },
+	{
+            "Name": "DIMM_C1_CPU2",
+            "SensorInfo": [
+                {
+                    "Label": "DIMM_C1_CPU2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0xAA",
+                    "EntityId": "8",
+                    "EntityInstance": "12"
+                }
+            ],
+            "Type": "XeonCPU"
+        },
+	{
+            "Name": "DIMM_D1_CPU2",
+            "SensorInfo": [
+                {
+                    "Label": "DIMM_D1_CPU2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0xAB",
+                    "EntityId": "8",
+                    "EntityInstance": "13"
+                }
+            ],
+            "Type": "XeonCPU"
+        },
+	{
+            "Name": "DIMM_E1_CPU2",
+            "SensorInfo": [
+                {
+                    "Label": "DIMM_E1_CPU2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0xAC",
+                    "EntityId": "8",
+                    "EntityInstance": "14"
+                }
+            ],
+            "Type": "XeonCPU"
+        },
+	{
+            "Name": "DIMM_F1_CPU2",
+            "SensorInfo": [
+                {
+                    "Label": "DIMM_F1_CPU2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0xAD",
+                    "EntityId": "8",
+                    "EntityInstance": "15"
+                }
+            ],
+            "Type": "XeonCPU"
+        },
+	{
+            "Name": "DIMM_G1_CPU2",
+            "SensorInfo": [
+                {
+                    "Label": "DIMM_G1_CPU2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0xAE",
+                    "EntityId": "8",
+                    "EntityInstance": "16"
+                }
+            ],
+            "Type": "XeonCPU"
+        },
+	{
+            "Name": "DIMM_H1_CPU2",
+            "SensorInfo": [
+                {
+                    "Label": "DIMM_H1_CPU2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0xAF",
+                    "EntityId": "8",
+                    "EntityInstance": "17"
+                }
+            ],
+            "Type": "XeonCPU"
+        },
+        {
+            "Address": "0x48",
+            "Bus": "6",
+            "Name":  "THERMAL_U95",
+            "Name1": "THERMAL_90_2",
+            "Name2": "THERMAL_Q89",
+            "Name3": "THERMAL_Q90",
+            "Name4": "THERMAL_Q93",
+            "Name5": "THERMAL_Q91",
+            "Name6": "THERMAL_Q94",
+            "Name7": "THERMAL_Q92",
+            "Name8": "THERMAL_90_9",
+            "Thresholds": [
+                {
+                    "Label": "THERMAL_U95",
+                    "Direction": "greater than",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 70
+                },
+                {
+                    "Label": "THERMAL_U95",
+                    "Direction": "greater than",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 65
+                },
+                {
+                    "Label": "THERMAL_U95",
+                    "Direction": "less than",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 5
+                },
+                {
+                    "Label": "THERMAL_U95",
+                    "Direction": "less than",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 0
+                },
+                {
+                    "Label": "THERMAL_Q89",
+                    "Direction": "greater than",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 70
+                },
+                {
+                    "Label": "THERMAL_Q89",
+                    "Direction": "greater than",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 65
+                },
+                {
+                    "Label": "THERMAL_Q89",
+                    "Direction": "less than",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 5
+                },
+                {
+                    "Label": "THERMAL_Q89",
+                    "Direction": "less than",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 0
+                },
+                {
+                    "Label": "THERMAL_Q90",
+                    "Direction": "greater than",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 70
+                },
+                {
+                    "Label": "THERMAL_Q90",
+                    "Direction": "greater than",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 65
+                },
+                {
+                    "Label": "THERMAL_Q90",
+                    "Direction": "less than",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 5
+                },
+                {
+                    "Label": "THERMAL_Q90",
+                    "Direction": "less than",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 0
+                },
+                {
+                    "Label": "THERMAL_Q93",
+                    "Direction": "greater than",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 70
+                },
+                {
+                    "Label": "THERMAL_Q93",
+                    "Direction": "greater than",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 65
+                },
+                {
+                    "Label": "THERMAL_Q93",
+                    "Direction": "less than",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 5
+                },
+                {
+                    "Label": "THERMAL_Q93",
+                    "Direction": "less than",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 0
+                },
+                {
+                    "Label": "THERMAL_Q91",
+                    "Direction": "greater than",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 70
+                },
+                {
+                    "Label": "THERMAL_Q91",
+                    "Direction": "greater than",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 65
+                },
+                {
+                    "Label": "THERMAL_Q91",
+                    "Direction": "less than",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 5
+                },
+                {
+                    "Label": "THERMAL_Q91",
+                    "Direction": "less than",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 0
+                },
+                {
+                    "Label": "THERMAL_Q94",
+                    "Direction": "greater than",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 70
+                },
+                {
+                    "Label": "THERMAL_Q94",
+                    "Direction": "greater than",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 65
+                },
+                {
+                    "Label": "THERMAL_Q94",
+                    "Direction": "less than",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 5
+                },
+                {
+                    "Label": "THERMAL_Q94",
+                    "Direction": "less than",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 0
+                },
+                {
+                    "Label": "THERMAL_Q92",
+                    "Direction": "greater than",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 70
+                },
+                {
+                    "Label": "THERMAL_Q92",
+                    "Direction": "greater than",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 65
+                },
+                {
+                    "Label": "THERMAL_Q92",
+                    "Direction": "less than",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 5
+                },
+                {
+                    "Label": "THERMAL_Q92",
+                    "Direction": "less than",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 0
+                }
+            ],
+            "SensorInfo": [
+                {
+                    "Label": "THERMAL_U95",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x60",
+                    "EntityId": "0x07",
+                    "EntityInstance": "0"
+                },
+                {
+                    "Label": "THERMAL_Q89",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x61",
+                    "EntityId": "0x07",
+                    "EntityInstance": "1"
+                },
+                {
+                    "Label": "THERMAL_Q90",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x62",
+                    "EntityId": "0x07",
+                    "EntityInstance": "2"
+                },
+                {
+                    "Label": "THERMAL_Q93",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x63",
+                    "EntityId": "0x07",
+                    "EntityInstance": "3"
+                },
+                {
+                    "Label": "THERMAL_Q91",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x64",
+                    "EntityId": "0x07",
+                    "EntityInstance": "4"
+                },
+                {
+                    "Label": "THERMAL_Q94",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x65",
+                    "EntityId": "0x07",
+                    "EntityInstance": "5"
+                },
+                {
+                    "Label": "THERMAL_Q92",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x66",
+                    "EntityId": "0x07",
+                    "EntityInstance": "6"
+                }
+            ],
+            "Type": "TMP468"
+        },
+        {
+            "Name": "THERMAL_Q89",
+            "SensorInfo": [
+                {
+                    "Label": "THERMAL_Q89",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x61",
+                    "EntityId": "0x07",
+                    "EntityInstance": "1"
+                }
+            ],
+            "Type": "TMP468"
+        },
+        {
+            "Name": "THERMAL_Q90",
+            "SensorInfo": [
+                {
+                    "Label": "THERMAL_Q90",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x62",
+                    "EntityId": "0x07",
+                    "EntityInstance": "2"
+                }
+            ],
+            "Type": "TMP468"
+        },
+        {
+            "Name": "THERMAL_Q93",
+            "SensorInfo": [
+                {
+                    "Label": "THERMAL_Q93",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x63",
+                    "EntityId": "0x07",
+                    "EntityInstance": "3"
+                }
+            ],
+            "Type": "TMP468"
+        },
+        {
+            "Name": "THERMAL_Q91",
+            "SensorInfo": [
+                {
+                    "Label": "THERMAL_Q91",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x64",
+                    "EntityId": "0x07",
+                    "EntityInstance": "4"
+                }
+            ],
+            "Type": "TMP468"
+        },
+        {
+            "Name": "THERMAL_Q94",
+            "SensorInfo": [
+                {
+                    "Label": "THERMAL_Q94",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x65",
+                    "EntityId": "0x07",
+                    "EntityInstance": "5"
+                }
+            ],
+            "Type": "TMP468"
+        },
+        {
+            "Name": "THERMAL_Q92",
+            "SensorInfo": [
+                {
+                    "Label": "THERMAL_Q92",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x66",
+                    "EntityId": "0x07",
+                    "EntityInstance": "6"
+                }
+            ],
+            "Type": "TMP468"
+        },
+        {
+            "Name": "HSC_VIN",
+            "SensorInfo": [
+                {
+                    "SensorNum": "0x74",
+                    "EntityId": "0x15",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "ADM1278"
+        },
+        {
+            "Name": "HSC_PIN",
+            "SensorInfo": [
+                {
+                    "SensorNum": "0x76",
+                    "EntityId": "0x15",
+                    "EntityInstance": "2"
+                }
+            ],
+            "Type": "ADM1278"
+        },
+        {
+            "Name": "HSC_VOUT",
+            "SensorInfo": [
+                {
+                    "SensorNum": "0x75",
+                    "EntityId": "0x15",
+                    "EntityInstance": "1"                
+                }
+            ],
+            "Type": "ADM1278"
+        },
+        {
+           "Name": "HSC_IOUT",
+            "SensorInfo": [
+                {
+                    "SensorNum": "0x77",
+                    "EntityId": "0x15",
+                   "EntityInstance": "3"
+                }
+            ],
+            "Type": "ADM1278"
+        },
+        {
+            "Address": "0x40",
+            "Bus": "7",
+            "Labels": [
+                "vin",
+                "vout1",
+                "iout1",
+                "pin"
+            ],
+            "vin_Max" : 20,
+            "vin_Scale" : 1000,
+            "vout1_Max" : 20,
+            "vout1_Scale" : 1000,
+            "iout1_Max" : 25,
+            "iout1_Scale" : 1000,
+            "pin_Max" : 50,
+            "pin_Scale" : 1000000,
+            "Name": "HSC",
+            "Thresholds": [
+                {
+                    "Direction": "greater than",
+                    "Label": "vin",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 13
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "vin",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 12.5
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "vin",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 11.5
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "vin",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 11
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "vout1",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 13
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "vout1",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 12.5
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "vout1",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 11.5
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "vout1",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 11
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "iout1",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 10
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "iout1",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 9
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "iout1",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 0.3
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "iout1",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 0
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "pin",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 25
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "pin",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 20
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "pin",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 5
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "pin",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 0
+                }
+            ],
+            "SensorInfo": [
+                {
+                    "Label": "vin",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x74",
+                    "EntityId": "0x15",
+                    "EntityInstance": "0"
+                },
+                {
+                    "Label": "vout1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x75",
+                    "EntityId": "0x15",
+                    "EntityInstance": "1"
+                },
+                {
+                    "Label": "pin",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x76",
+                    "EntityId": "0x15",
+                    "EntityInstance": "2"
+                },
+                {
+                    "Label": "iout1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x77",
+                    "EntityId": "0x15",
+                    "EntityInstance": "3"
+                }
+            ],
+            "Type": "ADM1278"
+        },
+        {
+            "Name": "PSU1_VIN",
+            "SensorInfo": [
+                {
+                    "SensorNum": "0x70",
+                    "EntityId": "0x0A",
+                    "EntityInstance": "0"
+                 }
+             ]
+        },
+        {
+            "Name": "PSU1_VOUT",
+            "SensorInfo": [
+                {
+                    "SensorNum": "0x71",
+                    "EntityId": "0x0A",
+                    "EntityInstance": "1"
+                 }
+             ]
+        },
+        {
+            "Name": "PSU1_Input_Power",
+            "SensorInfo": [
+                {
+                    "SensorNum": "0x72",
+                    "EntityId": "0x0A",
+                    "EntityInstance": "2"
+                 }
+             ]
+        },
+        {
+            "Name": "PSU1_Output_Power",
+            "SensorInfo": [
+                {
+                    "SensorNum": "0x73",
+                    "EntityId": "0x0A",
+                    "EntityInstance": "3"
+                 }
+             ]
+        },
+        {
+            "Name": "PSU1_IIN",
+            "SensorInfo": [
+                {
+                    "SensorNum": "0x79",
+                    "EntityId": "0x0A",
+                    "EntityInstance": "4"
+                 }
+             ]
+        },
+        {
+            "Name": "PSU1_IOUT",
+            "SensorInfo": [
+                {
+                    "SensorNum": "0x7A",
+                    "EntityId": "0x0A",
+                    "EntityInstance": "5"
+                 }
+             ]
+        },
+        {
+            "Name": "PSU1_Fan1",
+            "SensorInfo": [
+                {
+                    "SensorNum": "0x7B",
+                    "EntityId": "0x0A",
+                    "EntityInstance": "6"
+                 }
+             ]
+        },
+        {
+            "Name": "PSU1_Temp1",
+            "SensorInfo": [
+                {
+                    "SensorNum": "0x7C",
+                    "EntityId": "0x0A",
+                    "EntityInstance": "7"
+                 }
+             ]
+        },
+        {
+            "Name": "PSU1_Temp2",
+            "SensorInfo": [
+                {
+                    "SensorNum": "0x7D",
+                    "EntityId": "0x0A",
+                    "EntityInstance": "8"
+                 }
+             ]
+        },
+        {
+            "Name": "PSU1_Temp3",
+            "SensorInfo": [
+                {
+                    "SensorNum": "0x7E",
+                    "EntityId": "0x0A",
+                    "EntityInstance": "9"
+                 }
+             ]
+        },
+        {
+            "Name": "Pwm_PSU1_Fan_1",
+            "SensorInfo": [
+                {
+                    "SensorNum": "0x7F",
+                    "EntityId": "0x0A",
+                    "EntityInstance": "10"
+                 }
+             ]
+        },
+        {
+            "Address": "0x58",
+            "Bus": "12",
+            "Labels": [
+                "vin",
+                "vout1",
+                "pin",
+                "pout1",
+                "iin",
+                "iout1",
+                "temp1",
+                "temp2",
+                "temp3",
+                "fan1"
+            ],
+            "vin_Scale" : 1000,
+            "vout1_Scale" : 1000,
+            "pin_Scale" : 1000000,
+            "pin_Max" : 2650,
+            "pin_Name" : "PSU1_Input_Power",
+            "pout1_Scale" : 1000000,
+            "pout1_Max" : 1760,
+            "pout1_Name" : "PSU1_Output_Power",
+            "iin_Scale" : 1000,
+            "iin_Max" : 15.45,
+            "iout1_Scale" : 1000,
+            "iout1_Max" : 232.1,
+            "temp1_Scale" : 1000,
+            "temp1_Max" : 95,
+            "temp1_Name" : "PSU1_Temp1",
+            "temp2_Scale" : 1000,
+            "temp2_Max" : 95,
+            "temp2_Name" : "PSU1_Temp2",
+            "temp3_Scale" : 1000,
+            "temp3_Max" : 95,
+            "temp3_Name" : "PSU1_Temp3",
+            "fan1_Name" : "PSU1_Fan1",
+            "Name": "PSU1",
+            "Thresholds": [
+                {
+                    "Direction": "greater than",
+                    "Label": "vin",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 250
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "vin",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 230
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "vin",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 80
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "vin",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 100
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "vout1",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 15
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "vout1",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 13
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "vout1",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 10
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "vout1",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 12
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "pin",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 2600
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "pin",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 2400
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "pin",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 0
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "pin",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 100
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "pout1",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 2600
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "pout1",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 2400
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "pout1",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 0
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "pout1",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 100
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "iin",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 15
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "iin",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 13
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "iin",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 0
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "iin",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 0.3
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "iout1",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 230
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "iout1",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 224
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "iout1",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 5
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "iout1",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 0
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "temp1",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 70
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "temp1",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 65
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "temp1",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 5
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "temp1",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 0
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "temp2",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 70
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "temp2",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 65
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "temp2",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 5
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "temp2",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 0
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "temp3",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 70
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "temp3",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 65
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "temp3",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 5
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "temp3",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 0
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "fan1",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 20200
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "fan1",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 18200
+                },   
+                {
+                    "Direction": "less than",
+                    "Label": "fan1",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 3600
+                },                 
+                {
+                    "Direction": "less than",
+                    "Label": "fan1",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 3200
+                }
+            ],
+            "SensorInfo": [
+                {
+                    "Label": "vin",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x70",
+                    "EntityId": "0x0A",
+                    "EntityInstance": "0"
+                },
+                {
+                    "Label": "vout1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x71",
+                    "EntityId": "0x0A",
+                    "EntityInstance": "1"
+                },
+                {
+                    "Label": "pin",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x72",
+                    "EntityId": "0x0A",
+                    "EntityInstance": "2"
+                },
+                {
+                    "Label": "pout1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x73",
+                    "EntityId": "0x0A",
+                    "EntityInstance": "3"
+                },
+                {
+                    "Label": "iin",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x79",
+                    "EntityId": "0x0A",
+                    "EntityInstance": "4"
+                },
+                {
+                    "Label": "iout1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x7A",
+                    "EntityId": "0x0A",
+                    "EntityInstance": "5"
+                },
+                {
+                    "Label": "fan1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x7B",
+                    "EntityId": "0x0A",
+                    "EntityInstance": "6"
+                },
+                {
+                    "Label": "temp1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x7C",
+                    "EntityId": "0x0A",
+                    "EntityInstance": "7"
+                },
+                {
+                    "Label": "temp2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x7D",
+                    "EntityId": "0x0A",
+                    "EntityInstance": "8"
+                },
+                {
+                    "Label": "temp3",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x7E",
+                    "EntityId": "0x0A",
+                    "EntityInstance": "9"
+                },
+                {
+                    "Label": "Pwm_PSU1_Fan_1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x7F",
+                    "EntityId": "0x0A",
+                    "EntityInstance": "10"
+                }
+            ],
+            "Type": "pmbus"
+        },
+        {
+            "Name": "Inlet_BRD_Temp",
+            "SensorType": "temperature",
+            "SensorMember1": "THERMAL_Q89",
+            "SensorMember2": "THERMAL_Q90",
+            "SensorMember3": "THERMAL_Q92",
+            "SensorInfo": [
+                {
+                    "Label": "Inlet_BRD_Temp",
+                    "SensorNum": "0x69",
+                    "EntityId": "0x7",
+                    "EntityInstance": "7"
+                }
+            ],
+            "Thresholds": [
+                {
+                    "Direction": "greater than",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 70
+                },
+                {
+                    "Direction": "greater than",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 65
+                },
+                {
+                    "Direction": "less than",
+                    "Name": "lower critical",
+                    "Severity": 0,
+                    "Value": 5
+                },
+                {
+                    "Direction": "less than",
+                    "Name": "lower non critical",
+                    "Severity": 1,
+                    "Value": 0
+                }
+            ],
+            "Type": "AverageSensor"
+        },
+        {
+            "Name": "Exit_Air_Temp",
+            "SensorType": "temperature",
+            "SensorMember1": "THERMAL_Q91",
+            "SensorMember2": "THERMAL_Q93",
+            "SensorMember3": "THERMAL_Q94",
+            "SensorInfo": [
+                {
+                    "Label": "Exit_Air_Temp",
+                    "SensorNum": "0x6A",
+                    "EntityId": "0x7",
+                    "EntityInstance": "8"
+                }
+            ],
+            "Thresholds": [
+                {
+                    "Direction": "greater than",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 70
+                },
+                {
+                    "Direction": "greater than",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 65
+                },
+                {
+                    "Direction": "less than",
+                    "Name": "lower critical",
+                    "Severity": 0,
+                    "Value": 5
+                },
+                {
+                    "Direction": "less than",
+                    "Name": "lower non critical",
+                    "Severity": 1,
+                    "Value": 0
+                }
+            ],
+            "Type": "AverageSensor"
+        },
+        {
+            "Name": "total_power",
+            "SensorType": "power",
+            "SensorMember1": "PSU1_Output_Power",
+            "Max": 3000,
+            "Min": 0,
+            "Thresholds": [
+                {
+                    "Direction": "greater than",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 3000
+                },
+                {
+                    "Direction": "greater than",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 2400
+                },
+                {
+                    "Direction": "less than",
+                    "Name": "lower critical",
+                    "Severity": 0,
+                    "Value": 100
+                },
+                {
+                    "Direction": "less than",
+                    "Name": "lower non critical",
+                    "Severity": 1,
+                    "Value": 0
+                }
+            ],
+            "SensorInfo": [
+                {
+                    "Label": "total_power",
+                    "SensorNum": "0x80",
+                    "EntityId": "0xa",
+                    "EntityInstance": "11"
+                }
+            ],
+            "Type": "AccumulateSensor"
+        }
+    ],
+    "Name": "motherboard",
+    "Probe": "xyz.openbmc_project.FruDevice({'BUS': 3, 'ADDRESS' : 80})",
+    "Type": "Chassis",
+    "xyz.openbmc_project.Inventory.Decorator.Asset": {
+        "Manufacturer": "$BOARD_MANUFACTURER",
+        "Model": "$BOARD_PRODUCT_NAME",
+        "PartNumber": "$BOARD_PART_NUMBER",
+        "SerialNumber": "$BOARD_SERIAL_NUMBER",
+        "BuildDate": "$BOARD_MANUFACTURE_DATE",
+        "SubModel": "",
+        "SparePartNumber": ""
+    },
+    "xyz.openbmc_project.Inventory.Decorator.FruDevice":{
+        "Bus":3,
+        "Address":80
+    },
+    "xyz.openbmc_project.Inventory.Decorator.Ipmi": {
+        "EntityId": "0x07",
+        "EntityInstance": 1
+    },
+	"xyz.openbmc_project.Inventory.Item.System": {}
+}

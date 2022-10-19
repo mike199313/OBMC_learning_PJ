@@ -1,0 +1,87 @@
+From 65e21622929bcefde1337be7f3b97b538876e660 Mon Sep 17 00:00:00 2001
+From: Tommy Lin <lin.tommysc@inventec.com>
+Date: Wed, 9 Mar 2022 09:33:14 +0000
+Subject: [PATCH 1/5] Fix session handle not change issue
+
+Symptom/Reason :
+    - Session handle does not change and remains 1.
+
+Root Cause:
+    - 0penBmc always looks for first available id for session handle assignment
+
+Solution/Change:
+    [phospher-ipmi-net]
+        - Force session handle increase everytime
+
+Entry Test:
+    - Get session info
+        ipmitool -I lanplus -C 17 -U root -P 0penBmc -H 10.6.141.65 session info active
+---
+ sessions_manager.cpp | 24 ++++++++++++++++++++++++
+ sessions_manager.hpp |  2 ++
+ 2 files changed, 26 insertions(+)
+
+diff --git a/sessions_manager.cpp b/sessions_manager.cpp
+index ace75c3..8fb4430 100644
+--- a/sessions_manager.cpp
++++ b/sessions_manager.cpp
+@@ -293,6 +293,7 @@ uint8_t Manager::storeSessionHandle(SessionID bmcSessionID)
+ {
+     // Handler index 0 is  reserved for invalid session.
+     // index starts with 1, for direct usage. Index 0 reserved
++    /* Tommy. Comment out due to Bug213
+     for (size_t i = 1; i < session::maxSessionHandles; i++)
+     {
+         if (sessionHandleMap[i] == 0)
+@@ -302,6 +303,10 @@ uint8_t Manager::storeSessionHandle(SessionID bmcSessionID)
+         }
+     }
+     return 0;
++    */
++    uint8_t handle = getNextAvailableHandle();
++    sessionHandleMap[handle] = bmcSessionID;
++    return handle;
+ }
+ 
+ uint32_t Manager::getSessionIDbyHandle(uint8_t sessionHandle) const
+@@ -358,4 +363,23 @@ void Manager::scheduleSessionCleaner(const std::chrono::microseconds& when)
+     });
+ }
+ 
++uint8_t Manager::getNextAvailableHandle()
++{
++    size_t count = 0;
++
++    while (count < maxSessionCountPerChannel)
++    {
++        count++;
++        // Tommy. Force SessionHandle increase everytime so that we can tell the difference.
++        lastSessionHandle++;
++        if (lastSessionHandle >= session::maxSessionCountPerChannel) {
++            lastSessionHandle = 1;
++        }
++        if (sessionHandleMap[lastSessionHandle] == 0)
++        {
++            return lastSessionHandle;
++        }
++    }
++    return 0;
++}
+ } // namespace session
+diff --git a/sessions_manager.hpp b/sessions_manager.hpp
+index 5fefbcc..1d0bc7a 100644
+--- a/sessions_manager.hpp
++++ b/sessions_manager.hpp
+@@ -161,7 +161,9 @@ class Manager
+     std::unique_ptr<sdbusplus::server::manager::manager> objManager = nullptr;
+     std::string chName{}; // Channel Name
+     uint8_t ipmiNetworkInstance = 0;
++    uint8_t lastSessionHandle = 0; // last session handle assigned
+     void setNetworkInstance(void);
++    uint8_t getNextAvailableHandle(void);
+ };
+ 
+ } // namespace session
+-- 
+2.33.0
+

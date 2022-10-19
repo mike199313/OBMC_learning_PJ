@@ -1,0 +1,98 @@
+From 06e879b0277cbb32c1c8654b19ca2543401ed967 Mon Sep 17 00:00:00 2001
+From: cynthia <wu.cynthia@inventec.com>
+Date: Thu, 16 Dec 2021 16:44:34 +0800
+Subject: [PATCH 25/31] Reset global enable configs to default when cold reset
+
+Symptom/Reason:
+	The global enable configs will not return to default after cold reset
+
+Root Cause:
+	The configs will keep the original setting we made
+
+Solution/Change:
+	[globalhandler]
+	Add init function for global enable configs in cold reset function
+
+Entry Test:
+	ipmitool mc reset cold
+	then
+	ipmitooll mc getenables
+	to check if the setting return to defaulty
+---
+ globalhandler.cpp | 29 +++++++++++++++++++++++++++++
+ globalhandler.hpp | 15 +++++++++++++++
+ 2 files changed, 44 insertions(+)
+
+diff --git a/globalhandler.cpp b/globalhandler.cpp
+index 2561e08..832ed91 100644
+--- a/globalhandler.cpp
++++ b/globalhandler.cpp
+@@ -32,12 +32,41 @@ void resetBMC()
+                           convertForMessage(BMC::Transition::Reboot));
+ }
+ 
++static void init_global_enable_configs()
++{
++    std::shared_ptr<sdbusplus::asio::connection> dbus = getSdBus();
++
++    try{
++        /*Set init value for both phosphor-setting-manager and phosphor-sel-logger*/
++        ipmi::setDbusProperty(*dbus, SettingService, GlobalEnablesObj,
++                                 GlobalEnableInt, "SEL", SEL_ENABLE_DEFAULT );
++        ipmi::setDbusProperty(*dbus, SELService, SELObj, SELInt, "SEL_Enable", SEL_ENABLE_DEFAULT );
++
++        ipmi::setDbusProperty(*dbus, SettingService, GlobalEnablesObj,
++                                 GlobalEnableInt, "EventMsgBuf", EVENT_MSG_BUFFER_ENABLE_DEFAULT );
++        ipmi::setDbusProperty(*dbus, SettingService, GlobalEnablesObj,
++                                 GlobalEnableInt, "EventMsgBufFullIntr", EVENT_MSG_BUFFER_FULL_INTR_DEFAULT );
++
++        ipmi::setDbusProperty(*dbus, SettingService, GlobalEnablesObj,
++                                 GlobalEnableInt, "RcvMsgQueueIntr", RCV_MSG_QUEUE_INTR_DEFAULT );
++    }catch (sdbusplus::exception::SdBusError& e)
++    {
++        fprintf(stderr,"error to set initial value to property for global enables: %s\n", e.what());
++    }
++
++}
++
++
+ /** @brief implements cold and warm reset commands
+  *  @param - None
+  *  @returns IPMI completion code.
+  */
+ ipmi::RspType<> ipmiGlobalReset()
+ {
++
++    /*set global enable config to default when cold reset*/
++    init_global_enable_configs();
++
+     try
+     {
+         resetBMC();
+diff --git a/globalhandler.hpp b/globalhandler.hpp
+index 078b170..c4b92fa 100644
+--- a/globalhandler.hpp
++++ b/globalhandler.hpp
+@@ -7,3 +7,18 @@ enum ipmi_global_control_cmds : uint8_t
+ {
+     IPMI_CMD_COLD_RESET = 0x02,
+ };
++
++/* for global enables related settings*/
++const static constexpr char* SettingService = "xyz.openbmc_project.Settings";
++const static constexpr char* GlobalEnablesObj = "/xyz/openbmc_project/ipmi/global_enables";
++const static constexpr char* GlobalEnableInt = "xyz.openbmc_project.Ipmi.GlobalEnables";
++
++/*SEL related setting*/
++const static constexpr char* SELService = "xyz.openbmc_project.Logging.IPMI";
++const static constexpr char* SELObj = "/xyz/openbmc_project/Logging/IPMI";
++const static constexpr char* SELInt = "xyz.openbmc_project.Logging.IPMI";
++
++const static bool SEL_ENABLE_DEFAULT = true;
++const static bool EVENT_MSG_BUFFER_ENABLE_DEFAULT = false;
++const static bool EVENT_MSG_BUFFER_FULL_INTR_DEFAULT = false;
++const static bool RCV_MSG_QUEUE_INTR_DEFAULT = false;
+\ No newline at end of file
+-- 
+2.33.0
+
