@@ -1,0 +1,72 @@
+{
+    "Exposes": [
+        {
+            "Address": "0x49",
+            "Bus": "6",
+            "Name": "THERMAL_U6",
+            "Thresholds": [
+                {
+                    "Direction": "greater than",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 70
+                },
+                {
+                    "Direction": "greater than",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 65
+                },
+                {
+                    "Direction": "less than",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 10
+                },
+                {
+                    "Direction": "less than",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 5
+                }
+            ],
+            "SensorInfo": [
+                {
+                    "Label": "THERMAL_U6",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x1B",
+                    "EntityId": "0x07",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "TMP75"
+        }
+    ],
+    "Name": "runbmc",
+    "Probe": "xyz.openbmc_project.FruDevice({'BUS': 8, 'ADDRESS' : 81})",
+    "Type": "Bmc",
+    "xyz.openbmc_project.Inventory.Decorator.Asset": {
+        "Manufacturer": "$BOARD_MANUFACTURER",
+        "Model": "$BOARD_PRODUCT_NAME",
+        "PartNumber": "$BOARD_PART_NUMBER",
+        "SerialNumber": "$BOARD_SERIAL_NUMBER",
+        "BuildDate": "$BOARD_MANUFACTURE_DATE",
+        "SubModel": "",
+        "SparePartNumber": ""
+    },
+        "xyz.openbmc_project.Inventory.Decorator.FruDevice":{
+        "Bus":8,
+        "Address":81
+    },
+    "xyz.openbmc_project.Inventory.Decorator.Ipmi": {
+        "EntityId": "0x07",
+        "EntityInstance": 2
+    },
+    "xyz.openbmc_project.Inventory.Item.Board": {},
+    "ServiceName": "ENTITY_MANAGER",
+    "ServiceID": "1",
+    "DefaultState": "Enable",
+    "TimeStamp": "2022-05-24T17:09:30",
+    "ConfigVersion": "1.0.0",
+    "SchemaVersion": "1.0"
+}

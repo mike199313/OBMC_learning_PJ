@@ -1,5 +1,7 @@
 [Unit]
 Description=Essential init commands for transformers-nuv
+Before=xyz.openbmc_project.Software.BMC.Updater.service
+After=phosphor-ipmi-host.service
 
 [Service]
 Type=oneshot

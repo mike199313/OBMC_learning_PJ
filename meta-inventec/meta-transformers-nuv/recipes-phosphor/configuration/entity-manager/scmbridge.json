@@ -1,0 +1,1078 @@
+{
+    "Exposes": [
+        {
+            "Address": "0x4F",
+            "Bus": "6",
+            "Name": "THERMAL_U8",
+            "Thresholds": [
+                {
+                    "Direction": "greater than",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 70
+                },
+                {
+                    "Direction": "greater than",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 65
+                },
+                {
+                    "Direction": "less than",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 10
+                },
+                {
+                    "Direction": "less than",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 5
+                }
+            ],
+            "SensorInfo": [
+                {
+                    "Label": "THERMAL_U8",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x1A",
+                    "EntityId": "0x07",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "TMP75"
+        },
+        {
+            "Connector": {
+                "Name": "FAN_PWM_1",
+                "Pwm": 1,
+                "PwmName": "FAN_PWM_1",
+                "Tachs": [
+                    0
+                ]
+            },
+            "Index": 1,
+            "MaxReading": 24000,
+            "Name": "FAN1_TACH1",
+            "Presence": {
+                "Method": "tach",
+                "TachVal": 0,
+                "HysVal": 0
+            },
+            "Thresholds": [
+                {
+                    "Direction": "greater than",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 23000
+                },
+                {
+                    "Direction": "greater than",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 19700
+                },
+                {
+                    "Direction": "less than",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 3100
+                },        
+                {
+                    "Direction": "less than",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 1300
+                }
+            ],
+            "SensorInfo": [
+                {
+                    "Label": "FAN1_TACH1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x40",
+                    "EntityId": "0x1D",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "NuvotonFan"
+        },
+        {
+            "Connector": {
+                "Name": "FAN_PWM_1",
+                "Pwm": 1,
+                "PwmName": "FAN_PWM_1",
+                "Tachs": [
+                    1
+                ]
+            },
+            "Index": 9,
+            "MaxReading": 24000,
+            "Name": "FAN1_TACH2",
+            "Presence": {
+                "Method": "tach",
+                "TachVal": 0,
+                "HysVal": 0
+            },
+            "Thresholds": [
+                {
+                    "Direction": "greater than",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 23000
+                },
+                {
+                    "Direction": "greater than",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 19700
+                },
+                {
+                    "Direction": "less than",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 3100
+                },        
+                {
+                    "Direction": "less than",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 1300
+                }
+            ],
+            "SensorInfo": [
+                {
+                    "Label": "FAN1_TACH2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x41",
+                    "EntityId": "0x1D",
+                    "EntityInstance": "1"
+                }
+            ],
+            "Type": "NuvotonFan"
+        },
+        {
+            "Connector": {
+                "Name": "FAN_PWM_2",
+                "Pwm": 2,
+                "PwmName": "FAN_PWM_2",
+                "Tachs": [
+                    2
+                ]
+            },
+            "Index": 2,
+            "MaxReading": 24000,
+            "Name": "FAN2_TACH1",
+            "Presence": {
+                "Method": "tach",
+                "TachVal": 0,
+                "HysVal": 0
+            },
+            "Thresholds": [
+                {
+                    "Direction": "greater than",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 23000
+                },
+                {
+                    "Direction": "greater than",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 19700
+                },
+                {
+                    "Direction": "less than",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 3100
+                },        
+                {
+                    "Direction": "less than",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 1300
+                }
+            ],
+            "SensorInfo": [
+                {
+                    "Label": "FAN2_TACH1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x42",
+                    "EntityId": "0x1D",
+                    "EntityInstance": "2"
+                }
+            ],
+            "Type": "NuvotonFan"
+        },
+        {
+            "Connector": {
+                "Name": "FAN_PWM_2",
+                "Pwm": 2,
+                "PwmName": "FAN_PWM_2",
+                "Tachs": [
+                    3
+                ]
+            },
+            "Index": 10,
+            "MaxReading": 24000,
+            "Name": "FAN2_TACH2",
+            "Presence": {
+                "Method": "tach",
+                "TachVal": 0,
+                "HysVal": 0
+            },
+            "Thresholds": [
+                {
+                    "Direction": "greater than",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 23000
+                },
+                {
+                    "Direction": "greater than",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 19700
+                },
+                {
+                    "Direction": "less than",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 3100
+                },        
+                {
+                    "Direction": "less than",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 1300
+                }
+            ],
+            "SensorInfo": [
+                {
+                    "Label": "FAN2_TACH2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x43",
+                    "EntityId": "0x1D",
+                    "EntityInstance": "3"
+                }
+            ],
+            "Type": "NuvotonFan"
+        },
+        {
+            "Connector": {
+                "Name": "FAN_PWM_3",
+                "Pwm": 3,
+                "PwmName": "FAN_PWM_3",
+                "Tachs": [
+                    4
+                ]
+            },
+            "Index": 3,
+            "MaxReading": 24000,
+            "Name": "FAN3_TACH1",
+            "Presence": {
+                "Method": "tach",
+                "TachVal": 0,
+                "HysVal": 0
+            },
+            "Thresholds": [
+                {
+                    "Direction": "greater than",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 23000
+                },
+                {
+                    "Direction": "greater than",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 19700
+                },
+                {
+                    "Direction": "less than",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 3100
+                },        
+                {
+                    "Direction": "less than",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 1300
+                }
+            ],
+            "SensorInfo": [
+                {
+                    "Label": "FAN3_TACH1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x44",
+                    "EntityId": "0x1D",
+                    "EntityInstance": "4"
+                }
+            ],
+            "Type": "NuvotonFan"
+        },
+        {
+            "Connector": {
+                "Name": "FAN_PWM_3",
+                "Pwm": 3,
+                "PwmName": "FAN_PWM_3",
+                "Tachs": [
+                    5
+                ]
+            },
+            "Index": 11,
+            "MaxReading": 24000,
+            "Name": "FAN3_TACH2",
+            "Presence": {
+                "Method": "tach",
+                "TachVal": 0,
+                "HysVal": 0
+            },
+            "Thresholds": [
+                {
+                    "Direction": "greater than",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 23000
+                },
+                {
+                    "Direction": "greater than",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 19700
+                },
+                {
+                    "Direction": "less than",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 3100
+                },        
+                {
+                    "Direction": "less than",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 1300
+                }
+            ],
+            "SensorInfo": [
+                {
+                    "Label": "FAN3_TACH2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x45",
+                    "EntityId": "0x1D",
+                    "EntityInstance": "5"
+                }
+            ],
+            "Type": "NuvotonFan"
+        },
+        {
+            "Connector": {
+                "Name": "FAN_PWM_4",
+                "Pwm": 4,
+                "PwmName": "FAN_PWM_4",
+                "Tachs": [
+                    6
+                ]
+            },
+            "Index": 4,
+            "MaxReading": 24000,
+            "Name": "FAN4_TACH1",
+            "Presence": {
+                "Method": "tach",
+                "TachVal": 0,
+                "HysVal": 0
+            },
+            "Thresholds": [
+                {
+                    "Direction": "greater than",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 23000
+                },
+                {
+                    "Direction": "greater than",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 19700
+                },
+                {
+                    "Direction": "less than",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 3100
+                },        
+                {
+                    "Direction": "less than",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 1300
+                }
+            ],
+            "SensorInfo": [
+                {
+                    "Label": "FAN4_TACH1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x46",
+                    "EntityId": "0x1D",
+                    "EntityInstance": "6"
+                }
+            ],
+            "Type": "NuvotonFan"
+        },
+        {
+            "Connector": {
+                "Name": "FAN_PWM_4",
+                "Pwm": 4,
+                "PwmName": "FAN_PWM_4",
+                "Tachs": [
+                    7
+                ]
+            },
+            "Index": 12,
+            "MaxReading": 24000,
+            "Name": "FAN4_TACH2",
+            "Presence": {
+                "Method": "tach",
+                "TachVal": 0,
+                "HysVal": 0
+            },
+            "Thresholds": [
+                {
+                    "Direction": "greater than",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 23000
+                },
+                {
+                    "Direction": "greater than",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 19700
+                },
+                {
+                    "Direction": "less than",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 3100
+                },        
+                {
+                    "Direction": "less than",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 1300
+                }
+            ],
+            "SensorInfo": [
+                {
+                    "Label": "FAN4_TACH2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x47",
+                    "EntityId": "0x1D",
+                    "EntityInstance": "7"
+                }
+            ],
+            "Type": "NuvotonFan"
+        },
+        {
+            "Connector": {
+                "Name": "FAN_PWM_5",
+                "Pwm": 5,
+                "PwmName": "FAN_PWM_5",
+                "Tachs": [
+                    8
+                ]
+            },
+            "Index": 5,
+            "MaxReading": 24000,
+            "Name": "FAN5_TACH1",
+            "Presence": {
+                "Method": "tach",
+                "TachVal": 0,
+                "HysVal": 0
+            },
+            "Thresholds": [
+                {
+                    "Direction": "greater than",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 23000
+                },
+                {
+                    "Direction": "greater than",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 19700
+                },
+                {
+                    "Direction": "less than",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 3100
+                },        
+                {
+                    "Direction": "less than",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 1300
+                }
+            ],
+            "SensorInfo": [
+                {
+                    "Label": "FAN5_TACH1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x48",
+                    "EntityId": "0x1D",
+                    "EntityInstance": "8"
+                }
+            ],
+            "Type": "NuvotonFan"
+        },
+        {
+            "Connector": {
+                "Name": "FAN_PWM_5",
+                "Pwm": 5,
+                "PwmName": "FAN_PWM_5",
+                "Tachs": [
+                    9
+                ]
+            },
+            "Index": 13,
+            "MaxReading": 24000,
+            "Name": "FAN5_TACH2",
+            "Presence": {
+                "Method": "tach",
+                "TachVal": 0,
+                "HysVal": 0
+            },
+            "Thresholds": [
+                {
+                    "Direction": "greater than",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 23000
+                },
+                {
+                    "Direction": "greater than",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 19700
+                },
+                {
+                    "Direction": "less than",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 3100
+                },        
+                {
+                    "Direction": "less than",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 1300
+                }
+            ],
+            "SensorInfo": [
+                {
+                    "Label": "FAN5_TACH2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x49",
+                    "EntityId": "0x1D",
+                    "EntityInstance": "9"
+                }
+            ],
+            "Type": "NuvotonFan"
+        },
+        {
+            "Connector": {
+                "Name": "FAN_PWM_6",
+                "Pwm": 6,
+                "PwmName": "FAN_PWM_6",
+                "Tachs": [
+                    10
+                ]
+            },
+            "Index": 6,
+            "MaxReading": 24000,
+            "Name": "FAN6_TACH1",
+            "Presence": {
+                "Method": "tach",
+                "TachVal": 0,
+                "HysVal": 0
+            },
+            "Thresholds": [
+                {
+                    "Direction": "greater than",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 23000
+                },
+                {
+                    "Direction": "greater than",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 19700
+                },
+                {
+                    "Direction": "less than",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 3100
+                },        
+                {
+                    "Direction": "less than",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 1300
+                }
+            ],
+            "SensorInfo": [
+                {
+                    "Label": "FAN6_TACH1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x4A",
+                    "EntityId": "0x1D",
+                    "EntityInstance": "10"
+                }
+            ],
+            "Type": "NuvotonFan"
+        },
+        {
+            "Connector": {
+                "Name": "FAN_PWM_6",
+                "Pwm": 6,
+                "PwmName": "FAN_PWM_6",
+                "Tachs": [
+                    11
+                ]
+            },
+            "Index": 14,
+            "MaxReading": 24000,
+            "Name": "FAN6_TACH2",
+            "Presence": {
+                "Method": "tach",
+                "TachVal": 0,
+                "HysVal": 0
+            },
+            "Thresholds": [
+                {
+                    "Direction": "greater than",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 23000
+                },
+                {
+                    "Direction": "greater than",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 19700
+                },
+                {
+                    "Direction": "less than",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 3100
+                },        
+                {
+                    "Direction": "less than",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 1300
+                }
+            ],
+            "SensorInfo": [
+                {
+                    "Label": "FAN6_TACH2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x4B",
+                    "EntityId": "0x1D",
+                    "EntityInstance": "11"
+                }
+            ],
+            "Type": "NuvotonFan"
+        },
+        {
+            "Connector": {
+                "Name": "FAN_PWM_7",
+                "Pwm": 7,
+                "PwmName": "FAN_PWM_7",
+                "Tachs": [
+                    12
+                ]
+            },
+            "Index": 7,
+            "MaxReading": 24000,
+            "Name": "FAN7_TACH1",
+            "Presence": {
+                "Method": "tach",
+                "TachVal": 0,
+                "HysVal": 0
+            },
+            "Thresholds": [
+                {
+                    "Direction": "greater than",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 23000
+                },
+                {
+                    "Direction": "greater than",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 19700
+                },
+                {
+                    "Direction": "less than",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 3100
+                },        
+                {
+                    "Direction": "less than",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 1300
+                }
+            ],
+            "SensorInfo": [
+                {
+                    "Label": "FAN7_TACH1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x4C",
+                    "EntityId": "0x1D",
+                    "EntityInstance": "12"
+                }
+            ],
+            "Type": "NuvotonFan"
+        },
+        {
+            "Connector": {
+                "Name": "FAN_PWM_7",
+                "Pwm": 7,
+                "PwmName": "FAN_PWM_7",
+                "Tachs": [
+                    13
+                ]
+            },
+            "Index": 15,
+            "MaxReading": 24000,
+            "Name": "FAN7_TACH2",
+            "Presence": {
+                "Method": "tach",
+                "TachVal": 0,
+                "HysVal": 0
+            },
+            "Thresholds": [
+                {
+                    "Direction": "greater than",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 23000
+                },
+                {
+                    "Direction": "greater than",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 19700
+                },
+                {
+                    "Direction": "less than",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 3100
+                },        
+                {
+                    "Direction": "less than",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 1300
+                }
+            ],
+            "SensorInfo": [
+                {
+                    "Label": "FAN7_TACH2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x4D",
+                    "EntityId": "0x1D",
+                    "EntityInstance": "13"
+                }
+            ],
+            "Type": "NuvotonFan"
+        },
+        {
+            "Connector": {
+                "Name": "FAN_PWM_8",
+                "Pwm": 8,
+                "PwmName": "FAN_PWM_8",
+                "Tachs": [
+                    14
+                ]
+            },
+            "Index": 8,
+            "MaxReading": 24000,
+            "Name": "FAN8_TACH1",
+            "Presence": {
+                "Method": "tach",
+                "TachVal": 0,
+                "HysVal": 0
+            },
+            "Thresholds": [
+                {
+                    "Direction": "greater than",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 23000
+                },
+                {
+                    "Direction": "greater than",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 19700
+                },
+                {
+                    "Direction": "less than",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 3100
+                },        
+                {
+                    "Direction": "less than",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 1300
+                }
+            ],
+            "SensorInfo": [
+                {
+                    "Label": "FAN8_TACH1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x4E",
+                    "EntityId": "0x1D",
+                    "EntityInstance": "14"
+                }
+            ],
+            "Type": "NuvotonFan"
+        },
+        {
+            "Connector": {
+                "Name": "FAN_PWM_8",
+                "Pwm": 8,
+                "PwmName": "FAN_PWM_8",
+                "Tachs": [
+                    15
+                ]
+            },
+            "Index": 16,
+            "MaxReading": 24000,
+            "Name": "FAN8_TACH2",
+            "Presence": {
+                "Method": "tach",
+                "TachVal": 0,
+                "HysVal": 0
+            },
+            "Thresholds": [
+                {
+                    "Direction": "greater than",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 23000
+                },
+                {
+                    "Direction": "greater than",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 19700
+                },
+                {
+                    "Direction": "less than",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 3100
+                },        
+                {
+                    "Direction": "less than",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 1300
+                }
+            ],
+            "SensorInfo": [
+                {
+                    "Label": "FAN8_TACH2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x4F",
+                    "EntityId": "0x1D",
+                    "EntityInstance": "15"
+                }
+            ],
+            "Type": "NuvotonFan"
+        },
+        {
+            "Name": "FAN_PWM_1",
+            "SensorInfo": [
+                {
+                    "Label": "FAN_PWM_1",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x50",
+                    "EntityId": "0x1D",
+                    "EntityInstance": "16"
+                }
+            ],
+            "Type": "NuvotonFan"
+        },
+        {
+            "Name": "FAN_PWM_2",
+            "SensorInfo": [
+                {
+                    "Label": "FAN_PWM_2",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x51",
+                    "EntityId": "0x1D",
+                    "EntityInstance": "17"
+                }
+            ],
+            "Type": "NuvotonFan"
+        },
+        {
+            "Name": "FAN_PWM_3",
+            "SensorInfo": [
+                {
+                    "Label": "FAN_PWM_3",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x52",
+                    "EntityId": "0x1D",
+                    "EntityInstance": "18"
+                }
+            ],
+            "Type": "NuvotonFan"
+        },
+        {
+            "Name": "FAN_PWM_4",
+            "SensorInfo": [
+                {
+                    "Label": "FAN_PWM_4",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x53",
+                    "EntityId": "0x1D",
+                    "EntityInstance": "19"
+                }
+            ],
+            "Type": "NuvotonFan"
+        },
+        {
+            "Name": "FAN_PWM_5",
+            "SensorInfo": [
+                {
+                    "Label": "FAN_PWM_5",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x54",
+                    "EntityId": "0x1D",
+                    "EntityInstance": "20"
+                }
+            ],
+            "Type": "NuvotonFan"
+        },
+        {
+            "Name": "FAN_PWM_6",
+            "SensorInfo": [
+                {
+                    "Label": "FAN_PWM_6",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x55",
+                    "EntityId": "0x1D",
+                    "EntityInstance": "21"
+                }
+            ],
+            "Type": "NuvotonFan"
+        },
+        {
+            "Name": "FAN_PWM_7",
+            "SensorInfo": [
+                {
+                    "Label": "FAN_PWM_7",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x56",
+                    "EntityId": "0x1D",
+                    "EntityInstance": "22"
+                }
+            ],
+            "Type": "NuvotonFan"
+        },
+        {
+            "Name": "FAN_PWM_8",
+            "SensorInfo": [
+                {
+                    "Label": "FAN_PWM_8",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x57",
+                    "EntityId": "0x1D",
+                    "EntityInstance": "23"
+                }
+            ],
+            "Type": "NuvotonFan"
+        },
+        {
+            "Name": "System_Airflow",
+            "InletSensor": "Inlet_BRD_Temp",
+            "OutletSensor": "Exit_Air_Temp",
+            "PowerSensor": "HSC_PIN",
+            "C1": 1.8,
+            "MaxReading": 251.0,
+            "MinReading": 0.0,
+            "Thresholds": [
+                {
+                    "Direction": "greater than",
+                    "Name": "upper critical",
+                    "Severity": 1,
+                    "Value": 200
+                },
+                {
+                    "Direction": "greater than",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 195
+                },   
+                {
+                    "Direction": "less than",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 5
+                },                 
+                {
+                    "Direction": "less than",
+                    "Name": "lower critical",
+                    "Severity": 1,
+                    "Value": 0
+                }
+            ],
+            "SensorInfo": [
+                {
+                    "Label": "System_Airflow",
+                    "SensorModel": "Threshold",
+                    "SensorNum": "0x58",
+                    "EntityId": "0x1D",
+                    "EntityInstance": "24"
+                }
+            ],
+            "Type": "InvCfmSensor"
+        }
+    ],
+    "Name": "scmbridge",
+    "Probe": "xyz.openbmc_project.FruDevice({'BUS': 8, 'ADDRESS' : 83})",
+    "Type": "Board",
+    "xyz.openbmc_project.Inventory.Decorator.Asset": {
+        "Manufacturer": "$BOARD_MANUFACTURER",
+        "Model": "$BOARD_PRODUCT_NAME",
+        "PartNumber": "$BOARD_PART_NUMBER",
+        "SerialNumber": "$BOARD_SERIAL_NUMBER",
+        "BuildDate": "$BOARD_MANUFACTURE_DATE",
+        "SubModel": "",
+        "SparePartNumber": ""
+    },
+    "xyz.openbmc_project.Inventory.Decorator.FruDevice":{
+        "Bus":8,
+        "Address":83
+    },
+    "xyz.openbmc_project.Inventory.Decorator.Ipmi": {
+        "EntityId": "0x07",
+        "EntityInstance": 3
+    }
+}

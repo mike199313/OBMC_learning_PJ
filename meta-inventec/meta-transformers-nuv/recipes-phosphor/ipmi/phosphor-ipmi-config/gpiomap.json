@@ -1,0 +1,58 @@
+{
+  "banks": [
+    {
+      "chip": "gpiochip0",
+      "base": 0,
+      "ngpio": 32,
+      "type": "gpio"
+    },
+    {
+      "chip": "gpiochip32",
+      "base": 32,
+      "ngpio": 32,
+      "type": "gpio"
+    },
+    {
+      "chip": "gpiochip64",
+      "base": 64,
+      "ngpio": 32,
+      "type": "gpio"
+    },
+    {
+      "chip": "gpiochip96",
+      "base": 96,
+      "ngpio": 32,
+      "type": "gpio"
+    },
+    {
+      "chip": "gpiochip128",
+      "base": 128,
+      "ngpio": 32,
+      "type": "gpio"
+    },
+    {
+      "chip": "gpiochip160",
+      "base": 160,
+      "ngpio": 32,
+      "type": "gpio"
+    },
+    {
+      "chip": "gpiochip192",
+      "base": 192,
+      "ngpio": 32,
+      "type": "gpio"
+    },
+    {
+      "chip": "gpiochip224",
+      "base": 224,
+      "ngpio": 32,
+      "type": "gpio"
+    },
+    {
+      "chip": "gpiochip432",
+      "base": 432,
+      "ngpio": 80,
+      "type": "sgpio"
+    }
+  ]
+}

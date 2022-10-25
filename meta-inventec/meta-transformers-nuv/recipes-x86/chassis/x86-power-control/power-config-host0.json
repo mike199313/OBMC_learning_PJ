@@ -1,0 +1,40 @@
+{
+  "gpio_configs":[
+    {
+      "Name" : "IdButton",
+      "LineName" : "BUTTON_LED_UID",
+      "Type" : "GPIO",
+      "Polarity" : "ActiveLow"
+    },
+    {
+      "Name" : "NMIOut",
+      "LineName" : "NMI_OUT",
+      "Type" : "GPIO",
+      "Polarity" : "ActiveLow"
+    },
+    {
+      "Name" : "PowerOk",
+      "LineName" : "PS_PWROK",
+      "Type" : "GPIO",
+      "Polarity" : "ActiveLow"
+    },
+    {
+      "Name" : "PowerOut",
+      "LineName" : "POWER_OUT",
+      "Type" : "GPIO",
+      "Polarity" : "ActiveLow"
+    },
+    {
+      "Name" : "ResetOut",
+      "LineName" : "RESET_OUT",
+      "Type" : "GPIO",
+      "Polarity" : "ActiveLow"
+    }
+  ],
+  "timing_configs":{
+      "PowerPulseMs": 6000,
+      "ForceOffPulseMs": 15000,
+      "ResetPulseMs": 6000,
+      "PowerCycleMs":6000
+   }
+}

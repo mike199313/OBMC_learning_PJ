@@ -1,0 +1,10 @@
+[Unit]
+Description=PCIe Device Scanner for transformers-nuv
+After=transformers-nuv-init.service
+
+[Service]
+ExecStart=/usr/sbin/transformers-nuv-pcie-scanner.sh
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

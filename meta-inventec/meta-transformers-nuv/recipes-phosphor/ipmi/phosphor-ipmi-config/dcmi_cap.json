@@ -1,0 +1,5 @@
+{
+    "PowerManagement": 1,
+    "NumberOfSupportedRollingPeriod": 5,
+    "RollingPeriodList": [0,5,10,30,60]
+}

@@ -1,0 +1,12 @@
+[Unit]
+PartOf=host-s0-state.target
+Wants=mapper-wait@-xyz-openbmc_project-settings-fanctrl.service
+After=mapper-wait@-xyz-openbmc_project-settings-fanctrl.service
+
+[Service]
+Type=oneshot
+# let pid control fans, give speed arg as 0
+ExecStart=/bin/bash /usr/bin/transformers-nuv-states-control.sh 0
+
+[Install]
+WantedBy=host-s0-state.target

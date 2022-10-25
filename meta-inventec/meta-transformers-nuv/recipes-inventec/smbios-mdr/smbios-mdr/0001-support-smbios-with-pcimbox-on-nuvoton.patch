@@ -1,0 +1,31 @@
+From 1b22e3988f7d442837fda4badfc33de654c38b20 Mon Sep 17 00:00:00 2001
+From: "Fred.Chang" <chang.fredys@inventec.com>
+Date: Tue, 28 Dec 2021 05:41:04 +0000
+Subject: [PATCH] support smbios with pcimbox on nuvoton
+
+---
+ include/mdrv2.hpp | 11 ++++++-----
+ 1 file changed, 6 insertions(+), 5 deletions(-)
+
+diff --git a/include/mdrv2.hpp b/include/mdrv2.hpp
+index e5e0f69..b171f85 100755
+--- a/include/mdrv2.hpp
++++ b/include/mdrv2.hpp
+@@ -49,11 +49,12 @@ static constexpr const char* smbiosInterfaceName =
+     "xyz.openbmc_project.Smbios.GetRecordType";
+ constexpr const int limitEntryLen = 0xff;
+ 
+-//static constexpr const char* vgaMemPath = "/dev/mem";
+-//static constexpr const uint32_t vgaMemPhyAddr = 0xbff00000;
+-static constexpr const char* vgaMemPath = "/dev/vgasharedmem";
+-static constexpr const uint32_t vgaMemPhyAddr = 0x0;
+-static constexpr const uint32_t vgaMemPhySize = 64 * 1024;
++static constexpr const char* vgaMemPath = "/dev/mem";
++static constexpr const uint32_t vgaMemPhyAddr = 0xF0848000;
++static constexpr const uint32_t vgaMemPhySize = 0x3F00;
++//static constexpr const char* vgaMemPath = "/dev/vgasharedmem";
++//static constexpr const uint32_t vgaMemPhyAddr = 0x0;
++//static constexpr const uint32_t vgaMemPhySize = 64 * 1024;
+ 
+ class MDR_V2 :
+     sdbusplus::server::object::object<

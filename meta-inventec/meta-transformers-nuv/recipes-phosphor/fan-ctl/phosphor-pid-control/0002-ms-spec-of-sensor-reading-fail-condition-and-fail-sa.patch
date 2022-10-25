@@ -1,0 +1,250 @@
+From bc2fa40fd6b60c63b01594daa68728ca9c64e054 Mon Sep 17 00:00:00 2001
+From: link <link@inventec.com>
+Date: Tue, 10 May 2022 09:51:05 +0800
+Subject: [PATCH 2/2] ms spec of sensor reading fail condition and fail safe
+ mode
+
+---
+ pid/zone.cpp | 107 +++++++++++++++++++++++++++++++++++++++++++++------
+ pid/zone.hpp |  18 +++++++++
+ 2 files changed, 113 insertions(+), 12 deletions(-)
+
+diff --git a/pid/zone.cpp b/pid/zone.cpp
+index 6acce79..5e76458 100644
+--- a/pid/zone.cpp
++++ b/pid/zone.cpp
+@@ -93,7 +93,7 @@ void DbusPidZone::setManualMode(bool mode)
+ bool DbusPidZone::getFailSafeMode(void) const
+ {
+     // If any keys are present at least one sensor is in fail safe mode.
+-    return !_failSafeSensors.empty();
++    return _tempFailSafeMode;
+ }
+ 
+ int64_t DbusPidZone::getZoneID(void) const
+@@ -302,6 +302,7 @@ void DbusPidZone::updateFanTelemetry(void)
+      * data is just being dropped though.
+      */
+     tstamp now = std::chrono::high_resolution_clock::now();
++    _fanFailCounting++;
+     if (loggingEnabled)
+     {
+         _log << std::chrono::duration_cast<std::chrono::milliseconds>(
+@@ -315,13 +316,13 @@ void DbusPidZone::updateFanTelemetry(void)
+         auto sensor = _mgr.getSensor(f);
+         ReadReturn r = sensor->read();
+         _cachedValuesByName[f] = r.value;
+-        int64_t timeout = sensor->getTimeout();
+-        tstamp then = r.updated;
++        //int64_t timeout = sensor->getTimeout();
++        //tstamp then = r.updated;
+ 
+-        auto duration =
++        /*auto duration =
+             std::chrono::duration_cast<std::chrono::seconds>(now - then)
+                 .count();
+-        auto period = std::chrono::seconds(timeout).count();
++        auto period = std::chrono::seconds(timeout).count();*/
+         /*
+          * TODO(venture): We should check when these were last read.
+          * However, these are the fans, so if I'm not getting updated values
+@@ -331,7 +332,7 @@ void DbusPidZone::updateFanTelemetry(void)
+         {
+             _log << "," << r.value;
+         }
+-
++        /*
+         // check if fan fail.
+         if (sensor->getFailed())
+         {
+@@ -350,6 +351,44 @@ void DbusPidZone::updateFanTelemetry(void)
+                 _failSafeSensors.erase(kt);
+             }
+         }
++        */
++    }
++
++    //check each 3 seconds
++    if((_fanFailCounting % _checkPeriod) == 0){
++        //sort
++        std::multimap<double, std::string> fanCompare;
++        for (const auto& t : _fanInputs){
++            fanCompare.insert({_cachedValuesByName[t], t});
++        }
++        //compute average
++        double averageFan = 0.0;
++        for (auto itr = std::next(fanCompare.begin(), _failFanNum);itr !=fanCompare.end();itr++){
++            averageFan += _cachedValuesByName[itr->second];
++        }
++        averageFan /= (fanCompare.size() - _failFanNum);
++        //checking problem fan
++        for (auto itr = std::next(fanCompare.begin(), _failFanNum);itr !=fanCompare.end();itr++){
++            if(_cachedValuesByName[itr->second] < averageFan * thresholdCoe){
++                //add sel
++                auto bus = sdbusplus::bus::new_default();
++                std::vector<uint8_t> eventData(selEvtDataMaxSize, 0xFF);
++                /* asseted or deasserted according state */
++                eventData[0] = std::stoul(((itr->second).substr(0, (itr->second).find("_"))).substr((itr->second).find("FAN") + 3));
++                eventData[1] = 0x00; 
++
++                sdbusplus::message::message writeMcerrSEL = bus.new_method_call(
++                    ipmiSELService, ipmiSELPath, ipmiSELAddInterface, "IpmiSelAdd");
++                writeMcerrSEL.append(ipmiSELAddMessage, errorSensorPath, eventData, true, genId);
++                try{
++                    bus.call_noreply(writeMcerrSEL);
++                }catch (sdbusplus::exception_t& e){
++                    std::cerr << "Failed to log SEL\n";
++                }
++            }else{
++                break;
++            }
++        }
+     }
+ 
+     if (loggingEnabled)
+@@ -369,6 +408,7 @@ void DbusPidZone::updateSensors(void)
+     using namespace std::chrono;
+     /* margin and temp are stored as temp */
+     tstamp now = high_resolution_clock::now();
++    _tempFailCounting++;
+     for (const auto& t : _thermalInputs)
+     {
+         auto sensor = _mgr.getSensor(t);
+@@ -376,7 +416,7 @@ void DbusPidZone::updateSensors(void)
+         int64_t timeout = sensor->getTimeout();
+ 
+         _cachedValuesByName[t] = (r.value + _previousValuesByName[t]) / 2;
+-	_previousValuesByName[t] = r.value;
++        _previousValuesByName[t] = r.value;
+         tstamp then = r.updated;
+ 
+         auto duration = duration_cast<std::chrono::seconds>(now - then).count();
+@@ -388,7 +428,6 @@ void DbusPidZone::updateSensors(void)
+         }
+         else if (timeout != 0 && duration >= period)
+         {
+-            // std::cerr << "Entering fail safe mode.\n";
+             _failSafeSensors.insert(t);
+         }
+         else
+@@ -401,6 +440,50 @@ void DbusPidZone::updateSensors(void)
+             }
+         }
+     }
++    //If find unread temp sensor and not in failSafeMode
++    if(!_failSafeSensors.empty() && !_tempFailSafeMode){
++        //If over 60 seconds, get in failSafeMode
++        if(_tempFailCounting >= _failTolerant){
++            std::cerr << "Entering fail safe mode\n";
++            _tempFailSafeMode = true;
++            _tempFailCounting = 0;
++            //add sel
++            auto bus = sdbusplus::bus::new_default();
++            std::vector<uint8_t> eventData(selEvtDataMaxSize, 0xFF);
++            eventData[0] = 0x10;
++            eventData[1] = 0x00;
++            sdbusplus::message::message writeMcerrSEL = bus.new_method_call(
++                ipmiSELService, ipmiSELPath, ipmiSELAddInterface, "IpmiSelAdd");
++            writeMcerrSEL.append(ipmiSELAddMessage, errorSensorPath, eventData, true, genId);
++            try{
++                bus.call_noreply(writeMcerrSEL);
++            }catch (sdbusplus::exception_t& e){
++                std::cerr << "Failed to log SEL\n";
++            }
++        }//else keep counting
++    }else if(_failSafeSensors.empty()){
++        //If no unread, reset Mode and counting
++        if(_tempFailSafeMode){
++            std::cerr << "Exiting fail safe mode\n";
++            //add sel
++            auto bus = sdbusplus::bus::new_default();
++            std::vector<uint8_t> eventData(selEvtDataMaxSize, 0xFF);
++            eventData[0] = 0x10;
++            eventData[1] = 0x01;
++            sdbusplus::message::message writeMcerrSEL = bus.new_method_call(
++            ipmiSELService, ipmiSELPath, ipmiSELAddInterface, "IpmiSelAdd");
++            writeMcerrSEL.append(ipmiSELAddMessage, errorSensorPath, eventData, true, genId);
++            try{
++                bus.call_noreply(writeMcerrSEL);
++            }catch (sdbusplus::exception_t& e){
++                std::cerr << "Failed to log SEL\n";
++            }
++        }
++        _tempFailSafeMode = false;
++        _tempFailCounting = 0;
++    }else{//Prevent counting keep adding, like failSafeMode=True
++        _tempFailCounting = 0;
++    }
+ 
+     return;
+ }
+@@ -410,19 +493,19 @@ void DbusPidZone::initializeCache(void)
+     for (const auto& f : _fanInputs)
+     {
+         _cachedValuesByName[f] = 0;
+-	_previousValuesByName[f] = 0;
++        _previousValuesByName[f] = 0;
+ 
+         // Start all fans in fail-safe mode.
+-        _failSafeSensors.insert(f);
++        //_failSafeSensors.insert(f);
+     }
+ 
+     for (const auto& t : _thermalInputs)
+     {
+         _cachedValuesByName[t] = 0;
+-	_previousValuesByName[t] = 0;
++        _previousValuesByName[t] = 0;
+ 
+         // Start all sensors in fail-safe mode.
+-        _failSafeSensors.insert(t);
++        //_failSafeSensors.insert(t);
+     }
+ }
+ 
+diff --git a/pid/zone.hpp b/pid/zone.hpp
+index d1bed57..a569393 100644
+--- a/pid/zone.hpp
++++ b/pid/zone.hpp
+@@ -10,6 +10,7 @@
+ 
+ #include <sdbusplus/bus.hpp>
+ #include <sdbusplus/server.hpp>
++#include <sdbusplus/message.hpp>
+ #include <xyz/openbmc_project/Control/Mode/server.hpp>
+ 
+ #include <fstream>
+@@ -24,6 +25,14 @@ using ServerObject = typename sdbusplus::server::object::object<T...>;
+ using ModeInterface = sdbusplus::xyz::openbmc_project::Control::server::Mode;
+ using ModeObject = ServerObject<ModeInterface>;
+ 
++static constexpr char const* ipmiSELService = "xyz.openbmc_project.Logging.IPMI";
++static constexpr char const* ipmiSELPath = "/xyz/openbmc_project/Logging/IPMI";
++static constexpr char const* ipmiSELAddInterface = "xyz.openbmc_project.Logging.IPMI";
++static const std::string ipmiSELAddMessage = "SEL Entry";
++static constexpr size_t selEvtDataMaxSize = 3;
++const uint16_t genId = 0x20;
++const std::string errorSensorPath = "/xyz/openbmc_project/sensors/oem_event_71h/oem_e1h/Sensors_reading_status";
++
+ namespace pid_control
+ {
+ 
+@@ -109,6 +118,15 @@ class DbusPidZone : public ZoneInterface, public ModeObject
+ 
+     std::set<std::string> _failSafeSensors;
+ 
++    bool _tempFailSafeMode = false;
++    int64_t _tempFailCounting = 0;
++    const int64_t _failTolerant = 60;
++
++    int64_t _fanFailCounting = 0;
++    const int64_t _checkPeriod = 3;
++    const int64_t _failFanNum = 2;
++    const double thresholdCoe = 0.75;
++
+     std::vector<double> _SetPoints;
+     std::vector<double> _RPMCeilings;
+     std::vector<std::string> _fanInputs;
+-- 
+2.33.0
+

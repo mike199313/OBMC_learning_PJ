@@ -1,0 +1,138 @@
+From fde7603170974dd43b7d5cf9faea9bcb53e4c995 Mon Sep 17 00:00:00 2001
+From: emil <huang.emil@inventec.com>
+Date: Wed, 24 Nov 2021 07:40:10 +0000
+Subject: [PATCH] add postcode portled service
+
+---
+ meson.build       | 16 ++++++++++++
+ meson_options.txt |  3 +++
+ portled.cpp       | 65 +++++++++++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 84 insertions(+)
+ create mode 100755 portled.cpp
+
+diff --git a/meson.build b/meson.build
+index 2bafd48..2c09dcd 100644
+--- a/meson.build
++++ b/meson.build
+@@ -19,6 +19,7 @@ phosphor_dbus_interfaces = dependency('phosphor-dbus-interfaces')
+ sdbusplus = dependency('sdbusplus')
+ sdeventplus = dependency('sdeventplus')
+ systemd = dependency('systemd')
++libgpiod = dependency('libgpiod')
+ 
+ conf_data = configuration_data()
+ conf_data.set('bindir', get_option('prefix') / get_option('bindir'))
+@@ -55,6 +56,7 @@ executable(
+     sdbusplus,
+     sdeventplus,
+     phosphor_dbus_interfaces,
++    libgpiod,
+   ],
+   install: true,
+ )
+@@ -83,6 +85,20 @@ if get_option('7seg').enabled()
+   )
+ endif
+ 
++executable(
++  'postcode_portled',
++  'portled.cpp',
++  dependencies: [
++    sdbusplus,
++    libgpiod,
++    phosphor_dbus_interfaces,
++  ],
++  link_args : [
++    '-lstdc++fs',
++  ],
++  install: true,
++)
++
+ install_headers(
+   'lpcsnoop/snoop.hpp',
+   'lpcsnoop/snoop_listen.hpp',
+diff --git a/meson_options.txt b/meson_options.txt
+index 763c73e..fba3e72 100644
+--- a/meson_options.txt
++++ b/meson_options.txt
+@@ -20,3 +20,6 @@ option(
+ option(
+     'tests', type: 'feature', description: 'Build tests.',
+ )
++option(
++    'portled', type: 'feature', description: 'Enable building SGPIO POST daemon.',
++)
+diff --git a/portled.cpp b/portled.cpp
+new file mode 100755
+index 0000000..05bedf2
+--- /dev/null
++++ b/portled.cpp
+@@ -0,0 +1,65 @@
++/**
++ * Copyright 2017 Google Inc.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++#include <cstdint>
++#include <cstdio>
++#include <experimental/filesystem>
++#include <lpcsnoop/snoop_listen.hpp>
++#include <string>
++#include <gpiod.hpp>
++
++constexpr const char* SGPIO_CHIPNAME = "gpiochip8";
++
++static void DisplayDbusValue(postcode_t postcodes)
++{
++    auto postcode = std::get<primary_post_code_t>(postcodes);
++    // Uses cstdio instead of streams because the device file has
++    // very strict requirements about the data format and streaming
++    // abstractions tend to muck it up.
++
++    uint8_t code = static_cast<uint8_t>(postcode & 0xff);   
++    for (int i = 0; i < 8; i++)
++    {
++        uint8_t value = ((code >> i) & 0x01);
++        gpiod_ctxless_set_value(SGPIO_CHIPNAME,       // Label of the gpiochip.
++                                i,                    // Number of GPIO pin.
++                                value,                // GPIO set value.
++                                false,                // The active state of this line - true if low.
++                                "bit",                // Name of comsumer.
++                                NULL,                 // Callback function.
++                                NULL);                // value passed to callback function.   
++    }
++}
++
++/*
++ * This is the entry point for the application.
++ *
++ * This application simply creates an object that registers for incoming value
++ * updates for the POST code dbus object.
++ */
++int main()
++{
++    auto ListenBus = sdbusplus::bus::new_default();
++    std::unique_ptr<lpcsnoop::SnoopListen> snoop =
++        std::make_unique<lpcsnoop::SnoopListen>(ListenBus, DisplayDbusValue);
++    while (true)
++    {
++        ListenBus.process_discard();
++        ListenBus.wait();
++    }
++
++    return 0;
++}
+-- 
+2.17.1
+

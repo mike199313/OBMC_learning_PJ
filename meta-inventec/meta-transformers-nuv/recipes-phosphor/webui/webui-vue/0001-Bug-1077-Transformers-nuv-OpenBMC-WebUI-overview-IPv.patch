@@ -1,0 +1,26 @@
+From c1f3044504f10d57e1fb22df9edb68fcd6fe632d Mon Sep 17 00:00:00 2001
+From: Jason Lin <lin.jasonyy@inventec.com>
+Date: Fri, 24 Jun 2022 21:45:01 +0800
+Subject: [PATCH] Bug 1077 - [Transformers-nuv][OpenBMC][WebUI][overview] IPv4
+ display "--" in network infomation section.
+
+---
+ src/views/Overview/OverviewNetwork.vue | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/views/Overview/OverviewNetwork.vue b/src/views/Overview/OverviewNetwork.vue
+index b81e5c7..8da12d6 100644
+--- a/src/views/Overview/OverviewNetwork.vue
++++ b/src/views/Overview/OverviewNetwork.vue
+@@ -59,7 +59,7 @@ export default {
+   mixins: [DataFormatterMixin],
+   computed: {
+     network() {
+-      return this.$store.getters['network/globalNetworkSettings'][0];
++      return this.$store.getters['network/globalNetworkSettings'][1];
+     },
+   },
+   created() {
+-- 
+2.33.0
+

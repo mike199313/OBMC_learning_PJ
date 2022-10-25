@@ -12,13 +12,21 @@ RDEPENDS:${PN} += "libsystemd"
 
 
 FILESEXTRAPATHS:prepend := "${THISDIR}/transformers-nuv-init:"
-SRC_URI += "file://transformers-nuv-init.sh "
+SRC_URI += "file://transformers-nuv-init.sh \
+            file://emmc-check.sh \
+            file://transformers-nuv-cpld-init.sh \
+            file://transformers-nuv-pcie-scanner.sh \            
+            "
 
 S = "${WORKDIR}"
 
 do_install() {
         install -d ${D}${sbindir}
         install -m 0755 transformers-nuv-init.sh ${D}${sbindir}
+        install -m 0755 emmc-check.sh ${D}${sbindir}
+        install -m 0755 transformers-nuv-cpld-init.sh ${D}${sbindir}
+        install -m 0755 transformers-nuv-pcie-scanner.sh ${D}${sbindir}        
 }
 
 SYSTEMD_SERVICE:${PN} += "transformers-nuv-init.service"
+SYSTEMD_SERVICE:${PN} += "transformers-nuv-pcie-scanner.service"
