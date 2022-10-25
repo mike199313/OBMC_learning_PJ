@@ -1,0 +1,24 @@
+From 5ff62be06d349c103db2b9fd65f48d37a2015b5f Mon Sep 17 00:00:00 2001
+From: link <link@inventec.com>
+Date: Wed, 12 Oct 2022 06:41:27 +0000
+Subject: [PATCH] Add debug mesg to show SPI clock frequency
+
+---
+ drivers/spi/aspeed_spi.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/spi/aspeed_spi.c b/drivers/spi/aspeed_spi.c
+index 65d69105e8..143dd725da 100644
+--- a/drivers/spi/aspeed_spi.c
++++ b/drivers/spi/aspeed_spi.c
+@@ -228,6 +228,7 @@ static u32 aspeed_g6_spi_hclk_divisor(struct aspeed_spi_priv *priv, u32 max_hz)
+ 				continue;
+ 
+ 			if ((hclk_rate / ((i + 1) + j * 16)) <= max_hz) {
++				printf(" max_hz = %d \n", hclk_rate / ((i + 1) + j * 16));
+ 				found = 1;
+ 				break;
+ 			}
+-- 
+2.17.1
+

@@ -1,0 +1,270 @@
+From c9fcb528cb0401aed5e697da4f610e38140666c0 Mon Sep 17 00:00:00 2001
+From: link <link@inventec.com>
+Date: Tue, 18 Oct 2022 05:34:45 +0000
+Subject: [PATCH] Bug 764 - [SW][Transformers][watchdog] - Implement recovery
+ watchdog
+
+Symptom/Reason:
+    Implement recovery watchdog, if recovery watchdog timeout, reboot from another flash.
+
+Root Cause:
+    N/A
+
+Solution/Change:
+    Implement inv_watchdog_reset and place in each place.
+
+Enrty Test:
+    N/A
+---
+ arch/arm/mach-aspeed/ast2600/board_common.c | 28 +++++++++++++++++++++
+ common/bootm.c                              | 17 ++++++++++++-
+ common/console.c                            |  9 +++++++
+ drivers/mtd/spi/spi-nor-core.c              | 21 ++++++++++++++++
+ include/watchdog.h                          |  2 ++
+ net/net.c                                   |  8 ++++++
+ 6 files changed, 84 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm/mach-aspeed/ast2600/board_common.c b/arch/arm/mach-aspeed/ast2600/board_common.c
+index f30cc852fc..8b8721fff6 100644
+--- a/arch/arm/mach-aspeed/ast2600/board_common.c
++++ b/arch/arm/mach-aspeed/ast2600/board_common.c
+@@ -62,6 +62,14 @@
+ #define SGPIO_BYTES(N)                  ((N) << 6)
+ #define SGPIO_ENABLE                    1
+ 
++/* WDT */
++#define FMC_WDT2_TIMER_RELOAD_VALUE     ASPEED_FMC_WDT2 + 0x4
++#define FMC_WDT2_RESTART                ASPEED_FMC_WDT2 + 0x8
++#define FMC_WDT2_RESTART_MAGIC          0x4755
++
++
++void inv_watchdog_reset(void);
++
+ #if 0
+ void lowlevel_init(void)
+ {
+@@ -113,6 +121,8 @@ int board_init(void)
+ 
+ 	gd->bd->bi_boot_params = CONFIG_SYS_SDRAM_BASE + 0x100;
+ 
++	watchdog_init();
++
+ 	gpio_init();
+ 	/*
+ 	 * Loop over all MISC uclass drivers to call the comphy code
+@@ -168,6 +178,14 @@ int arch_early_init_r(void)
+ 	return 0;
+ }
+ 
++int watchdog_init(void)
++{
++    /* Set FMC_WDT2 timeout to 60 sec */
++    writel(600, FMC_WDT2_TIMER_RELOAD_VALUE);
++
++    inv_watchdog_reset();
++}
++
+ int gpio_init(void)
+ {
+     u32 reg;
+@@ -271,3 +289,13 @@ int sgpio_init_port80(void) {
+     return 0;
+ }
+ 
++int inv_stop_feed_watchdog=false;
++void inv_watchdog_reset(void)
++{
++    /* Feed FMC_WDT2*/
++    if(!inv_stop_feed_watchdog)
++    {
++        writel(FMC_WDT2_RESTART_MAGIC, FMC_WDT2_RESTART);
++    }
++}
++
+diff --git a/common/bootm.c b/common/bootm.c
+index b76410825e..1a77451fcc 100644
+--- a/common/bootm.c
++++ b/common/bootm.c
+@@ -28,6 +28,7 @@
+ #include <command.h>
+ #include <bootm.h>
+ #include <image.h>
++#include <watchdog.h>
+ 
+ #ifndef CONFIG_SYS_BOOTM_LEN
+ /* use 8MByte as default max gunzip size */
+@@ -651,6 +652,9 @@ int do_bootm_states(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[],
+ 	change += SetCheckResult("kernel_verify", "OK");
+ 	change += SetCheckResult("ramdisk_verify", "OK");
+ 
++	/* Inventec - watchdog */
++	inv_watchdog_reset();
++
+ 	/*
+ 	 * Work through the states and see how far we get. We stop on
+ 	 * any error.
+@@ -708,8 +712,12 @@ int do_bootm_states(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[],
+ #endif
+ 
+ 	/* From now on, we need the OS boot function */
+-	if (ret)
++	if (ret){
++		/* Inventec - watchdog */
++		printf("Os start abnormal, stop feed watchdog\n");
++		inv_stop_feed_watchdog = true;
+ 		return ret;
++	}
+ 	boot_fn = bootm_os_get_boot_func(images->os.os);
+ 	need_boot_fn = states & (BOOTM_STATE_OS_CMDLINE |
+ 			BOOTM_STATE_OS_BD_T | BOOTM_STATE_OS_PREP |
+@@ -755,6 +763,9 @@ int do_bootm_states(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[],
+ 		return ret;
+ 	}
+ 
++	/* Inventec - watchdog */
++	inv_watchdog_reset();
++
+ 	/* Now run the OS! We hope this doesn't return */
+ 	if (!ret && (states & BOOTM_STATE_OS_GO))
+ 		ret = boot_selected_os(argc, argv, BOOTM_STATE_OS_GO,
+@@ -770,6 +781,10 @@ err:
+ 	else if (ret == BOOTM_ERR_RESET)
+ 		do_reset(cmdtp, flag, argc, argv);
+ 
++	/* Inventec - watchdog */
++	printf("boot OS fail, stop feed watchdog\n");
++	inv_stop_feed_watchdog = true;
++
+ 	return ret;
+ }
+ 
+diff --git a/common/console.c b/common/console.c
+index 0b0dd76256..5688f249f3 100644
+--- a/common/console.c
++++ b/common/console.c
+@@ -310,12 +310,21 @@ int serial_printf(const char *fmt, ...)
+ 
+ int fgetc(int file)
+ {
++	int watchdog_count = 0;
+ 	if (file < MAX_FILES) {
+ 		/*
+ 		 * Effectively poll for input wherever it may be available.
+ 		 */
+ 		for (;;) {
+ 			WATCHDOG_RESET();
++
++			/* Inventec - watchdog */
++			if(!(watchdog_count &0xFFFFF))
++			{
++				inv_watchdog_reset();
++			}
++			watchdog_count++;
++
+ #if CONFIG_IS_ENABLED(CONSOLE_MUX)
+ 			/*
+ 			 * Upper layer may have already called tstc() so
+diff --git a/drivers/mtd/spi/spi-nor-core.c b/drivers/mtd/spi/spi-nor-core.c
+index dfa191845a..1144895d88 100644
+--- a/drivers/mtd/spi/spi-nor-core.c
++++ b/drivers/mtd/spi/spi-nor-core.c
+@@ -575,6 +575,7 @@ static int spi_nor_erase(struct mtd_info *mtd, struct erase_info *instr)
+ 	struct spi_nor *nor = mtd_to_spi_nor(mtd);
+ 	u32 addr, len, rem;
+ 	int ret;
++	int watchdog_count = 0;
+ 
+ 	dev_dbg(nor->dev, "at 0x%llx, len %lld\n", (long long)instr->addr,
+ 		(long long)instr->len);
+@@ -587,6 +588,12 @@ static int spi_nor_erase(struct mtd_info *mtd, struct erase_info *instr)
+ 	len = instr->len;
+ 
+ 	while (len) {
++		/* Inventec - watchdog */
++		if(!(watchdog_count &0xFF))
++		{
++			inv_watchdog_reset();
++		}
++		watchdog_count++;
+ #ifdef CONFIG_SPI_FLASH_BAR
+ 		ret = write_bar(nor, addr);
+ 		if (ret < 0)
+@@ -1070,6 +1077,7 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
+ {
+ 	struct spi_nor *nor = mtd_to_spi_nor(mtd);
+ 	int ret;
++	int watchdog_count = 0;
+ 
+ 	dev_dbg(nor->dev, "from 0x%08x, len %zd\n", (u32)from, len);
+ 
+@@ -1077,6 +1085,12 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
+ 		loff_t addr = from;
+ 		size_t read_len = len;
+ 
++		/* Inventec - watchdog */
++		if(!(watchdog_count &0xFF))
++		{
++			inv_watchdog_reset();
++		}
++		watchdog_count++;
+ #ifdef CONFIG_SPI_FLASH_BAR
+ 		u32 remain_len;
+ 
+@@ -1222,6 +1236,7 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
+ 	struct spi_nor *nor = mtd_to_spi_nor(mtd);
+ 	size_t page_offset, page_remain, i;
+ 	ssize_t ret;
++	int watchdog_count = 0;
+ 
+ 	dev_dbg(nor->dev, "to 0x%08x, len %zd\n", (u32)to, len);
+ 
+@@ -1229,6 +1244,12 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
+ 		ssize_t written;
+ 		loff_t addr = to + i;
+ 
++		/* Inventec - watchdog */
++		if(!(watchdog_count &0xFF))
++		{
++			inv_watchdog_reset();
++		}
++		watchdog_count++;
+ 		/*
+ 		 * If page_size is a power of two, the offset can be quickly
+ 		 * calculated with an AND operation. On the other cases we
+diff --git a/include/watchdog.h b/include/watchdog.h
+index 14073cfdd2..2baa26bf40 100644
+--- a/include/watchdog.h
++++ b/include/watchdog.h
+@@ -35,6 +35,8 @@ int init_func_watchdog_reset(void);
+ /*
+  * Hardware watchdog
+  */
++extern int inv_stop_feed_watchdog;
++extern void inv_watchdog_reset(void);
+ #ifdef CONFIG_HW_WATCHDOG
+ 	#if defined(__ASSEMBLY__)
+ 		#define WATCHDOG_RESET bl hw_watchdog_reset
+diff --git a/net/net.c b/net/net.c
+index f0f9cd4d94..4aa5ff83a5 100644
+--- a/net/net.c
++++ b/net/net.c
+@@ -572,8 +572,16 @@ restart:
+ 	 *	Main packet reception loop.  Loop receiving packets until
+ 	 *	someone sets `net_state' to a state that terminates.
+ 	 */
++	int watchdog_count=0;
+ 	for (;;) {
+ 		WATCHDOG_RESET();
++		/* Inventec - watchdog */
++		if(!(watchdog_count &0xFFFF))
++		{
++			inv_watchdog_reset();
++		}
++		watchdog_count++;
++
+ #ifdef CONFIG_SHOW_ACTIVITY
+ 		show_activity(1);
+ #endif
+-- 
+2.17.1
+

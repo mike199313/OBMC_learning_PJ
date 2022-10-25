@@ -1,0 +1,25 @@
+From 7054c1017c026bb4a829b1764fb6a15a2af6882e Mon Sep 17 00:00:00 2001
+From: link <link@inventec.com>
+Date: Tue, 25 Oct 2022 05:14:41 +0000
+Subject: [PATCH] Modify-RGMII-TX-Clock-delay - TX driving strength is modified
+ from a to f at origin base
+
+---
+ drivers/clk/clk-ast2600.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/clk/clk-ast2600.c b/drivers/clk/clk-ast2600.c
+index e6da1e4638aa..5313ca914869 100644
+--- a/drivers/clk/clk-ast2600.c
++++ b/drivers/clk/clk-ast2600.c
+@@ -70,6 +70,7 @@
+ #define ASPEED_G6_DEF_MAC12_DELAY_100M	0x00417410
+ #define ASPEED_G6_DEF_MAC12_DELAY_10M	0x00417410
+ #define ASPEED_G6_DEF_MAC34_DELAY_1G	0x00104208
++#define ASPEED_G6_DEF_MAC34_DELAY_1G	0x001043C8
+ #define ASPEED_G6_DEF_MAC34_DELAY_100M	0x00104208
+ #define ASPEED_G6_DEF_MAC34_DELAY_10M	0x00104208
+ 
+-- 
+2.17.1
+

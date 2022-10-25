@@ -1,0 +1,381 @@
+From ba8cad709a9191122d38b16c005461bc32f99f4b Mon Sep 17 00:00:00 2001
+From: link <link@inventec.com>
+Date: Thu, 13 Oct 2022 08:40:04 +0000
+Subject: [PATCH] Initial transformers machine
+
+---
+ arch/arm/dts/Makefile                       |   3 +-
+ arch/arm/mach-aspeed/ast2600/board_common.c | 299 ++++++++++++--------
+ 2 files changed, 176 insertions(+), 126 deletions(-)
+
+diff --git a/arch/arm/dts/Makefile b/arch/arm/dts/Makefile
+index a79f885f54..3a478e11af 100755
+--- a/arch/arm/dts/Makefile
++++ b/arch/arm/dts/Makefile
+@@ -688,7 +688,8 @@ dtb-$(CONFIG_ARCH_ASPEED) += \
+ 	ast2600-rainier.dtb \
+ 	ast2600-s6q.dtb \
+ 	ast2600-slt.dtb \
+-	ast2600-tacoma.dtb
++	ast2600-tacoma.dtb \
++	ast2600-transformers.dtb
+ 
+ dtb-$(CONFIG_ARCH_STI) += stih410-b2260.dtb
+ 
+diff --git a/arch/arm/mach-aspeed/ast2600/board_common.c b/arch/arm/mach-aspeed/ast2600/board_common.c
+index 53870dd71d..f30cc852fc 100644
+--- a/arch/arm/mach-aspeed/ast2600/board_common.c
++++ b/arch/arm/mach-aspeed/ast2600/board_common.c
+@@ -8,50 +8,89 @@
+ #include <timer.h>
+ #include <asm/io.h>
+ #include <asm/arch/timer.h>
+-#include <linux/bitops.h>
+ #include <linux/err.h>
+ #include <dm/uclass.h>
+ 
+-DECLARE_GLOBAL_DATA_PTR;
++/*
++ * Second Watchdog Timer by default is configured
++ * to trigger secondary boot source.
++ */
++#define AST_2ND_BOOT_WDT		1
++
+ 
+ /*
+- * RMII daughtercard workaround
++ * Third Watchdog Timer by default is configured
++ * to toggle Flash address mode switch before reset.
+  */
+-//#define ASPEED_RMII_DAUGHTER_CARD
+-
+-#ifdef ASPEED_RMII_DAUGHTER_CARD
+-/**
+- * @brief	workaround for RMII daughtercard, reset PHY manually
+- *
+- * workaround for Aspeed RMII daughtercard, reset Eth PHY by GPO F0 and F2
+- * Where GPO F0 controls the reset signal of RMII PHY 1 and 2.
+- * Where GPO F2 controls the reset signal of RMII PHY 3 and 4.
+-*/
+-void reset_eth_phy(void)
+-{
+-#define GRP_F		8
+-#define PHY_RESET_MASK  (BIT(GRP_F + 0) | BIT(GRP_F + 2))
+ 
+-	u32 value = readl(0x1e780020);
+-	u32 direction = readl(0x1e780024);
++#define AST_FLASH_ADDR_DETECT_WDT	2
++#define SCU_BASE                        0x1e620000
++#define GPIO_BASE                       0x1e780000
++#define GPIOB_DIR                       GPIO_BASE + 0x004
++#define GPIOF_DATA                      GPIO_BASE + 0x020
++#define GPIOF_DIR                       GPIO_BASE + 0x024
++#define GPIOI_DATA                      GPIO_BASE + 0x070
++#define GPIOI_DIR                       GPIO_BASE + 0x074
++#define GPIONP_DATA                     GPIO_BASE + 0x07C
++#define GPIONP_DIR                      GPIO_BASE + 0x078
++#define GPIOS_DATA                      GPIO_BASE + 0x080
++#define GPIOS_DIR                       GPIO_BASE + 0x084
++#define GPIOV_DATA                      GPIO_BASE + 0x088
++#define GPIOV_DIR                       GPIO_BASE + 0x08C
++#define GPIOZ_DATA                      GPIO_BASE + 0x1E0
++#define GPIOZ_DIR                       GPIO_BASE + 0x1E4
++#define SGPIOM                          SCU_BASE + 0x414
++#define AST_LPC_BASE                    0x1e789000
++#define SNPWADR                         0x090   /* LPC Snoop Address Register */
++#define SNPWDR                          0x094   /* LPC Snoop Data Register */
++#define LPC_SNOOP_ADDR                  0x80
++#define HICR6                           0x084   /* Host Interface Control Register 6 */
++#define HICR5                           0x080   /* Host Interface Control Register 5 */
++
++/* HRCR6 Bits */
++#define HICR6_STR_SNP0W                 (1 << 0) /* Interrupt Status Snoop address 0 */
++#define HICR6_STR_SNP1W                 (1 << 1) /* Interrupt Status Snoop address 1 */
++#define HICR5_UNKVAL_MASK               0x1FFF0000 /* Bits with unknown values on reset */
++#define HICR5_EN_SIOGIO                 (1 << 31)
++#define HICR5_EN_SNP0W                  (1 << 0)
++#define GPIO554                         0x554
++#define HICRB                           0x100
++
++/* HICRB Bits */
++#define HICRB_EN80HSGIO                 (1 << 13) /* Enable 80hSGIO */
++#define SGPIO_CLK_DIV(N)                ((N) << 16)
++#define SGPIO_BYTES(N)                  ((N) << 6)
++#define SGPIO_ENABLE                    1
++
++#if 0
++void lowlevel_init(void)
++{
++	/*
++	 * These two watchdogs need to be stopped as soon as possible,
++	 * otherwise the board might hang. By default they are set to
++	 * a very short timeout and even simple debug write to serial
++	 * console early in the init process might cause them to fire.
++	 */
++	struct ast_wdt *flash_addr_wdt =
++	    (struct ast_wdt *)(WDT_BASE +
++			       sizeof(struct ast_wdt) *
++			       AST_FLASH_ADDR_DETECT_WDT);
+ 
+-	debug("RMII workaround: reset PHY manually\n");
++	clrbits_le32(&flash_addr_wdt->ctrl, WDT_CTRL_EN);
+ 
+-	direction |= PHY_RESET_MASK;
+-	value &= ~PHY_RESET_MASK;
+-	writel(direction, 0x1e780024);
+-	writel(value, 0x1e780020);
+-	while((readl(0x1e780020) & PHY_RESET_MASK) != 0);
++#ifndef CONFIG_FIRMWARE_2ND_BOOT
++	struct ast_wdt *sec_boot_wdt =
++	    (struct ast_wdt *)(WDT_BASE +
++			       sizeof(struct ast_wdt) *
++			       AST_2ND_BOOT_WDT);
+ 
+-	udelay(1000);
++	clrbits_le32(&sec_boot_wdt->ctrl, WDT_CTRL_EN);
++#endif
+ 
+-	value |= PHY_RESET_MASK;
+-	writel(value, 0x1e780020);
+-	while((readl(0x1e780020) & PHY_RESET_MASK) != PHY_RESET_MASK);
+ }
+ #endif
+ 
+-__weak int board_init(void)
++int board_init(void)
+ {
+ 	struct udevice *dev;
+ 	int i;
+@@ -74,13 +113,12 @@ __weak int board_init(void)
+ 
+ 	gd->bd->bi_boot_params = CONFIG_SYS_SDRAM_BASE + 0x100;
+ 
+-#ifdef ASPEED_RMII_DAUGHTER_CARD
+-	reset_eth_phy();
+-#endif
++	gpio_init();
+ 	/*
+ 	 * Loop over all MISC uclass drivers to call the comphy code
+ 	 * and init all CP110 devices enabled in the DT
+ 	 */
++        sgpio_init_port80();
+ 	i = 0;
+ 	while (1) {
+ 		/* Call the comphy code via the MISC uclass driver */
+@@ -91,10 +129,14 @@ __weak int board_init(void)
+ 			break;
+ 	}
+ 
++#if 0
++	if (!dev)
++		printf("No MISC found.\n");
++#endif
+ 	return 0;
+ }
+ 
+-__weak int dram_init(void)
++int dram_init(void)
+ {
+ 	struct udevice *dev;
+ 	struct ram_info ram;
+@@ -126,99 +168,106 @@ int arch_early_init_r(void)
+ 	return 0;
+ }
+ 
+-void board_add_ram_info(int use_default)
++int gpio_init(void)
+ {
+-#define MMC_BASE 0x1e6e0000
+-#define SCU_BASE 0x1e6e2000
+-	uint32_t act_size = 256 << (readl(MMC_BASE + 0x04) & 0x3);
+-	uint32_t vga_rsvd = 8 << ((readl(MMC_BASE + 0x04) >> 2) & 0x3);
+-	uint8_t ecc = (readl(MMC_BASE + 0x04) >> 7) & 0x1;
+-
+-	/* no VGA reservation if efuse VGA disable bit is set */
+-	if (readl(SCU_BASE + 0x594) & BIT(14))
+-		vga_rsvd = 0;
+-
+-	printf(" (capacity:%d MiB, VGA:%d MiB, ECC:%s", act_size,
+-	       vga_rsvd, ecc == 1 ? "on" : "off");
+-
+-	if (ecc)
+-		printf(", ECC size:%d MiB", (readl(MMC_BASE + 0x54) >> 20) + 1);
+-
+-	printf(")");
++    u32 reg;
++
++    //set GPIO B1 B7 output high
++    reg = readl(GPIO_BASE);
++    reg |= (0x00008200);
++    writel(reg,GPIO_BASE);
++
++    reg = readl(GPIOB_DIR);
++    reg |= (0x00008200);
++    writel(reg,GPIOB_DIR);
++
++    //set GPIO F3 output high
++    reg = readl(GPIOF_DATA);
++    reg |= (0x00000800);
++    writel(reg,GPIOF_DATA);
++
++    reg = readl(GPIOF_DIR);
++    reg |= (0x00001800);
++    writel(reg,GPIOF_DIR);
++
++    //set GPIO I6 output high
++    reg = readl(GPIOI_DATA);
++    reg |= (0x00000040);
++    writel(reg,GPIOI_DATA);
++
++    reg = readl(GPIOI_DIR);
++    reg |= (0x00000040);
++    writel(reg,GPIOI_DIR);
++
++    //set GPIO N2 output high GPIO P4-P6 output high P3 P7 output low
++    reg = readl(GPIONP_DATA);
++    reg |= (0x70000004);
++    writel(reg,GPIONP_DATA);
++
++    reg = readl(GPIONP_DIR);
++    reg |= (0x70000004);
++    writel(reg,GPIONP_DIR);
++
++    //set GPIO S2 S4 S7 output high S3 S6 input
++    reg = readl(GPIOS_DATA);
++    reg |= (0x00940000);
++    writel(reg,GPIOS_DATA);
++
++    reg = readl(GPIOS_DIR);
++    reg |= (0x00940000);
++    writel(reg,GPIOS_DIR);
++
++    //set GPIO V0 V3 output high
++    reg = readl(GPIOV_DATA);
++    reg |= (0x00000900);
++    writel(reg,GPIOV_DATA);
++
++    reg = readl(GPIOV_DIR);
++    reg |= (0x00000900);
++    writel(reg,GPIOV_DIR);
++
++	//set GPIO Z2 Y3 output high
++    reg = readl(GPIOZ_DATA);
++    reg |= (0x00000408);
++    writel(reg,GPIOZ_DATA);
++
++    reg = readl(GPIOZ_DIR);
++    reg |= (0x00000408);
++    writel(reg,GPIOZ_DIR);
++
++    return 0;
+ }
+ 
+-union ast2600_pll_reg {
+-	unsigned int w;
+-	struct {
+-		unsigned int m : 13;		/* bit[12:0]	*/
+-		unsigned int n : 6;		/* bit[18:13]	*/
+-		unsigned int p : 4;		/* bit[22:19]	*/
+-		unsigned int off : 1;		/* bit[23]	*/
+-		unsigned int bypass : 1;	/* bit[24]	*/
+-		unsigned int reset : 1;		/* bit[25]	*/
+-		unsigned int reserved : 6;	/* bit[31:26]	*/
+-	} b;
+-};
+-
+-void aspeed_mmc_init(void)
+-{
+-	u32 reset_bit;
+-	u32 clkstop_bit;
+-	u32 clkin = 25000000;
+-	u32 pll_reg = 0;
+-	u32 enableclk_bit;
+-	u32 rate = 0;
+-	u32 div = 0;
+-	u32 i = 0;
+-	u32 mult;
+-	u32 clk_sel = readl(0x1e6e2300);
+-
+-	/* check whether boot from eMMC is enabled */
+-	if ((readl(0x1e6e2500) & 0x4) == 0)
+-		return;
+-
+-	/* disable eMMC boot controller engine */
+-	*(volatile int *)0x1e6f500C &= ~0x90000000;
+-	/* set pinctrl for eMMC */
+-	*(volatile int *)0x1e6e2400 |= 0xff000000;
+-
+-	/* clock setting for eMMC */
+-	enableclk_bit = BIT(15);
+-
+-	reset_bit = BIT(16);
+-	clkstop_bit = BIT(27);
+-	writel(reset_bit, 0x1e6e2040);
+-	udelay(100);
+-	writel(clkstop_bit, 0x1e6e2084);
+-	mdelay(10);
+-	writel(reset_bit, 0x1e6e2044);
+-
+-	pll_reg = readl(0x1e6e2220);
+-	if (pll_reg & BIT(24)) {
+-		/* Pass through mode */
+-		mult = div = 1;
+-	} else {
+-		/* F = 25Mhz * [(M + 2) / (n + 1)] / (p + 1) */
+-		union ast2600_pll_reg reg;
+-		reg.w = pll_reg;
+-		mult = (reg.b.m + 1) / (reg.b.n + 1);
+-		div = (reg.b.p + 1);
+-	}
+-	rate = ((clkin * mult)/div);
+-
+-	for(i = 0; i < 8; i++) {
+-		div = (i + 1) * 2;
+-		if ((rate / div) <= 200000000)
+-			break;
+-	}
+-
+-	clk_sel &= ~(0x7 << 12);
+-	clk_sel |= (i << 12) | BIT(11);
+-	writel(clk_sel, 0x1e6e2300);
+-
+-	setbits_le32(0x1e6e2300, enableclk_bit);
+-
+-	return;
+-
++int sgpio_init_port80(void) {
++ 
++    u32 reg;
++ 
++    //set SGPIO mutifunctin pin
++    reg = readl(SGPIOM);
++    reg |= (0x0F000000);
++    writel(reg,SGPIOM);
++ 
++    reg = readl(AST_LPC_BASE + SNPWADR) & 0xffff0000;
++    writel(reg | LPC_SNOOP_ADDR, AST_LPC_BASE + SNPWADR);
++ 
++    /* clear interrupt status */
++    reg = readl(AST_LPC_BASE + HICR6);
++    reg |= HICR6_STR_SNP0W | HICR6_STR_SNP1W;
++    writel(reg, AST_LPC_BASE + HICR6);
++ 
++    /* enable lpc snoop #0 and SIOGIO */
++    reg = readl(AST_LPC_BASE + HICR5) & ~(HICR5_UNKVAL_MASK);
++    reg |= HICR5_EN_SIOGIO | HICR5_EN_SNP0W;
++    writel(reg, AST_LPC_BASE + HICR5);
++
++    /* enable port80h snoop on SGPIO */
++    reg = readl(AST_LPC_BASE + HICRB) | HICRB_EN80HSGIO;
++    writel(reg, AST_LPC_BASE + HICRB);
++ 
++    /* set the gpio clock to pclk/(2*(5+1)) or ~2 MHz */
++    reg = SGPIO_CLK_DIV(99) | SGPIO_BYTES(1) | SGPIO_ENABLE;
++    writel(reg, GPIO_BASE + GPIO554);
++
++    return 0;
+ }
+ 
+-- 
+2.17.1
+

@@ -1,0 +1,192 @@
+From 30c8d2d53d582b4b17cbb73e21ba8354d7c0e878 Mon Sep 17 00:00:00 2001
+From: anonymous <anonymous@inventec.com>
+Date: Thu, 22 Oct 2020 14:05:34 -0400
+Subject: [PATCH] Support max31790 device driver
+
+---
+ drivers/i2c/Kconfig        |   6 ++
+ drivers/i2c/Makefile       |   1 +
+ drivers/i2c/max31790_i2c.c | 143 +++++++++++++++++++++++++++++++++++++
+ 3 files changed, 150 insertions(+)
+ create mode 100644 drivers/i2c/max31790_i2c.c
+
+diff --git a/drivers/i2c/Kconfig b/drivers/i2c/Kconfig
+index 215624020f..671a1e9668 100644
+--- a/drivers/i2c/Kconfig
++++ b/drivers/i2c/Kconfig
+@@ -446,6 +446,12 @@ config TEGRA186_BPMP_I2C
+ 	  by the BPMP, and can only be accessed by the main CPU via IPC
+ 	  requests to the BPMP. This driver covers the latter case.
+ 
++config MAX31790_I2C
++	tristate "Maxim MAX31790 sensor chip"
++	depends on DM_I2C
++	help
++	  Support for the max31790 6-Channel PWM-Output Fan RPM Controller.
++
+ config SYS_I2C_BUS_MAX
+ 	int "Max I2C busses"
+ 	depends on ARCH_KEYSTONE || ARCH_OMAP2PLUS || ARCH_SOCFPGA
+diff --git a/drivers/i2c/Makefile b/drivers/i2c/Makefile
+index e614d3a9b7..ee7f23a19b 100644
+--- a/drivers/i2c/Makefile
++++ b/drivers/i2c/Makefile
+@@ -39,5 +39,6 @@ obj-$(CONFIG_SYS_I2C_UNIPHIER_F) += i2c-uniphier-f.o
+ obj-$(CONFIG_SYS_I2C_VERSATILE) += i2c-versatile.o
+ obj-$(CONFIG_SYS_I2C_XILINX_XIIC) += xilinx_xiic.o
+ obj-$(CONFIG_TEGRA186_BPMP_I2C) += tegra186_bpmp_i2c.o
++obj-$(CONFIG_MAX31790_I2C) += max31790_i2c.o
+ 
+ obj-$(CONFIG_I2C_MUX) += muxes/
+diff --git a/drivers/i2c/max31790_i2c.c b/drivers/i2c/max31790_i2c.c
+new file mode 100644
+index 0000000000..fc035cab5e
+--- /dev/null
++++ b/drivers/i2c/max31790_i2c.c
+@@ -0,0 +1,143 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++/*
++ * max31790.c - Part of lm_sensors, Linux kernel modules for hardware
++ *             monitoring.
++ *
++ * (C) 2015 by Il Han <corone.il.han@gmail.com>
++ */
++#include <common.h>
++#include <linux/err.h>
++#include <dm.h>
++#include <i2c.h>
++
++/* max31790 registers */
++#define max31790_REG_GLOBAL_CONFIG	0x00
++#define max31790_REG_FAN_CONFIG(ch)	(0x02 + (ch))
++#define max31790_REG_FAN_DYNAMICS(ch)	(0x08 + (ch))
++#define max31790_REG_FAN_FAULT_STATUS2	0x10
++#define max31790_REG_FAN_FAULT_STATUS1	0x11
++#define max31790_REG_TACH_COUNT(ch)	(0x18 + (ch) * 2)
++#define max31790_REG_PWM_DUTY_CYCLE(ch)	(0x30 + (ch) * 2)
++#define max31790_REG_PWMOUT(ch)		(0x40 + (ch) * 2)
++#define max31790_REG_TARGET_COUNT(ch)	(0x50 + (ch) * 2)
++
++/* Fan Config register bits */
++#define max31790_FAN_CFG_RPM_MODE	0x80
++#define max31790_FAN_CFG_TACH_INPUT_EN	0x08
++#define max31790_FAN_CFG_TACH_INPUT	0x01
++
++/* Fan Dynamics register bits */
++#define max31790_FAN_DYN_SR_SHIFT	5
++#define max31790_FAN_DYN_SR_MASK	0xE0
++#define SR_FROM_REG(reg)		(((reg) & max31790_FAN_DYN_SR_MASK) \
++					 >> max31790_FAN_DYN_SR_SHIFT)
++
++#define FAN_RPM_MIN			120
++#define FAN_RPM_MAX			7864320
++
++#define RPM_FROM_REG(reg, sr)		(((reg) >> 4) ? \
++					 ((60 * (sr) * 8192) / ((reg) >> 4)) : \
++					 FAN_RPM_MAX)
++#define RPM_TO_REG(rpm, sr)		((60 * (sr) * 8192) / ((rpm) * 2))
++
++#define NR_CHANNEL			6
++
++/**
++ * struct hwmon_ops - hwmon device operations
++ */
++struct hwmon_ops {
++	int (*read)(struct udevice *dev, uint offset, uint8_t *buffer, int len);
++	int (*write)(struct udevice *dev, uint offset, const uint8_t *buffer,
++		 int len);
++};
++
++/*
++ * @max31790_read:	Read callback for data attributes. Mandatory if readable
++ *		data attributes are present.
++ *		Parameters are:
++ * 		@dev:		Chip to read from
++ * 		@offset:	Offset within chip to start reading
++ * 		@buffer:	Place to put data
++ * 		@len:		Number of bytes to read
++ *		The function returns 0 on success or a negative error number.
++ */
++static int max31790_read(struct udevice *dev, uint offset, uint8_t *buffer, int len)
++{
++	const struct hwmon_ops *ops = device_get_ops(dev);
++
++	if (!ops->read)
++		return -ENOSYS;
++
++	return dm_i2c_read(dev, offset, buffer, len);
++}
++
++/*
++ * @max31790_write:	Write callback for data attributes. Mandatory if writeable
++ *		data attributes are present.
++ *		Parameters are:
++ * 		@dev:		Chip to write to
++ * 		@offset:	Offset within chip to start writing
++ * 		@buffer:	Buffer containing data to write
++ * 		@len:		Number of bytes to write
++ *		The function returns 0 on success or a negative error number.
++ */
++static int max31790_write(struct udevice *dev, uint offset, const uint8_t *buffer,
++		 int len)
++{
++	const struct hwmon_ops *ops = device_get_ops(dev);
++
++	if (!ops->write)
++		return -ENOSYS;
++
++	return dm_i2c_write(dev, offset, buffer, len);;
++}
++
++static const struct hwmon_ops max31790_ops = {
++	.read = max31790_read,
++	.write = max31790_write,
++};
++
++/*
++ * @max31790_probe:	Init max31790 default setting here
++ */
++static int max31790_probe(struct udevice *dev)
++{
++	int ret = 0;
++	int TIMEOUT = 5;
++	uint8_t buffer[2];
++
++	// set fan default pwm , we set 100% pwm here.
++	buffer[0] = 0xff;//LSB
++	buffer[1] = 0x80;//MSB
++
++	// Try to write to the device, return 0 if success
++	for (int i = 0; i < TIMEOUT; i++)
++	{
++		ret = max31790_write(dev, max31790_REG_PWMOUT(0), &buffer, 2);
++		if (ret == 0)
++		{
++			// printf("max31790_write: dev%s, offset:%x, buffer1:%x, buffer2:%x\n", dev->name, max31790_REG_PWMOUT(0), buffer[0], buffer[1]);
++			return ret;
++		}
++	}
++
++	return 0;
++}
++
++static const struct udevice_id max31790_id[] = {
++	{ .compatible = "maxim,max31790", .data = 0 },
++	{ },
++};
++
++U_BOOT_DRIVER(max31790) = {
++	.name			= "max31790",
++	.id 			= UCLASS_I2C_GENERIC,
++	.of_match     	= max31790_id,
++	.ops	        = &max31790_ops,
++	.probe        	= max31790_probe,
++};
++
++UCLASS_DRIVER(max31790) = {
++	.id		        = UCLASS_I2C_GENERIC,
++	.name		  	= "max31790",
++};
+-- 
+2.17.1
+

@@ -8,11 +8,13 @@ MACHINE_FEATURES += "\
         obmc-chassis-state-mgmt \
         obmc-bmc-state-mgmt \
         "
+
+VIRTUAL-RUNTIME_skeleton_workbook = "${MACHINE}-config"
+
 # since we use x86-power-control service, we don't need below three services
 VIRTUAL-RUNTIME_obmc-host-state-manager = "x86-power-control"
 VIRTUAL-RUNTIME_obmc-chassis-state-manager = "x86-power-control"
 VIRTUAL-RUNTIME_obmc-discover-system-state = "x86-power-control"
-
 
 PREFERRED_PROVIDER_virtual/obmc-chassis-mgmt = "packagegroup-inventec-apps"
 PREFERRED_PROVIDER_virtual/obmc-fan-mgmt = "packagegroup-inventec-apps"

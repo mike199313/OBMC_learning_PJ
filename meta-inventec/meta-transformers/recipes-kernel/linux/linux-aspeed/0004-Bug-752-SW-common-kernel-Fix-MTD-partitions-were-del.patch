@@ -1,0 +1,92 @@
+From 9fd01a08fac9546f1216c04263e2df60d74a407e Mon Sep 17 00:00:00 2001
+From: link <link@inventec.com>
+Date: Tue, 11 Oct 2022 07:52:25 +0000
+Subject: [PATCH] Bug 752 - [SW][common][kernel] - Fix MTD partitions were
+ deleted due to another flash not found
+
+Symptom/Reaseon:
+    We set dual flash in DTS, the aspeed-smc driver will detect them.
+    If any of them cannot be detected, the driver will delete the registered one.
+
+    Note that AspeedTech-BMC/linux suggest to use spi-aspeed.c
+    But it use DMA feature which would hang in QEMU
+
+Root Cause:
+    N/A
+
+Solution/Change:
+    If one of the flashes can be detected but another failed then treat it successful.
+
+Entry Test:
+    N/A
+---
+ drivers/mtd/spi-nor/controllers/aspeed-smc.c | 26 +++++++++++++++++---
+ 1 file changed, 23 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/mtd/spi-nor/controllers/aspeed-smc.c b/drivers/mtd/spi-nor/controllers/aspeed-smc.c
+index 74fa46439246..0e7ee1daab4b 100644
+--- a/drivers/mtd/spi-nor/controllers/aspeed-smc.c
++++ b/drivers/mtd/spi-nor/controllers/aspeed-smc.c
+@@ -1031,6 +1031,8 @@ static const uint32_t aspeed_smc_hclk_divs[] = {
+ 	0xe, /* HCLK/3 */
+ 	0x6, /* HCLK/4 */
+ 	0xd, /* HCLK/5 */
++	0x5, /* HCLK/6 */
++	0xc, /* HCLK/7 */
+ };
+ #define ASPEED_SMC_HCLK_DIV(i) \
+ 	(aspeed_smc_hclk_divs[(i) - 1] << CONTROL_CLOCK_FREQ_SEL_SHIFT)
+@@ -1111,8 +1113,10 @@ static int aspeed_smc_optimize_read(struct aspeed_smc_chip *chip,
+ 		writel(tv, chip->ctl);
+ 		dev_dbg(chip->nor.dev, "Trying HCLK/%d [%08x] ...", i, tv);
+ 		rc = info->calibrate(chip, i, golden_buf, test_buf);
+-		if (rc == 0)
++		if (rc == 0){
+ 			best_div = i;
++			printk(KERN_WARNING " freq = %d \n", freq);
++		}
+ 	}
+ 	kfree(test_buf);
+ 
+@@ -1259,6 +1263,7 @@ static int aspeed_smc_setup_flash(struct aspeed_smc_controller *controller,
+ 	unsigned int cs;
+ 	int ret = -ENODEV;
+ 	bool found_one = false;
++	unsigned int n;
+ 
+ 	for_each_available_child_of_node(np, child) {
+ 		struct aspeed_smc_chip *chip;
+@@ -1347,13 +1352,28 @@ static int aspeed_smc_setup_flash(struct aspeed_smc_controller *controller,
+ 		controller->chips[cs] = chip;
+ 		found_one = true;
+ 	}
+-
++	/* Inventec - Fix MTD partitions were deleted due to another flash not found */
++	/*
+ 	if (ret) {
+ 		of_node_put(child);
+ 		aspeed_smc_unregister(controller);
+ 	}
++	*/
+ 
+-	return ret;
++	/* Were any children registered? */
++	for (n = 0; n < info->nce; n++){
++		if (controller->chips[n]){
++			break;
++		}
++	}
++
++	if (n == info->nce){
++		printk("Setup flash failed");
++		aspeed_smc_unregister(controller);
++		return -ENODEV;
++	}
++
++	return 0;
+ }
+ 
+ static int aspeed_smc_probe(struct platform_device *pdev)
+-- 
+2.17.1
+
