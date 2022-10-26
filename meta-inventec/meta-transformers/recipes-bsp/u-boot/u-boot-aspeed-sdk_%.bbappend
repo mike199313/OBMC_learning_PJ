@@ -3,6 +3,7 @@ FILESEXTRAPATHS:append := "${THISDIR}/${BPN}:"
 SRC_URI:append = " file://transformers-ast2600.cfg \
                    file://transformers-ast2600_defconfig \
                    file://ast2600-transformers.dts \
+                   file://0001-spi-aspeed-Use-jedec-spi-nor-compatible-to-count-dev.patch \
                    file://0001-Modify-bootfile-name-and-env-offset.patch \
                    file://0002-Add-debug-mesg-to-show-SPI-clock-frequency.patch \
                    file://0003-Read-MAC0-address-from-EEPROM.patch \
