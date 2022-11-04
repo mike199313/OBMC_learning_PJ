@@ -1,0 +1,44 @@
+From c9a53d58cbb0b7b4cfc65ffaf8c007693fbd3fab Mon Sep 17 00:00:00 2001
+From: link <link@inventec.com>
+Date: Wed, 2 Nov 2022 06:25:02 +0000
+Subject: [PATCH] [transformers-nuv] Modify TOCK to PLL0 for RGMII issue
+
+Repatch from
+
+From 3ec29dc0c2693bda5184e15461545729298219f9 Mon Sep 17 00:00:00 2001
+From: Neil Chen <Chen.NeilZX@inventec.com>
+Date: Fri, 13 Aug 2021 05:33:03 +0000
+Subject: [PATCH] [transformers-nuv] Modify TOCK to PLL0 for RGMII issue
+---
+ drivers/clk/clk-npcm7xx.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/drivers/clk/clk-npcm7xx.c b/drivers/clk/clk-npcm7xx.c
+index bf721ec2bbc6..e361e96516db 100644
+--- a/drivers/clk/clk-npcm7xx.c
++++ b/drivers/clk/clk-npcm7xx.c
+@@ -34,6 +34,7 @@ struct npcm7xx_clk_pll {
+ #define PLLCON_PWDEN	BIT(12)
+ #define PLLCON_OTDV1	GENMASK(10, 8)
+ #define PLLCON_INDV	GENMASK(5, 0)
++#define CLKSEL_CLKOUTSEL	18
+ 
+ static unsigned long npcm7xx_clk_pll_recalc_rate(struct clk_hw *hw,
+ 						 unsigned long parent_rate)
+@@ -624,6 +625,13 @@ static void __init npcm7xx_clk_init(struct device_node *clk_np)
+ 			npcm7xx_clk_data->hws[mux_data->onecell_idx] = hw;
+ 	}
+ 
++	/* Set TOCK to PLL0 */
++	unsigned int read;
++        read = ioread32(clk_base + NPCM7XX_CLKSEL);
++        read = read & ~(7 << CLKSEL_CLKOUTSEL);
++	iowrite32(read, (clk_base + NPCM7XX_CLKSEL));
++	read = ioread32(clk_base + NPCM7XX_CLKSEL);
++
+ 	/* Register clock dividers specified in npcm7xx_divs */
+ 	for (i = 0; i < ARRAY_SIZE(npcm7xx_divs); i++) {
+ 		const struct npcm7xx_clk_div_data *div_data = &npcm7xx_divs[i];
+-- 
+2.17.1
+

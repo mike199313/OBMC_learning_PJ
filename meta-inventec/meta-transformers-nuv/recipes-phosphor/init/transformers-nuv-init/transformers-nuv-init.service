@@ -1,0 +1,10 @@
+[Unit]
+Description=Essential init commands for transformers-nuv
+
+[Service]
+Type=oneshot
+RemainAfterExit=true
+ExecStart=/usr/sbin/transformers-nuv-init.sh
+
+[Install]
+WantedBy=multi-user.target

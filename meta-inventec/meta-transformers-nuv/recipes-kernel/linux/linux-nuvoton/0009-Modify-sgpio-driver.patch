@@ -1,0 +1,57 @@
+From c4241a1751050e1035a8179f6820bdfa2e2dc465 Mon Sep 17 00:00:00 2001
+From: link <link@inventec.com>
+Date: Wed, 2 Nov 2022 06:52:30 +0000
+Subject: [PATCH] Modify-sgpio-driver - remove sgpio1 setting - Modify
+ frequency to 780k(0x04) for MB CPLD
+
+---
+ arch/arm/boot/dts/nuvoton-common-npcm7xx.dtsi | 15 ---------------
+ drivers/gpio/gpio-npcm-sgpio.c                |  5 ++++-
+ 2 files changed, 4 insertions(+), 16 deletions(-)
+
+diff --git a/arch/arm/boot/dts/nuvoton-common-npcm7xx.dtsi b/arch/arm/boot/dts/nuvoton-common-npcm7xx.dtsi
+index cb5eabf93146..f7dc88c02165 100644
+--- a/arch/arm/boot/dts/nuvoton-common-npcm7xx.dtsi
++++ b/arch/arm/boot/dts/nuvoton-common-npcm7xx.dtsi
+@@ -504,21 +504,6 @@
+ 				clock-names = "clk_apb4";
+ 			};
+ 
+-			sgpio1: sgpio@101000 {
+-				clocks = <&clk NPCM7XX_CLK_APB3>;
+-				compatible = "nuvoton,npcm750-sgpio";
+-				interrupts = <GIC_SPI 19 IRQ_TYPE_LEVEL_HIGH>;
+-				gpio-controller;
+-				#gpio-cells = <2>;
+-				pinctrl-names = "default";
+-				pinctrl-0 = <&iox1_pins>;
+-				bus-frequency = <16000000>;
+-				nin_gpios = <64>;
+-				nout_gpios = <64>;
+-				reg = <0x101000 0x200>;
+-				status = "disabled";
+-			};
+-
+ 			sgpio2: sgpio@102000 {
+ 				clocks = <&clk NPCM7XX_CLK_APB3>;
+ 				compatible = "nuvoton,npcm750-sgpio";
+diff --git a/drivers/gpio/gpio-npcm-sgpio.c b/drivers/gpio/gpio-npcm-sgpio.c
+index 33a1f542152c..73ad44e041ad 100644
+--- a/drivers/gpio/gpio-npcm-sgpio.c
++++ b/drivers/gpio/gpio-npcm-sgpio.c
+@@ -508,8 +508,11 @@ static const int npcm750_SFT_CLK[] = {
+ 		1024, 32, 8, 4, 3, 2,
+ };
+ 
++/* Inventec */
++/* npcm750_SFT_CLK 32 match to npcm750_CLK_SEL 0x05
++ * but we cannot run at this frequency */
+ static const u8 npcm750_CLK_SEL[] = {
+-		0x00, 0x05, 0x07, 0x0C, 0x0D, 0x0E,
++		0x00, 0x04, 0x07, 0x0C, 0x0D, 0x0E,
+ };
+ 
+ static const int npcm845_SFT_CLK[] = {
+-- 
+2.17.1
+

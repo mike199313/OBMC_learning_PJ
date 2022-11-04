@@ -1,0 +1,116 @@
+From 870441e75673a6f9fce8ac2d590fa3b2bc872b46 Mon Sep 17 00:00:00 2001
+From: link <link@inventec.com>
+Date: Tue, 1 Nov 2022 02:10:21 +0000
+Subject: [PATCH] Bug 737 - [Transformers-nuv][OpenBMC] No mac address info in 
+ FW Env
+
+Symptom/Reason:
+	There is no mac addr set in inv. So it needs to add update eth Mac function in uboot.
+
+Root Cause:
+	Because there is no update eth Mac function in Uboot.
+
+Solution/Change:
+	[npcm750_eth.c]
+		add the "set_eth_mac_env" function & used the DM_I2C to read eeprom mac.
+
+Entry Test:
+
+[u-boot log]
+set_eth_mac_env
+eth MAC: 00:00:00:00:00:00
+EEPROM_MAC_I2C_BUS: 8
+I2C bus8 ready. speed=100000, base=0xf0088000, apb=50000000
+ addr[0]=0x38
+ addr[1]=0x68
+ addr[2]=0xdd
+ addr[3]=0x3e
+ addr[4]=0x99
+ addr[5]=0xd2
+After eth MAC: 38:68:dd:3e:99:d2
+---
+ drivers/net/npcm750_eth.c | 54 +++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 54 insertions(+)
+
+diff --git a/drivers/net/npcm750_eth.c b/drivers/net/npcm750_eth.c
+index 47d993455a..d73cccc250 100644
+--- a/drivers/net/npcm750_eth.c
++++ b/drivers/net/npcm750_eth.c
+@@ -15,6 +15,8 @@
+ #include <asm/arch/cpu.h>
+ #include <asm/arch/gcr.h>
+ #include <asm/arch/clock.h>
++#include <i2c.h>
++#include <configs/IECplatformConfigs.h>
+ #include <cpu_func.h>
+ #include <linux/iopoll.h>
+ #include <serial.h>
+@@ -662,6 +664,12 @@ static int npcm750_eth_probe(struct udevice *dev)
+ 	priv->interface = pdata->phy_interface;
+ 	priv->max_speed = pdata->max_speed;
+ 
++	if (priv->emc_regs_p == EEPROM_ETH0_ADDR)
++	{
++		printf("Update eth MAC\n");
++		set_eth_mac_env(pdata->enetaddr);
++	}
++
+ 	if (priv->idx == 0) {
+ 		/* Enable RMII for EMC1 module */
+ 		writel((readl(&gcr->intcr)  | (1 << INTCR_R1EN)), &gcr->intcr);
+@@ -722,6 +730,52 @@ static int npcm750_eth_ofdata_to_platdata(struct udevice *dev)
+ 	return ret;
+ }
+ 
++int set_eth_mac_env(unsigned char *mac)
++{
++	uchar addr[6];
++	int i = 0;
++	uchar temp_addr[6] = {0x00, 0x03, 0xff, 0x00, 0x00, 0xcc};
++	u32 reg;
++	struct udevice *bus, *dev;
++
++	//printf("eth MAC: %02x:%02x:%02x:%02x:%02x:%02x\n", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
++
++	uclass_get_device_by_seq( UCLASS_I2C, EEPROM_MAC_I2C_BUS, &bus);
++	i2c_get_chip(bus, EEPROM_MAC_I2C_ADDRESS, 1, &dev);
++	i2c_set_chip_offset_len(dev,EEPROM_MAC_I2C_ADDR_LEN);
++	dm_i2c_set_bus_speed(bus,EEPROM_MAC_I2C_DEV_SPEED);
++	dm_i2c_read(dev, EEPROM_MAC_OFFSET, &addr[0], 6);
++
++	// for( i = 0; i < 6; i++) {
++	// 	printf(" addr[%d]=0x%02x\n",i, addr[i]);
++	// }
++
++	if (is_valid_ethaddr(&addr[0]))
++	{
++		eth_env_set_enetaddr("ethaddr", addr);
++		memcpy(mac, addr, sizeof(addr));
++	}
++	else
++	{
++		printf("Invalid EEPROM data\n");
++		if (eth_env_get_enetaddr("ethaddr", &addr[0]))
++		{
++			printf("Set env MAC\n");
++			memcpy(mac, addr, sizeof(addr));
++		}
++		else
++		{
++			printf("Set default MAC\n");
++			eth_env_set_enetaddr("ethaddr", temp_addr);
++			memcpy(mac, temp_addr, sizeof(temp_addr));
++		}
++	}
++
++	printf("After eth MAC: %02x:%02x:%02x:%02x:%02x:%02x\n", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
++	return 0;
++
++}
++
+ static const struct udevice_id npcm750_eth_ids[] = {
+ 	{ .compatible = "nuvoton,npcm750-emc" },
+ 	{ }
+-- 
+2.17.1
+

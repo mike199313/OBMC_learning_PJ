@@ -1,0 +1,122 @@
+From b9f9f87e6a175e004a457183b2513a7d770a5a56 Mon Sep 17 00:00:00 2001
+From: link <link@inventec.com>
+Date: Tue, 1 Nov 2022 01:11:10 +0000
+Subject: [PATCH] Bug 631 - [SW][Transformers-nuv][OpenBMC] Support mc selftest
+ on transformers-nuv
+
+Sympton/Reason:
+	Implement selftest on transformers-nuv.
+
+Root Cause:
+	N/A
+
+Solution/Change:
+	[u-boot-nuvoton]
+	   - Add md5 checksum at the end of binary file.
+	   - Save the result of checking the hash code of operational firmware
+
+Entry Test:
+	# systemctl stop xyz.openbmc_project.Logging.IPMI.service
+	# ipmitool mc selftest
+	Selftest: device corrupted
+	 -> SEL device not accessible
+
+	# systemctl stop xyz.openbmc_project.ObjectMapper.service
+	# ipmitool mc selftest
+	Selftest: device corrupted
+	 -> SDR repository not accessible
+
+	# systemctl stop xyz.openbmc_project.FruDevice.service
+	# ipmitool mc selftest
+	Selftest: device corrupted
+	FRU device not accessible
+
+	# systemctl stop ipmb.service
+	# ipmitool mc selftest
+	Selftest: device corrupted
+	IPMB signal lines do not respond
+
+	# echo "wwwwwwwwwwwwwwwwwww" > /sys/bus/i2c/devices/3-0050/eeprom
+	# ipmitool mc selftest
+	Selftest: device corrupted
+	Internal Use Area corrupted
+
+	# echo "wwwwwwwwwwwwwwwwwww" > /sys/bus/i2c/devices/3-0050/eeprom
+	# echo "wwwwwwwwwwwwwwwwwww" > /sys/bus/i2c/devices/8-0051/eeprom
+	# echo "wwwwwwwwwwwwwwwwwww" > /sys/bus/i2c/devices/8-0053/eeprom
+	Selftest: device corrupted
+	 -> SDR repository not accessible
+	SDR repository empty
+	Internal Use Area corrupted
+---
+ common/bootm.c | 35 +++++++++++++++++++++++++++++++++--
+ 1 file changed, 33 insertions(+), 2 deletions(-)
+
+diff --git a/common/bootm.c b/common/bootm.c
+index defaed8426..b82c5c6b22 100644
+--- a/common/bootm.c
++++ b/common/bootm.c
+@@ -634,6 +634,21 @@ int bootm_process_cmdline_env(int flags)
+ 	return 0;
+ }
+ 
++static int SetCheckResult(const char *env_name, char *result) {
++	int change = 0;
++	char *image_status = env_get(env_name);
++	if(image_status == NULL) {
++		env_set(env_name, result);
++		change = 1;
++	} else {
++		if(strcmp(result, image_status) != 0) {
++			env_set(env_name, result);
++			change = 1;
++		}
++	}
++	return change;
++}
++
+ /**
+  * Execute selected states of the bootm command.
+  *
+@@ -667,8 +682,12 @@ int do_bootm_states(struct cmd_tbl *cmdtp, int flag, int argc,
+ 	ulong iflag = 0;
+ 	int ret = 0, need_boot_fn;
+ 
++	int change = 0;
+ 	images->state |= states;
+ 
++	change += SetCheckResult("kernel_verify", "OK");
++	change += SetCheckResult("ramdisk_verify", "OK");
++
+ 	/*
+ 	 * Work through the states and see how far we get. We stop on
+ 	 * any error.
+@@ -676,11 +695,23 @@ int do_bootm_states(struct cmd_tbl *cmdtp, int flag, int argc,
+ 	if (states & BOOTM_STATE_START)
+ 		ret = bootm_start(cmdtp, flag, argc, argv);
+ 
+-	if (!ret && (states & BOOTM_STATE_FINDOS))
++	if (!ret && (states & BOOTM_STATE_FINDOS)){
+ 		ret = bootm_find_os(cmdtp, flag, argc, argv);
++		if(ret) {
++			change += SetCheckResult("kernel_verify", "Error");
++		}
++	}
+ 
+-	if (!ret && (states & BOOTM_STATE_FINDOTHER))
++	if (!ret && (states & BOOTM_STATE_FINDOTHER)){
+ 		ret = bootm_find_other(cmdtp, flag, argc, argv);
++		if(ret) {
++			change += SetCheckResult("ramdisk_verify", "Error");
++		}
++	}
++
++	if(change) {
++		env_save();
++	}
+ 
+ 	/* Load the OS */
+ 	if (!ret && (states & BOOTM_STATE_LOADOS)) {
+-- 
+2.17.1
+

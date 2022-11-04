@@ -1,0 +1,29 @@
+From 3e9ea3123be2486dd763d846256d72bef75de26b Mon Sep 17 00:00:00 2001
+From: link <link@inventec.com>
+Date: Tue, 1 Nov 2022 01:57:35 +0000
+Subject: [PATCH] Add Windbond W25Q512JVFIM - origin code base
+ npcm7xx-v2019.01, now is renamed in npcm-v2021.04
+
+---
+ drivers/mtd/spi/spi-nor-ids.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/drivers/mtd/spi/spi-nor-ids.c b/drivers/mtd/spi/spi-nor-ids.c
+index 4e832b517a..6a4dedc2f6 100644
+--- a/drivers/mtd/spi/spi-nor-ids.c
++++ b/drivers/mtd/spi/spi-nor-ids.c
+@@ -330,6 +330,11 @@ const struct flash_info spi_nor_ids[] = {
+ 			SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ |
+ 			SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB)
+ 	},
++	{
++		INFO("w25q512jvw", 0xef7020, 0, 64 * 1024, 1024,
++			SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ |
++			SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB)
++	},
+ 	{ INFO("w25q80", 0xef5014, 0, 64 * 1024,  16, SECT_4K) },
+ 	{ INFO("w25q80bl", 0xef4014, 0, 64 * 1024,  16, SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ) },
+ 	{ INFO("w25q16cl", 0xef4015, 0, 64 * 1024,  32, SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ) },
+-- 
+2.17.1
+

@@ -1,0 +1,56 @@
+From ce976a2aa8771a2d537972aa8f703a11e48c2db2 Mon Sep 17 00:00:00 2001
+From: emil <huang.emil@inventec.com>
+Date: Thu, 17 Mar 2022 11:43:52 +0800
+Subject: [PATCH] Fix peci drivers complier error
+
+Symptom/Reason:
+    The peci_device_remove function causes compiler fault, use older return value to fix it.
+
+Root Cause:
+    N/A
+
+Solution/Change:
+    peci
+        - peci-core.c
+
+Entry Test:
+    N/A
+---
+ drivers/peci/peci-core.c | 9 ++++++---
+ 1 file changed, 6 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/peci/peci-core.c b/drivers/peci/peci-core.c
+index 72d9a909125b..d81286d79c01 100644
+--- a/drivers/peci/peci-core.c
++++ b/drivers/peci/peci-core.c
+@@ -1307,21 +1307,24 @@ static int peci_device_probe(struct device *dev)
+ 	return status;
+ }
+ 
+-static void peci_device_remove(struct device *dev)
++static int peci_device_remove(struct device *dev)
+ {
+ 	struct peci_client *client = peci_verify_client(dev);
+ 	struct peci_driver *driver;
++	int status = 0;
+ 
+ 	if (!client || !dev->driver)
+-		return;
++		return 0;
+ 
+ 	driver = to_peci_driver(dev->driver);
+ 	if (driver->remove) {
+ 		dev_dbg(dev, "%s: name:%s\n", __func__, client->name);
+-		driver->remove(client);
++		status = driver->remove(client);
+ 	}
+ 
+ 	dev_pm_domain_detach(&client->dev, true);
++
++	return status;
+ }
+ 
+ static void peci_device_shutdown(struct device *dev)
+-- 
+2.17.1
+

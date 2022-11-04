@@ -1,0 +1,27 @@
+From 2dae9b333187979f54c2c01530a5447f8aa671d9 Mon Sep 17 00:00:00 2001
+From: emil <huang.emil@inventec.com>
+Date: Tue, 7 Sep 2021 11:33:41 +0800
+Subject: [PATCH] [PATCH] add enable espi four channel config
+
+---
+ arch/arm/dts/nuvoton-npcm750-buv.dts | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/arch/arm/dts/nuvoton-npcm750-buv.dts b/arch/arm/dts/nuvoton-npcm750-buv.dts
+index 525cc54654..e060e72eb1 100644
+--- a/arch/arm/dts/nuvoton-npcm750-buv.dts
++++ b/arch/arm/dts/nuvoton-npcm750-buv.dts
+@@ -12,6 +12,10 @@
+ 		tick-timer = &timer0;
+ 	};
+ 
++	config {
++		espi-channel-support = <0xf>;
++	};
++
+ 	aliases {
+ 		serial0 = &serial0;
+ 		serial1 = &serial1;
+-- 
+2.33.0
+
