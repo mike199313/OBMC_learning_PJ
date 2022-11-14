@@ -1,8 +1,8 @@
-From 598d02771ea922717af3066614801527898b2ec8 Mon Sep 17 00:00:00 2001
+From a2fc28f7b59e4bba26438a5246bc372203ae484e Mon Sep 17 00:00:00 2001
 From: "pj.chen" <chen.pj@inventec.com>
 Date: Tue, 1 Mar 2022 03:28:39 +0000
-Subject: [PATCH 08/27] HwmonTemp - Add totalThresholdNumber when
- HwmonTempSensor create
+Subject: [PATCH] HwmonTemp - Add totalThresholdNumber when HwmonTempSensor
+ create
 
 Symptom/Reason:
   For HwmonTempSensor, may have threshold config in one hwmon path, for example "tmp468".
@@ -48,9 +48,9 @@ THERMAL_U8       | 24.000     | degrees C  | ok    | na        | 5.000     | 10.
 THERMAL_U95      | 27.000     | degrees C  | ok    | na        | 5.000     | 10.000    | 65.000    | 70.000    | na
 ---
  include/HwmonTempSensor.hpp |  3 ++-
- src/HwmonTempMain.cpp       | 17 +++++++++++++++--
+ src/HwmonTempMain.cpp       | 27 ++++++++++++++++-----------
  src/HwmonTempSensor.cpp     |  6 +++---
- 3 files changed, 20 insertions(+), 6 deletions(-)
+ 3 files changed, 21 insertions(+), 15 deletions(-)
 
 diff --git a/include/HwmonTempSensor.hpp b/include/HwmonTempSensor.hpp
 index 86cad31..856058a 100644
@@ -74,10 +74,10 @@ index 86cad31..856058a 100644
      void handleResponse(const boost::system::error_code& err);
      void restartRead();
 diff --git a/src/HwmonTempMain.cpp b/src/HwmonTempMain.cpp
-index 7b11bd9..ae38669 100644
+index 7b11bd9..261817e 100644
 --- a/src/HwmonTempMain.cpp
 +++ b/src/HwmonTempMain.cpp
-@@ -384,6 +384,19 @@ void createSensors(
+@@ -384,24 +384,29 @@ void createSensors(
  
                  std::vector<thresholds::Threshold> sensorThresholds;
  
@@ -97,7 +97,26 @@ index 7b11bd9..ae38669 100644
                  /* Inventec - Add tmp468 support and Label search for extra thresold and ipmi config */
                  if( !sensorType.compare("xyz.openbmc_project.Configuration.TMP468") ) {
                      std::string thresholdLabel = sensorName.substr(0, sensorName.find(" "));
-@@ -447,7 +460,7 @@ void createSensors(
++                    sensorThresholds.clear();
+                     if (!parseThresholdsFromConfig(sensorData, sensorThresholds,&thresholdLabel, nullptr))
+                     {
+                         std::cerr << "error populating thresholds for "
+                               << sensorName << " index 1\n";
+                     }
+                 }
+-                else
+-                {
+-                    if (!parseThresholdsFromConfig(sensorData, sensorThresholds,
+-                                                nullptr, &index))
+-                    {
+-                        std::cerr << "error populating thresholds for "
+-                                << sensorName << " index 1\n";
+-                    }
+-                }
+ 
+                 auto findPollRate = baseConfigMap.find("PollRate");
+                 float pollRate = pollRateDefault;
+@@ -447,7 +452,7 @@ void createSensors(
                          io, sensorName, std::move(sensorThresholds),
                          std::move(sensorIpmiConfig),
                          thisSensorParameters, pollRate, interfacePath,
@@ -106,7 +125,7 @@ index 7b11bd9..ae38669 100644
                      sensor->setupRead();
                      hwmonName.erase(
                          remove(hwmonName.begin(), hwmonName.end(), sensorName),
-@@ -515,7 +528,7 @@ void createSensors(
+@@ -515,7 +520,7 @@ void createSensors(
                              *hwmonFile, sensorType, objectServer,
                              dbusConnection, io, sensorName,
                              std::move(sensorThresholdsExtra), std::move(sensorIpmiConfig), thisSensorParameters,
