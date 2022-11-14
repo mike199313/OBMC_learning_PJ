@@ -1,0 +1,12 @@
+[Unit]
+PartOf=host-s5-state.target
+Wants=mapper-wait@-xyz-openbmc_project-settings-fanctrl.service
+After=mapper-wait@-xyz-openbmc_project-settings-fanctrl.service
+
+[Service]
+Type=oneshot
+# 102: 40% duty cycle
+ExecStart=/bin/bash /usr/bin/starscream-states-control.sh 5 102
+
+[Install]
+WantedBy=host-s5-state.target

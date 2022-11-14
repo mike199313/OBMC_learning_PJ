@@ -1,0 +1,10 @@
+[Unit]
+Description=BMC Hardware Watchdog Daemon
+
+[Service]
+ExecStart=/usr/sbin/system-watchdog.sh start
+ExecStopPost=/usr/sbin/system-watchdog.sh stop
+KillSignal=SIGKILL
+
+[Install]
+WantedBy=basic.target

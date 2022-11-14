@@ -1,0 +1,8 @@
+[Unit]
+Description = dimm-plug service %i : plug-type (insert/remove)
+
+[Service]
+Type=oneshot
+RemainAfterExit=no
+ExecStart=/usr/bin/dimm-plug.sh %i
+StandardOutput=journal+console

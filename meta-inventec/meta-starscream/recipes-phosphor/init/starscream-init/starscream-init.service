@@ -1,5 +1,7 @@
 [Unit]
 Description=Essential init commands for starscream
+Before=xyz.openbmc_project.Software.BMC.Updater.service
+After=phosphor-multi-gpio-monitor.service phosphor-ipmi-host.service xyz.openbmc_project.Logging.IPMI.service
 
 [Service]
 Type=oneshot

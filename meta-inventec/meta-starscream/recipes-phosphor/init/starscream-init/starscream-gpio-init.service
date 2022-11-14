@@ -1,0 +1,11 @@
+[Unit]
+Description=Essential gpio init commands for starscream
+Before=phosphor-multi-gpio-monitor.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=true
+ExecStart=/usr/sbin/starscream-gpio-init.sh
+
+[Install]
+WantedBy=multi-user.target

@@ -1,6 +1,6 @@
-FILESEXTRAPATHS:append := "${THISDIR}/${BPN}:"
+FILESEXTRAPATHS:append:starscream := "${THISDIR}/${BPN}:"
 # In order to reuse and easily maintain, we use the same patch files among u-boot-aspeed-sdk
-FILESEXTRAPATHS:append:= "${THISDIR}/u-boot-aspeed-sdk:"
+FILESEXTRAPATHS:append:starscream := "${THISDIR}/u-boot-aspeed-sdk:"
 
 
 SRC_URI:append = " file://fw_env.config \

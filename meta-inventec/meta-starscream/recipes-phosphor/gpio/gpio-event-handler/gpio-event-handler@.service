@@ -1,0 +1,8 @@
+[Unit]
+Description=GPIO event handle example
+
+[Service]
+ExecStart=/usr/bin/gpio-event-handler %i
+
+[Install]
+WantedBy=multi-user.target

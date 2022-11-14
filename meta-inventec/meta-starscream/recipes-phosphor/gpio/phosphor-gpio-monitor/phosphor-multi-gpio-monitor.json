@@ -1,0 +1,61 @@
+[
+    {
+        "Name": "PSU0_PRESENT",
+        "LineName": "PSU0_CPLD_PRESENT_N",
+        "EventMon": "BOTH",
+        "Continue": true,
+        "Target": {
+            "FALLING":["inv-psu-update@01plug.service"],
+            "RISING": ["inv-psu-update@01unplug.service"]
+        }
+    },
+    {
+        "Name": "PSU1_PRESENT",
+        "LineName": "PSU1_CPLD_PRESENT_N",
+        "EventMon": "BOTH",
+        "Continue": true,
+        "Target": {
+            "FALLING":["inv-psu-update@02plug.service"],
+            "RISING": ["inv-psu-update@02unplug.service"]
+        }
+    },
+    {
+        "Name": "CPU0_SPD_HOST_CTRL_N",
+        "LineName": "CPU0_SPD_HOST_CTRL_N",
+        "EventMon": "BOTH",
+        "Continue": true,
+         "Target": {
+            "RISING": ["dimm-plug@insert.service","post-complete@on.service","smbios-mdr-reload.service"]
+        }
+    },
+    {
+        "Name": "CPU0_PE_RST0",
+        "LineName": "CPU0_PE_RST0",
+        "EventMon": "BOTH",
+        "Continue": true,
+         "Target": {
+            "FALLING":["dimm-plug@remove.service","post-complete@off.service"]
+        }
+    },
+    {
+        "Name": "CPU0_THERMTRIP_N",
+        "LineName": "CPU0_THERMTRIP_N",
+        "EventMon": "BOTH",
+        "Continue": true,
+        "Target": {
+        "FALLING":["gpio-event-handler@CPU0_THERMTRIP_N_ASSERTED.service"],
+        "RISING": ["gpio-event-handler@CPU0_THERMTRIP_N_DEASSERTED.service"]
+        }
+    },
+    {
+        "Name": "CPU1_THERMTRIP_N",
+        "LineName": "CPU1_THERMTRIP_N",
+        "EventMon": "BOTH",
+        "Continue": true,
+        "Target": {
+        "FALLING":["gpio-event-handler@CPU1_THERMTRIP_N_ASSERTED.service"],
+        "RISING": ["gpio-event-handler@CPU1_THERMTRIP_N_DEASSERTED.service"]
+        }
+    }
+]
+

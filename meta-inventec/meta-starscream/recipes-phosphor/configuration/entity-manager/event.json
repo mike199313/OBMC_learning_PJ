@@ -1,0 +1,71 @@
+{
+    "Exposes": [
+        {
+            "Name": "DCMI_Power_Threshold",
+            "ReadingType": "discrete_05h",
+            "SensorType": "power_unit",
+            "SensorInfo": [
+                {
+                    "Label": "DCMI_Power_Threshold",
+                    "SensorModel": "Event",
+                    "SensorNum": "0x5A",
+                    "EntityId": "0x13",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+        {
+            "Name": "DCMI_Power_Off",
+            "ReadingType": "discrete_0ah",
+            "SensorType": "system_event",
+            "SensorInfo": [
+                {
+                    "Label": "DCMI_Power_Off",
+                    "SensorModel": "Event",
+                    "SensorNum": "0xB6",
+                    "EntityId": "0x7",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+        {
+            "Name": "CPU0_THERMTRIP_N",
+            "ReadingType": "discrete",
+            "SensorType": "processor",
+            "SensorInfo": [
+                {
+                    "Label": "CPU0_THERMTRIP_N",
+                    "SensorModel": "Event",
+                    "SensorNum": "0xB7",
+                    "EntityId": "0x03",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+        {
+            "Name": "CPU1_THERMTRIP_N",
+            "ReadingType": "discrete",
+            "SensorType": "processor",
+            "SensorInfo": [
+                {
+                    "Label": "CPU1_THERMTRIP_N",
+                    "SensorModel": "Event",
+                    "SensorNum": "0xB8",
+                    "EntityId": "0x03",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        }
+    ],
+    "Name": "Starscream event",
+    "Probe": "TRUE",
+    "Type": "Event",
+    "xyz.openbmc_project.Inventory.Decorator.Ipmi": {
+        "EntityId": "0x07",
+        "EntityInstance": 1
+    }
+}

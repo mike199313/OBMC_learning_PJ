@@ -1,0 +1,8 @@
+[Unit]
+Description = post-complete service %i : (on/off/init)
+
+[Service]
+Type=oneshot
+RemainAfterExit=no
+ExecStart=/usr/bin/post-complete.sh %i
+StandardOutput=journal+console

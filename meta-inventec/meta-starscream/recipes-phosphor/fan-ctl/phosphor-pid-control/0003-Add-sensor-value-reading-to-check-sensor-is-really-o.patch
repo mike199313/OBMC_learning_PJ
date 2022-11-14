@@ -1,0 +1,78 @@
+From 04b53bea353619388c361278a082f8daece597de Mon Sep 17 00:00:00 2001
+From: link <link@inventec.com>
+Date: Wed, 31 Aug 2022 13:53:00 +0800
+Subject: [PATCH 3/3] Add sensor value reading to check sensor is really ok in
+ sdr - This patch will be move to common layer after the test in rmc
+
+---
+ sensors/builder.cpp | 25 +++++++++++++++++--------
+ 1 file changed, 17 insertions(+), 8 deletions(-)
+
+diff --git a/sensors/builder.cpp b/sensors/builder.cpp
+index 7c42f2a..f1f2a25 100644
+--- a/sensors/builder.cpp
++++ b/sensors/builder.cpp
+@@ -106,12 +106,9 @@ SensorManager
+                         throw SensorBuildException(
+                             "Failed to create dbuspassive sensor, maybe the service is not ready");
+                     }else{
+-                        //over the waiting count will directly ignore the sensor that is failed
+-                        validSensors[name] = false;
+-                    continue;
++                        continue;
+                     }
+-                }else
+-                    validSensors[name] = true;
++                }
+                 break;
+             case IOInterfaceType::EXTERNAL:
+                 // These are a special case for read-only.
+@@ -120,9 +117,6 @@ SensorManager
+                 ri = std::make_unique<SysFsRead>(info->readPath);
+                 if (ri == nullptr){
+                     std::cerr << "Failed to create sysfs sensor: " << name << " of type: " << info->type;
+-                    validSensors[name] = false;
+-                }else{
+-                    validSensors[name] = true;
+                 }
+                 break;
+             default:
+@@ -178,6 +172,11 @@ SensorManager
+ 
+             auto sensor = std::make_unique<PluggableSensor>(
+                 name, info->timeout, std::move(ri), std::move(wi));
++            if(std::isnan(sensor->read().value)){
++                validSensors[name] = false;
++            }else{
++                validSensors[name] = true;
++            }
+             mgmr.addSensor(info->type, name, std::move(sensor));
+         }
+         else if (info->type == "temp" || info->type == "margin")
+@@ -198,6 +197,11 @@ SensorManager
+                 auto sensor = HostSensor::createTemp(
+                     name, info->timeout, hostSensorBus, info->readPath.c_str(),
+                     deferSignals);
++                if(std::isnan(sensor->read().value)){
++                    validSensors[name] = false;
++                }else{
++                    validSensors[name] = true;
++                }
+                 mgmr.addSensor(info->type, name, std::move(sensor));
+             }
+             else
+@@ -205,6 +209,11 @@ SensorManager
+                 wi = std::make_unique<ReadOnlyNoExcept>();
+                 auto sensor = std::make_unique<PluggableSensor>(
+                     name, info->timeout, std::move(ri), std::move(wi));
++                if(std::isnan(sensor->read().value)){
++                    validSensors[name] = false;
++                }else{
++                    validSensors[name] = true;
++                }
+                 mgmr.addSensor(info->type, name, std::move(sensor));
+             }
+         }
+-- 
+2.33.0
+

@@ -1,0 +1,8 @@
+[Unit]
+Description=monitor bios update prgress and report to host , %i :version id
+
+[Service]
+Type=oneshot
+RemainAfterExit=no
+ExecStart=/usr/sbin/monitor-bios-update.sh %i
+StandardOutput=journal+console
