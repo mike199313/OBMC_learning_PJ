@@ -1,35 +1,14 @@
-From b253ddc6fdebf3b853ac3875664bcb98a98b827b Mon Sep 17 00:00:00 2001
+From 5aa952fa83ad337695b176771a02a3a058f73321 Mon Sep 17 00:00:00 2001
 From: Tommy Lin <lin.tommysc@inventec.com>
 Date: Tue, 11 Jan 2022 06:46:08 +0000
-Subject: [PATCH 07/17] Boot flag
+Subject: [PATCH] Boot flag
 
-Fix boot flag issue
-
-Symptom/Reason:
-    - Get Boot Flag fail from Redfish after setting via IPMI
-
-Root Cause:
-    - Redfish does not get boot flag from /xyz/openbmc_project/control/host0/boot/one_time path
-
-Solution/Change:
-    [bmcweb]
-      - Fet boot flag from /xyz/openbmc_project/control/host0/boot/one_time path if its enabled
-
-Entry Test:
-    Set boot flag
-      - ipmitool chassis bootparam set bootflag <device>
-    Set boot flag from Redfish
-      - curl -X GET https://${bmc}/redfish/v1/Systems/system
-
-[comment for 2.12 upgrade]
-Code in getBootOverrideMode, getBootOverrideSource and processBootOverrideEnable are changed.
-Modify related code in this patch based on original logic
 ---
- redfish-core/lib/systems.hpp | 23 ++++++++++++++++++-----
- 1 file changed, 18 insertions(+), 5 deletions(-)
+ redfish-core/lib/systems.hpp | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
 
 diff --git a/redfish-core/lib/systems.hpp b/redfish-core/lib/systems.hpp
-index 81403370..3ac81aba 100644
+index 81403370..f7e54855 100644
 --- a/redfish-core/lib/systems.hpp
 +++ b/redfish-core/lib/systems.hpp
 @@ -602,6 +602,11 @@ inline std::string dbusToRfBootSource(const std::string& dbusSource)
@@ -53,56 +32,6 @@ index 81403370..3ac81aba 100644
      }
      else if (rfSource == "Cd")
      {
-@@ -875,11 +880,14 @@ inline void getBootOverrideType(const std::shared_ptr<bmcweb::AsyncResp>& aResp)
-  * @return None.
-  */
- 
--inline void getBootOverrideMode(const std::shared_ptr<bmcweb::AsyncResp>& aResp)
-+inline void getBootOverrideMode(const std::shared_ptr<bmcweb::AsyncResp>& aResp, bool isPersist = true)
- {
-+    const char* path = isPersist
-+                        ? "/xyz/openbmc_project/control/host0/boot"
-+                        : "/xyz/openbmc_project/control/host0/boot/one_time";
-     sdbusplus::asio::getProperty<std::string>(
-         *crow::connections::systemBus, "xyz.openbmc_project.Settings",
--        "/xyz/openbmc_project/control/host0/boot",
-+        path,
-         "xyz.openbmc_project.Control.Boot.Mode", "BootMode",
-         [aResp](const boost::system::error_code ec,
-                 const std::string& bootModeStr) {
-@@ -919,11 +927,14 @@ inline void getBootOverrideMode(const std::shared_ptr<bmcweb::AsyncResp>& aResp)
-  */
- 
- inline void
--    getBootOverrideSource(const std::shared_ptr<bmcweb::AsyncResp>& aResp)
-+    getBootOverrideSource(const std::shared_ptr<bmcweb::AsyncResp>& aResp, bool isPersist = true)
- {
-+    const char* path = isPersist
-+                        ? "/xyz/openbmc_project/control/host0/boot"
-+                        : "/xyz/openbmc_project/control/host0/boot/one_time";
-     sdbusplus::asio::getProperty<std::string>(
-         *crow::connections::systemBus, "xyz.openbmc_project.Settings",
--        "/xyz/openbmc_project/control/host0/boot",
-+        path,
-         "xyz.openbmc_project.Control.Boot.Source", "BootSource",
-         [aResp](const boost::system::error_code ec,
-                 const std::string& bootSourceStr) {
-@@ -950,6 +961,7 @@ inline void
-         // from both BootSource and BootMode
-         getBootOverrideMode(aResp);
-         });
-+
- }
- 
- /**
-@@ -989,6 +1001,7 @@ inline void
-         if (oneTimeSetting)
-         {
-             aResp->res.jsonValue["Boot"]["BootSourceOverrideEnabled"] = "Once";
-+            getBootOverrideSource(aResp, false);
-         }
-         else
-         {
 -- 
 2.33.0
 
