@@ -21,6 +21,7 @@ SRC_URI:append = " \
     file://0018-New-dbus-interfaces-support-for-composition-service.patch \
     file://0019-Implement-PEF-features.patch \
     file://0020-Modify-Notify-method-to-allow-new-value-types-as-inp.patch \
+    file://0021-Remove-read-only-flag-from-NTPServers.patch \
 "
 
 
