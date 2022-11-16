@@ -1,0 +1,94 @@
+From 4dfeabac47e5dedca89d192c93b2939356225242 Mon Sep 17 00:00:00 2001
+From: anonymous <anonymous@inventec.com>
+Date: Thu, 22 Oct 2020 15:23:57 -0400
+Subject: [PATCH] Read MAC0 address from EEPROM
+
+- Add func set_eth_mac_env() to read MAC0 address from EEPROM and set it to env.
+---
+ drivers/net/ftgmac100.c | 56 +++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 56 insertions(+)
+
+diff --git a/drivers/net/ftgmac100.c b/drivers/net/ftgmac100.c
+index 999941de14..8f7959c8a9 100644
+--- a/drivers/net/ftgmac100.c
++++ b/drivers/net/ftgmac100.c
+@@ -19,6 +19,8 @@
+ #include <linux/io.h>
+ #include <linux/iopoll.h>
+ #include <net/ncsi.h>
++#include <i2c.h>
++#include <configs/IECplatformConfigs.h>
+ 
+ #include "ftgmac100.h"
+ #include "aspeed_mdio.h"
+@@ -577,6 +579,52 @@ static int ftgmac100_ofdata_to_platdata(struct udevice *dev)
+ 	return clk_get_bulk(dev, &priv->clks);
+ }
+ 
++int set_eth_mac_env(unsigned char *mac)
++{
++	uchar addr[6];
++	int i = 0;
++	uchar temp_addr[6] = {0x00, 0x03, 0xff, 0x00, 0x00, 0xcc};
++	u32 reg;
++
++	//printf("set_eth_mac_env\n");
++	//printf("eth MAC: %02x:%02x:%02x:%02x:%02x:%02x\n", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
++
++	i2c_set_bus_num(EEPROM_MAC_I2C_BUS);	// EEPROM_I2C_BUS
++	i2c_init(EEPROM_MAC_I2C_DEV_SPEED, EEPROM_MAC_I2C_ADDRESS);	// EEPROM_ADDRESS
++	i2c_read(EEPROM_MAC_I2C_ADDRESS, EEPROM_MAC_OFFSET,
++			EEPROM_MAC_I2C_ADDR_LEN, &addr[0], 6); // read MAC from EEPROM
++
++	/* Debug print
++	for( i = 0; i < 6; i++) {
++		printf(" addr[%d]=0x%02x\n",i, addr[i]);
++	}
++	*/
++
++	if (is_valid_ethaddr(&addr[0]))
++	{
++		eth_env_set_enetaddr("ethaddr", addr);
++		memcpy(mac, addr, sizeof(addr));
++	}
++	else
++	{
++		printf("Invalid EEPROM data\n");
++		if (eth_env_get_enetaddr("ethaddr", &addr[0]))
++		{
++			printf("Set env MAC\n");
++			memcpy(mac, addr, sizeof(addr));
++		}
++		else
++		{
++			printf("Set default MAC\n");
++			eth_env_set_enetaddr("ethaddr", temp_addr);
++			memcpy(mac, temp_addr, sizeof(temp_addr));
++		}
++	}
++
++	printf("After eth MAC: %02x:%02x:%02x:%02x:%02x:%02x\n", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
++	return 0;
++}
++
+ static int ftgmac100_probe(struct udevice *dev)
+ {
+ 	struct eth_pdata *pdata = dev_get_platdata(dev);
+@@ -592,6 +640,14 @@ static int ftgmac100_probe(struct udevice *dev)
+ 	priv->phy_mode = pdata->phy_interface;
+ 	priv->max_speed = pdata->max_speed;
+ 
++	//-printf("\nBASE: 0x%X\n", priv->iobase);
++	if (priv->iobase == EEPROM_ETH0_ADDR)
++	{
++		// For 1st MAC controller
++		printf("\nUpdate eth MAC\n");
++		set_eth_mac_env(pdata->enetaddr);
++	}
++
+ 	ret = clk_enable_bulk(&priv->clks);
+ 	if (ret)
+ 		goto out;
+-- 
+2.17.1
+

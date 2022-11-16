@@ -1,0 +1,36 @@
+From 52e21d1df74f4f7d508a68e9e1722d4bbb3a850a Mon Sep 17 00:00:00 2001
+From: anonymous <anonymous@inventec.com>
+Date: Wed, 21 Oct 2020 16:10:07 +0800
+Subject: [PATCH] Modify bootfile name and env offset
+
+- Modify boot file name from "all.bin" to "image-bmc"
+- Modify env offset from 0xF0000 to 0xE0000
+---
+ include/configs/aspeed-common.h | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/include/configs/aspeed-common.h b/include/configs/aspeed-common.h
+index 62570cea47..d697b4bf42 100644
+--- a/include/configs/aspeed-common.h
++++ b/include/configs/aspeed-common.h
+@@ -11,7 +11,7 @@
+ 
+ #include <asm/arch/platform.h>
+ 
+-#define CONFIG_BOOTFILE		"all.bin"
++#define CONFIG_BOOTFILE		"image-bmc"
+ 
+ #define CONFIG_GATEWAYIP	192.168.0.1
+ #define CONFIG_NETMASK		255.255.255.0
+@@ -67,7 +67,7 @@
+ #endif
+ 
+ #ifndef CONFIG_ENV_OFFSET
+-#define CONFIG_ENV_OFFSET		0xF0000
++#define CONFIG_ENV_OFFSET		0xE0000
+ #endif
+ 
+ #define CONFIG_ENV_SECT_SIZE	(4 << 10)
+-- 
+2.17.1
+

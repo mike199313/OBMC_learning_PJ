@@ -1,0 +1,205 @@
+From 53562a9ba42d1816ebd4f6ad40205b474d790bed Mon Sep 17 00:00:00 2001
+From: link <link@inventec.com>
+Date: Mon, 14 Nov 2022 07:47:01 +0000
+Subject: [PATCH] Initial starscream machine
+
+- Add ast-2600-starscream.dtb to Makefile
+---
+ arch/arm/dts/Makefile                       |   1 +
+ arch/arm/mach-aspeed/ast2600/board_common.c | 150 ++++++++++++++++++++
+ 2 files changed, 151 insertions(+)
+
+diff --git a/arch/arm/dts/Makefile b/arch/arm/dts/Makefile
+index a79f885f54..56f3d3f3b5 100755
+--- a/arch/arm/dts/Makefile
++++ b/arch/arm/dts/Makefile
+@@ -688,6 +688,7 @@ dtb-$(CONFIG_ARCH_ASPEED) += \
+ 	ast2600-rainier.dtb \
+ 	ast2600-s6q.dtb \
+ 	ast2600-slt.dtb \
++	ast2600-starscream.dtb \
+ 	ast2600-tacoma.dtb
+ 
+ dtb-$(CONFIG_ARCH_STI) += stih410-b2260.dtb
+diff --git a/arch/arm/mach-aspeed/ast2600/board_common.c b/arch/arm/mach-aspeed/ast2600/board_common.c
+index 53870dd71d..6099962a19 100644
+--- a/arch/arm/mach-aspeed/ast2600/board_common.c
++++ b/arch/arm/mach-aspeed/ast2600/board_common.c
+@@ -14,6 +14,12 @@
+ 
+ DECLARE_GLOBAL_DATA_PTR;
+ 
++/*
++ * Second Watchdog Timer by default is configured
++ * to trigger secondary boot source.
++ */
++#define AST_2ND_BOOT_WDT		1
++
+ /*
+  * RMII daughtercard workaround
+  */
+@@ -51,6 +57,45 @@ void reset_eth_phy(void)
+ }
+ #endif
+ 
++#define AST_FLASH_ADDR_DETECT_WDT	2
++#define SCU_BASE                        0x1e620000
++#define GPIO_BASE                       0x1e780000
++#define GPIOB_DIR                       GPIO_BASE + 0x004
++#define GPIOF_DATA                      GPIO_BASE + 0x020
++#define GPIOF_DIR                       GPIO_BASE + 0x024
++#define GPIOI_DATA                      GPIO_BASE + 0x070
++#define GPIOI_DIR                       GPIO_BASE + 0x074
++#define GPIONP_DATA                     GPIO_BASE + 0x07C
++#define GPIONP_DIR                      GPIO_BASE + 0x078
++#define GPIOS_DATA                      GPIO_BASE + 0x080
++#define GPIOS_DIR                       GPIO_BASE + 0x084
++#define GPIOV_DATA                      GPIO_BASE + 0x088
++#define GPIOV_DIR                       GPIO_BASE + 0x08C
++#define GPIOZ_DATA                      GPIO_BASE + 0x1E0
++#define GPIOZ_DIR                       GPIO_BASE + 0x1E4
++#define SGPIOM                          SCU_BASE + 0x414
++#define AST_LPC_BASE                    0x1e789000
++#define SNPWADR                         0x090   /* LPC Snoop Address Register */
++#define SNPWDR                          0x094   /* LPC Snoop Data Register */
++#define LPC_SNOOP_ADDR                  0x80
++#define HICR6                           0x084   /* Host Interface Control Register 6 */
++#define HICR5                           0x080   /* Host Interface Control Register 5 */
++
++/* HRCR6 Bits */
++#define HICR6_STR_SNP0W                 (1 << 0) /* Interrupt Status Snoop address 0 */
++#define HICR6_STR_SNP1W                 (1 << 1) /* Interrupt Status Snoop address 1 */
++#define HICR5_UNKVAL_MASK               0x1FFF0000 /* Bits with unknown values on reset */
++#define HICR5_EN_SIOGIO                 (1 << 31)
++#define HICR5_EN_SNP0W                  (1 << 0)
++#define GPIO554                         0x554
++#define HICRB                           0x100
++
++/* HICRB Bits */
++#define HICRB_EN80HSGIO                 (1 << 13) /* Enable 80hSGIO */
++#define SGPIO_CLK_DIV(N)                ((N) << 16)
++#define SGPIO_BYTES(N)                  ((N) << 6)
++#define SGPIO_ENABLE                    1
++
+ __weak int board_init(void)
+ {
+ 	struct udevice *dev;
+@@ -77,6 +122,8 @@ __weak int board_init(void)
+ #ifdef ASPEED_RMII_DAUGHTER_CARD
+ 	reset_eth_phy();
+ #endif
++	gpio_init();
++	sgpio_init_port80();
+ 	/*
+ 	 * Loop over all MISC uclass drivers to call the comphy code
+ 	 * and init all CP110 devices enabled in the DT
+@@ -222,3 +269,106 @@ void aspeed_mmc_init(void)
+ 
+ }
+ 
++int gpio_init(void)
++{
++    u32 reg;
++
++    //set GPIO B1 B7 output high
++    reg = readl(GPIO_BASE);
++    reg |= (0x00008200);
++    writel(reg,GPIO_BASE);
++
++    reg = readl(GPIOB_DIR);
++    reg |= (0x00008200);
++    writel(reg,GPIOB_DIR);
++
++    //set GPIO F3 output high
++    reg = readl(GPIOF_DATA);
++    reg |= (0x00000800);
++    writel(reg,GPIOF_DATA);
++
++    reg = readl(GPIOF_DIR);
++    reg |= (0x00001800);
++    writel(reg,GPIOF_DIR);
++
++    //set GPIO I6 output high
++    reg = readl(GPIOI_DATA);
++    reg |= (0x00000040);
++    writel(reg,GPIOI_DATA);
++
++    reg = readl(GPIOI_DIR);
++    reg |= (0x00000040);
++    writel(reg,GPIOI_DIR);
++
++    //set GPIO N2 output high GPIO P4-P6 output high P3 P7 output low
++    reg = readl(GPIONP_DATA);
++    reg |= (0x70000004);
++    reg &= (0xFFFFF9FF);
++    writel(reg,GPIONP_DATA);
++
++    reg = readl(GPIONP_DIR);
++    reg |= (0x70000604);
++    writel(reg,GPIONP_DIR);
++
++    //set GPIO S2 S4 S7 output high S3 S6 input
++    reg = readl(GPIOS_DATA);
++    reg |= (0x00940000);
++    writel(reg,GPIOS_DATA);
++
++    reg = readl(GPIOS_DIR);
++    reg |= (0x00940000);
++    writel(reg,GPIOS_DIR);
++
++    //set GPIO V0 V3 output high
++    reg = readl(GPIOV_DATA);
++    reg |= (0x00000900);
++    writel(reg,GPIOV_DATA);
++
++    reg = readl(GPIOV_DIR);
++    reg |= (0x00000900);
++    writel(reg,GPIOV_DIR);
++
++	//set GPIO Z2 Y3 output high
++    reg = readl(GPIOZ_DATA);
++    reg |= (0x00000408);
++    writel(reg,GPIOZ_DATA);
++
++    reg = readl(GPIOZ_DIR);
++    reg |= (0x00000408);
++    writel(reg,GPIOZ_DIR);
++
++	return 0;
++}
++
++int sgpio_init_port80(void) {
++
++    u32 reg;
++
++    //set SGPIO mutifunctin pin
++    reg = readl(SGPIOM);
++    reg |= (0x0F000000);
++    writel(reg,SGPIOM);
++
++    reg = readl(AST_LPC_BASE + SNPWADR) & 0xffff0000;
++    writel(reg | LPC_SNOOP_ADDR, AST_LPC_BASE + SNPWADR);
++
++    /* clear interrupt status */
++    reg = readl(AST_LPC_BASE + HICR6);
++    reg |= HICR6_STR_SNP0W | HICR6_STR_SNP1W;
++    writel(reg, AST_LPC_BASE + HICR6);
++
++    /* enable lpc snoop #0 and SIOGIO */
++    reg = readl(AST_LPC_BASE + HICR5) & ~(HICR5_UNKVAL_MASK);
++    reg |= HICR5_EN_SIOGIO | HICR5_EN_SNP0W;
++    writel(reg, AST_LPC_BASE + HICR5);
++
++    /* enable port80h snoop on SGPIO */
++    reg = readl(AST_LPC_BASE + HICRB) | HICRB_EN80HSGIO;
++    writel(reg, AST_LPC_BASE + HICRB);
++
++    /* set the gpio clock to pclk/(2*(5+1)) or ~2 MHz */
++    reg = SGPIO_CLK_DIV(99) | SGPIO_BYTES(1) | SGPIO_ENABLE;
++    writel(reg, GPIO_BASE + GPIO554);
++
++    return 0;
++}
+-- 
+2.17.1
+
