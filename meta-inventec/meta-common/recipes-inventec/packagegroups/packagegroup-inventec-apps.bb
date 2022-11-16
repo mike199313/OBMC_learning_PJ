@@ -58,6 +58,5 @@ RDEPENDS:${PN}-system = " \
 	iptables \
 	nbd-server \
         nfs-utils \
-	libtirpc \
         "
 
