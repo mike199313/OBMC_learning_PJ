@@ -18,6 +18,7 @@
 
 const constexpr char *CONF_IPMI_HOST_DIR = "/usr/share/ipmi-providers/";
 const constexpr char *CONF_ENTITY_MANAGER_DIR = "/usr/share/entity-manager/configurations/";
+const constexpr char *CONF_IPMI_PROVIDERS_DIR = "/usr/share/ipmi-providers/";
 const constexpr char *CONF_GOLDEN_DIR = "/etc/defconfig/configs";
 const constexpr char *CONF_USER_DIR = "/etc/conf/configs/user";
 const constexpr char *CONF_PENDING_DIR = "/etc/conf/configs/pending";
