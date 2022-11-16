@@ -19,15 +19,8 @@ SRC_URI += "\
             file://0016-TsodSensor-add-TsodSensor-support-temp-sensor-on-dim.patch \
             file://0017-watchdog-Add-WATCHDOG-sensor-DBUS-interface.patch \
             file://0018-NvmeSensor-patches.patch \
-            file://0019-MS-M-BMC-LOG-0007.patch \
-            file://0020-MS-M-BMC-LOG-0009.patch \
-            file://0021-MS-M-BMC-LOG-0011.patch \
-            file://0022-MS-M-BMC-LOG-0008.patch \
-            file://0023-MS-M-BMC-LOG-0005.patch \
             file://0024-Event-generation-enabled-disabled.patch \
             file://0025-get-sensor-enable-after-setting.patch \
-            file://0026-Remove-SEL-reconfiguration-log-generation-in-ms_subs.patch \
-            file://0027-Postpone-MS-Subsystem-health-check.patch \
            "
 
 PACKAGECONFIG:append =" \
@@ -39,7 +32,6 @@ PACKAGECONFIG:append =" \
             iiohwmonsensor \
             tsodsensor \
             wdtsensor \
-            ms_subsystem_check \
             "
 
 PACKAGECONFIG:remove ="mcutempsensor intrusionsensor"
@@ -51,7 +43,6 @@ PACKAGECONFIG[accumulatesensor] = "-Daccumulate=enabled, -Daccumulate=disabled"
 PACKAGECONFIG[iiohwmonsensor] = "-Diiohwmon=enabled, -Diiohwmon=disabled"
 PACKAGECONFIG[tsodsensor] = "-Dtsod=enabled, -Dtsod=disabled"
 PACKAGECONFIG[wdtsensor] = "-Dwdt=enabled, -Dwdt=disabled"
-PACKAGECONFIG[ms_subsystem_check] = "-Dms_subsystem_check=enabled, -Dms_subsystem_check=disabled"
 
 SYSTEMD_SERVICE:${PN} += "${@bb.utils.contains('PACKAGECONFIG', 'nvmesensor', \
                                                'xyz.openbmc_project.nvmesensor.service', \
@@ -76,7 +67,4 @@ SYSTEMD_SERVICE:${PN} += "${@bb.utils.contains('PACKAGECONFIG', 'tsodsensor', \
                                                '', d)}"
 SYSTEMD_SERVICE:${PN} += "${@bb.utils.contains('PACKAGECONFIG', 'wdtsensor', \
                                                'xyz.openbmc_project.wdtsensor.service', \
-                                               '', d)}"
-SYSTEMD_SERVICE:${PN} += "${@bb.utils.contains('PACKAGECONFIG', 'ms_subsystem_check', \
-                                               'xyz.openbmc_project.ms_subsystem_check.service', \
                                                '', d)}"

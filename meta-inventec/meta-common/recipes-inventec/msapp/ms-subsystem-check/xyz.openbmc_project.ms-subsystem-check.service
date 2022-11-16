@@ -1,0 +1,13 @@
+[Unit]
+Description=MS Subsystem health check
+StopWhenUnneeded=false
+Requisite=xyz.openbmc_project.Time.Manager.service
+After=xyz.openbmc_project.Time.Manager.service
+
+[Service]
+Restart=always
+RestartSec=5
+ExecStart=/usr/bin/ms-subsystem-check
+
+[Install]
+WantedBy=multi-user.target
