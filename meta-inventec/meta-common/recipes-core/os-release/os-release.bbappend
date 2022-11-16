@@ -6,7 +6,7 @@ BMC_IMAGE ?= "BC"
 OS_RELEASE_FIELDS = "ID ID_LIKE NAME VERSION VERSION_ID PRETTY_NAME BMC_IMAGE_NAME PLATFORM_NAME"
 
 # Replace VERSION_ID so that it can carry more meaningful information
-VERSION_ID = "v2.11.0-${@run_git(d, 'describe --long')}"
+VERSION_ID = "v2.12.0-${@run_git(d, 'describe --long')}"
 
 # Replace PRETTY_NAME to add MACHINE_NAME and VERSION_ID
 PRETTY_NAME = "${MACHINE_NAME} ${VERSION_ID}! (Base: ${DISTRO_NAME} ${VERSION})"
