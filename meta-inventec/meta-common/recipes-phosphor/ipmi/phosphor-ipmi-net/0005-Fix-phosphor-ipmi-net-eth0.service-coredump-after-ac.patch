@@ -1,0 +1,33 @@
+From 8b4dd3b15d7f7cd44410d88d6eaee7d8126f3b00 Mon Sep 17 00:00:00 2001
+From: cynthia <wu.cynthia@inventec.com>
+Date: Thu, 17 Nov 2022 06:30:11 +0000
+Subject: [PATCH] Fix phosphor-ipmi-net@eth0.service coredump after activate
+ sol connection issue
+
+---
+ message_handler.cpp | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/message_handler.cpp b/message_handler.cpp
+index 33bb195..a76a1d0 100644
+--- a/message_handler.cpp
++++ b/message_handler.cpp
+@@ -59,6 +59,15 @@ Handler::~Handler()
+     try
+     {
+ #ifdef RMCP_PING
++        if(inMessage == nullptr){
++            /**
++             * cwun : The inMessage maybe nullptr. For example, the parser::unflatten()
++             * receive unvaild RMCP payload. It will make parser::unflatten() throws std::runtime_error()
++             * and not call make_shared<Message> to create inMessage object properly.
++            */
++            log<level::ERR>("inMessage is nullptr drop the inMessage object");
++            return;
++        }
+         if (ClassOfMsg::ASF == inMessage->rmcpMsgClass)
+         {
+             sendASF();
+-- 
+2.33.0
+
