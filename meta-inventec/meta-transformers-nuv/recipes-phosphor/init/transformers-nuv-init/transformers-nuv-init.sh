@@ -21,3 +21,9 @@ bash $EMMC_CHECK_SH
 # run cpld verion
 CPLD_CHECK="/usr/sbin/transformers-nuv-cpld-init.sh"
 bash $CPLD_CHECK
+
+if [ ! -d "/var/wcs/home/log" ]
+then
+    ln -s /var/log /var/wcs/home/
+    echo "Create soft link /var/wcs/home/log"
+fi

@@ -9,7 +9,7 @@ SRC_URI += "file://rsyslog.conf \
 
 FILES:${PN} += "${systemd_system_unitdir}/rsyslog.service.d/rsyslog-override.conf"
 
-PACKAGECONFIG:append = " imjournal"
+PACKAGECONFIG:append = " imjournal klog"
 
 do_install:append() {
         install -m 0644 ${WORKDIR}/rotate-event-logs.service ${D}${systemd_system_unitdir}

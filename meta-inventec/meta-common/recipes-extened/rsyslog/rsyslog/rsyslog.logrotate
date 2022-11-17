@@ -25,3 +25,50 @@
     endscript
 }
 
+/var/log/kern.log
+{
+    rotate 7
+    size 128k
+    compress
+    delaycompress
+    dateext
+    dateformat -%Y%m%d-%s
+    missingok
+    createolddir 644 root root
+    olddir /var/log/telemetry
+    postrotate
+        systemctl reload rsyslog 2> /dev/null || true
+    endscript
+}
+
+/var/log/syslog
+{
+    rotate 7
+    size 128k
+    compress
+    delaycompress
+    dateext
+    dateformat -%Y%m%d-%s
+    missingok
+    createolddir 644 root root
+    olddir /var/log/telemetry
+    postrotate
+        systemctl reload rsyslog 2> /dev/null || true
+    endscript
+}
+
+/var/log/ipmi_cmd
+{
+    rotate 7
+    size 128k
+    compress
+    delaycompress
+    dateext
+    dateformat -%Y%m%d-%s
+    missingok
+    createolddir 644 root root
+    olddir /var/log/telemetry
+    postrotate
+        systemctl reload rsyslog 2> /dev/null || true
+    endscript
+}
