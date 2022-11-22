@@ -1,0 +1,38 @@
+From 57ca443510a69ec61833ce1a962d2a9154548b71 Mon Sep 17 00:00:00 2001
+From: Matt Cheng <cheng.matt@inventec.com>
+Date: Mon, 21 Nov 2022 16:01:27 +0800
+Subject: [PATCH] Bug 1361 - [SW][Common] Interface Readiness Symptom/Reason: 
+	M-BMC-SYS-0069 Should deterministically be fully decompressed (loaded) and ready to service IPMI request messages through the KCS interface within 20 seconds.
+	M-BMC-SYS-0070 Should deterministically be fully ready to service IPMI request messages and SSH connections over the LAN+ interface within 40 seconds.
+
+Root Cause:
+	N/A
+
+Solution/Change:
+	[u-boot-aspeed]
+	1. Disable the image checksum verify.
+	2. Disable the bootdelay.
+
+Entry Test:
+---
+ include/configs/aspeed-common.h | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/include/configs/aspeed-common.h b/include/configs/aspeed-common.h
+index d697b4bf42..a56cb9b435 100644
+--- a/include/configs/aspeed-common.h
++++ b/include/configs/aspeed-common.h
+@@ -53,8 +53,9 @@
+  */
+ #define CONFIG_SYS_BOOTM_LEN 		(0x800000 * 2)
+ 
++#define CONFIG_BOOTDELAY        0
+ #define CONFIG_EXTRA_ENV_SETTINGS \
+-	"verify=yes\0"	\
++	"verify=no\0"	\
+ 	""
+ 
+ /* Environment */
+-- 
+2.25.1
+

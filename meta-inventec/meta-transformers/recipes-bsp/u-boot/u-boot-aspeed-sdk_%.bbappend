@@ -11,6 +11,7 @@ SRC_URI:append = " file://transformers-ast2600.cfg \
                    file://0005-Initial-transformers-machine.patch \
                    file://0006-Bug-629-SW-Transformers-OpenBMC-Support-mc-selftest-.patch \
                    file://0007-Bug-764-SW-Transformers-watchdog-Implement-recovery-.patch \
+                   file://0008-Bug-1361-SW-Common-Interface-Readiness.patch \
                  "
 
 do_copyfile () {

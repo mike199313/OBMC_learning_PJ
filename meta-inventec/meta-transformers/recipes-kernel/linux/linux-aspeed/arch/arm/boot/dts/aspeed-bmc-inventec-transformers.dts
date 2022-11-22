@@ -357,10 +357,6 @@
 
 &i2c12 {
         status = "okay";
-        psu0:psu0@58 {
-                compatible = "pmbus";
-                reg = <0x58>;
-        };
 };
 
 &pwm_tacho {

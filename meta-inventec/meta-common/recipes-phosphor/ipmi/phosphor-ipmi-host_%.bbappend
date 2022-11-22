@@ -36,12 +36,35 @@ SRC_URI:append = " file://0001-Sensor-Implement-SetSensorThreshold-command.patch
                    file://0032-Telemetry-Service-IPMI-Commands.patch \
 "
 
+SYSTEMD_SERVICE:${PN}:append = " phosphor-ipmi-host.service"
 
-do_install:append:inventec(){
+IPMI_HOST_NEEDED_SERVICES = "\
+    mapper-wait@-xyz-openbmc_project-control-host{}-boot.service \
+    mapper-wait@-xyz-openbmc_project-control-host{}-boot-one_time.service \
+    mapper-wait@-xyz-openbmc_project-control-host{}-power_restore_policy.service \
+    mapper-wait@-xyz-openbmc_project-control-host{}-restriction_mode.service \
+    "
+
+do_install:append() {
+
+    # Create service override file.
+    override_file=${D}${systemd_system_unitdir}/phosphor-ipmi-host.service.d/10-override.conf
+    rm ${override_file}
+    echo "[Unit]" > ${override_file}
+
+    # Insert host-instance based service dependencies.
+    for i in ${OBMC_HOST_INSTANCES};
+    do
+        for s in ${IPMI_HOST_NEEDED_SERVICES};
+        do
+            service=$(echo ${s} | sed "s/{}/${i}/g")
+            echo "Wants=${service}" >> ${override_file}
+        done
+    done
+
   install -d ${D}${includedir}/phosphor-ipmi-host
   install -m 0644 -D ${S}/sensorhandler.hpp ${D}${includedir}/phosphor-ipmi-host
   install -m 0644 -D ${S}/selutility.hpp ${D}${includedir}/phosphor-ipmi-host
 }
-
 
 

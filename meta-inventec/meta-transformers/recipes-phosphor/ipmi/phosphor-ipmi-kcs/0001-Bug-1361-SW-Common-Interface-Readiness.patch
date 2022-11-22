@@ -1,0 +1,44 @@
+From 311794f4ce6fe7dcf2a7acbcaf068d12e54bf721 Mon Sep 17 00:00:00 2001
+From: Matt Cheng <cheng.matt@inventec.com>
+Date: Mon, 21 Nov 2022 20:05:42 +0800
+Subject: [PATCH] Bug 1361 - [SW][Common] Interface Readiness    
+ Symptom/Reason:             M-BMC-SYS-0069 Should deterministically be fully
+ decompressed (loaded) and ready to service IPMI request messages through the
+ KCS interface within 20 seconds.             M-BMC-SYS-0070 Should
+ deterministically be fully ready to service IPMI request messages and SSH
+ connections over the LAN+ interface within 40 seconds.
+
+    Root Cause:
+            N/A
+
+    Solution/Change:
+            [phosphor-ipmi-kcs]
+            1. Remove the default dependencies and adjust the service start sequence.
+---
+ phosphor-ipmi-kcs@.service.in | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/phosphor-ipmi-kcs@.service.in b/phosphor-ipmi-kcs@.service.in
+index 3dacda4..396e046 100644
+--- a/phosphor-ipmi-kcs@.service.in
++++ b/phosphor-ipmi-kcs@.service.in
+@@ -2,6 +2,16 @@
+ Description=Phosphor IPMI KCS DBus Bridge
+ Requires=phosphor-ipmi-host.service
+ After=phosphor-ipmi-host.service
++DefaultDependencies=no
++Before=dropbear.socket
++Before=phosphor-ipmi-net@eth0.socket
++Before=obmc-console-ssh.socket
++Before=bmcweb.socket
++Before=timers.target
++Before=logrotate.timer
++Before=time-set.target
++Before=systemd-tmpfiles-clean.timer
++Before=avahi-daemon.socket
+ 
+ [Service]
+ Type=notify
+-- 
+2.25.1
+
