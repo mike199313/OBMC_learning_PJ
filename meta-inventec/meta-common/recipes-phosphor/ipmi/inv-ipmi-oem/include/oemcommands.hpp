@@ -34,6 +34,7 @@ static constexpr NetFn netFnInventec = netFnOemSix;
 
 //MS MediaRedirection netfn
 static constexpr NetFn netFnMsMediaRedirect = 0x34;
+static constexpr NetFn netFnMsOem34 = netFnOemThree;
 
 static constexpr NetFn netFnOem38 = netFnOemFive;
 #ifdef SUPPORT_BIOS_OEM_CMD
@@ -161,6 +162,14 @@ namespace cmdsNetFnOem32
     #define REQUEST_TO_INDEX(request_id) request_id+1
 
 } // namespace cmdsNetFnOem32
+
+namespace cmdsNetFnMsOem34
+{
+    static constexpr Cmd cmdSetTelemetryStatus = 0xE1;
+    static constexpr Cmd cmdGetTelemetryStatus = 0xE2;
+    static constexpr Cmd cmdGetTelemetryConfig = 0xEE;
+    static constexpr Cmd cmdSetTelemetryConfig = 0xEF;
+} // namespace cmdsNetFnMsOem34
 
 namespace cmdsNetFnMsMediaRedirect{
 

@@ -37,7 +37,7 @@ PACKAGECONFIG[nuv] = "-DWITH_NUV_BMC=ON,-DWITH_NUV_BMC=OFF,"
 PACKAGECONFIG ??= ""
 
 FILES:${PN} += "/usr/bin/*"
-SRC_URI:append += " file://ms_mediaredirect.sh \
+SRC_URI:append = " file://ms_mediaredirect.sh \
            "
 do_install:append(){
    install -d ${D}/usr/bin

@@ -51,6 +51,19 @@ static constexpr auto NETWORK_DEST = "xyz.openbmc_project.Network";
 static constexpr auto ETH_USB_PATH = "/xyz/openbmc_project/network/usb0";
 static constexpr auto ETH_INTF = "xyz.openbmc_project.Network.EthernetInterface";
 static constexpr auto REDFISH_UNIT = "bmcweb.service";
+static constexpr auto IPMID_SVC = "xyz.openbmc_project.Ipmi.Host";
+static constexpr auto IPMID_INTF = "xyz.openbmc_project.Ipmi.Server";
+static constexpr auto IPMID_PATH = "/xyz/openbmc_project/Ipmi";
+static constexpr auto TELEMETRY_PROP = "telemetry";
+static constexpr auto ROTATE_CONFIG = "/etc/logrotate.d/logrotate.rsyslog";
+static constexpr auto ROTATE_TMP = "/etc/logrotate.d/logrotate.tmp";
+static constexpr auto KEY_ROTATE = "rotate ";
+static constexpr auto KEY_SIZE = "size ";
+static constexpr const char* TELMETRY_CONFIGS[] = {
+    "/var/log/kern.log",
+    "/var/log/syslog",
+    "/var/log/ipmi_cmd"
+};
 
 #define MAX_BIOS_CONFIG_NUM 17
 #define MAX_NIC_NUM 2
@@ -87,6 +100,11 @@ const static constexpr char* SYSTEM_CONFIG_FILE =
 
 
 static constexpr int POST_CODE_SIZE = 240;
+static constexpr int LOG_SIZE_MIN = 4;
+static constexpr int LOG_SIZE_MAX = 128;
+static constexpr int ROTATE_MIN = 4;
+static constexpr int ROTATE_MAX = 180;
+static constexpr int CONFIG_INDENT = 4;
 #define REQUEST_TO_INDEX(request_id) request_id+1
 
 namespace ipmi
@@ -1126,6 +1144,187 @@ ipmiBiosGetBmcIntfStatus(uint8_t param, uint8_t block, uint8_t interfaces)
     return ipmi::responseSuccess(std::move(ret));
 }
 
+ipmi::RspType<message::Payload>
+ipmiGetTelmetryConfig(void)
+{
+    message::Payload ret;
+    uint8_t limit = 0;
+    uint8_t rotate = 0;
+    std::string readLine;
+    std::string value;
+    bool found_section = false;
+    bool found_rotate = false;
+    bool found_size = false;
+    std::ifstream inFile(ROTATE_CONFIG);
+
+    while (std::getline(inFile, readLine))
+    {
+        if (found_section)
+        {
+            // check rotate config value
+            auto pos = readLine.find(KEY_ROTATE);
+            if (pos != std::string::npos)
+            {
+                value = readLine.substr(pos + std::strlen(KEY_ROTATE));
+                try {
+                    rotate = static_cast<uint8_t>(std::stoi(value));
+                    found_rotate = true;
+                }
+                catch (const std::invalid_argument& ia) {
+                    phosphor::logging::log<phosphor::logging::level::ERR>(
+                        "Fail to convert rotate value.");
+                }
+            }
+
+            // check size config value
+            pos = readLine.find(KEY_SIZE);
+            if (pos != std::string::npos)
+            {
+                value = readLine.substr(pos + std::strlen(KEY_SIZE));
+                pos = value.find_last_of("k");
+                if (pos != std::string::npos)
+                {
+                    value = value.substr(0, pos);
+                    try {
+                        limit = static_cast<uint8_t>(std::stoi(value));
+                        found_size = true;
+                    }
+                    catch (const std::invalid_argument& ia) {
+                        phosphor::logging::log<phosphor::logging::level::ERR>(
+                            "Fail to convert size value.");
+                    }
+                }
+            }
+
+            // early stop when both config values are acquired
+            if (found_rotate && found_size)
+            {
+                break;
+            }
+        }
+        else
+        {
+            // look for target section
+            for (auto path : TELMETRY_CONFIGS)
+            {
+                if (readLine.find(path) != std::string::npos)
+                {
+                    found_section = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    // config values incomplete
+    if (!found_rotate || !found_size)
+    {
+        phosphor::logging::log<phosphor::logging::level::ERR>(
+            "[ipmiGetTelmetryConfig] Fail to find config values");
+        return ipmi::responseUnspecifiedError();
+    }
+
+    ret.pack(limit);
+    ret.pack(rotate);
+    return ipmi::responseSuccess(std::move(ret));
+}
+
+ipmi::RspType<message::Payload>
+ipmiSetTelmetryConfig(uint8_t limit, uint8_t rotate)
+{
+    // validate limit value
+    if (limit < LOG_SIZE_MIN || limit > LOG_SIZE_MAX)
+    {
+        return ipmi::responseInvalidFieldRequest();
+    }
+
+    // validate rotate value
+    if (rotate < ROTATE_MIN || rotate > ROTATE_MAX)
+    {
+        return ipmi::responseInvalidFieldRequest();
+    }
+
+    std::string readLine;
+    std::ofstream outFile(ROTATE_TMP);
+    std::ifstream inFile(ROTATE_CONFIG);
+    bool found_section = false;
+    bool found_rotate = false;
+    bool found_size = false;
+
+    while (std::getline(inFile, readLine))
+    {
+        if (found_section)
+        {
+            if (readLine.find(KEY_ROTATE) != std::string::npos)
+            {
+                // modify rotate config value
+                outFile << setw(CONFIG_INDENT) << "" << KEY_ROTATE << static_cast<int>(rotate) << std::endl;
+                found_rotate = true;
+            }
+            else if (readLine.find(KEY_SIZE) != std::string::npos)
+            {
+                // modify size config value
+                outFile << setw(CONFIG_INDENT) << "" << KEY_SIZE << static_cast<int>(limit) << "k" << std::endl;
+                found_size = true;
+            }
+            else
+            {
+                // leave rest of config values intact
+                outFile << readLine << std::endl;
+            }
+
+            // finish section modification
+            if (found_rotate && found_size)
+            {
+                found_section = found_rotate = found_size = false;
+            }
+        }
+        else
+        {
+            // look for target section
+            for (auto path : TELMETRY_CONFIGS)
+            {
+                if (readLine.find(path) != std::string::npos)
+                {
+                    found_section = true;
+                    break;
+                }
+            }
+            outFile << readLine << std::endl;
+        }
+    }
+
+    // Need to close files first so that we can rename the file
+    inFile.close();
+    outFile.close();
+
+    // replace old config file with new one
+    int ret_rm = std::remove(ROTATE_CONFIG);
+    int ret_mv = std::rename(ROTATE_TMP, ROTATE_CONFIG);
+
+    // error during file replacement
+    if (ret_rm || ret_mv)
+    {
+        phosphor::logging::log<phosphor::logging::level::ERR>(
+            "[ipmiSetTelmetryConfig] Fail to replace original rotate config file");
+        return ipmi::responseUnspecifiedError();
+    }
+
+    return ipmi::responseSuccess();
+}
+
+ipmi::RspType<> ipmiSetTelmetryStatus(uint8_t enable)
+{
+    setTelemetryStatus(enable ? true : false);
+    return ipmi::responseSuccess();
+}
+
+ipmi::RspType<uint8_t> ipmiGetTelmetryStatus(void)
+{
+    uint8_t status = getTelemetryStatus() ? 1 : 0;
+    return ipmi::responseSuccess(status);
+}
+
 #ifdef BOARD_AST
 ipmi::RspType<message::Payload>
 ipmiBiosEnableVHub(uint8_t disable)
@@ -1220,7 +1419,6 @@ ipmiBiosGetGadgetStatus(void)
 }
 #endif //BOARD_NUV
 #endif //SUPPORT_BIOS_OEM_CMD
-
 
 ipmi::RspType< std::vector<uint8_t> >
 ipmiBiosGetBIOSCode(uint8_t request)
@@ -1375,6 +1573,18 @@ static void registerOEMFunctions(void)
 
     registerOemCmdHandler(inv::netFnMsMediaRedirect, inv::cmdsNetFnMsMediaRedirect::cmdOemSetMediaImageInfo,
                           Privilege::Admin, ipmiOemSetMediaImageInfo);
+
+    registerOemCmdHandler(inv::netFnMsOem34, inv::cmdsNetFnMsOem34::cmdGetTelemetryConfig,
+                          Privilege::Admin, ipmiGetTelmetryConfig);
+
+    registerOemCmdHandler(inv::netFnMsOem34, inv::cmdsNetFnMsOem34::cmdSetTelemetryConfig,
+                          Privilege::Admin, ipmiSetTelmetryConfig);
+
+    registerOemCmdHandler(inv::netFnMsOem34, inv::cmdsNetFnMsOem34::cmdSetTelemetryStatus,
+                          Privilege::Admin, ipmiSetTelmetryStatus);
+
+    registerOemCmdHandler(inv::netFnMsOem34, inv::cmdsNetFnMsOem34::cmdGetTelemetryStatus,
+                          Privilege::Admin, ipmiGetTelmetryStatus);
 
 }
 

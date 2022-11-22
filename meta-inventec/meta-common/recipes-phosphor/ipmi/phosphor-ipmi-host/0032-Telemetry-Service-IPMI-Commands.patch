@@ -1,0 +1,182 @@
+From 52bf495c48cba4d954876e8bb412f9790821966b Mon Sep 17 00:00:00 2001
+From: Tommy Lin <lin.tommysc@inventec.com>
+Date: Thu, 10 Nov 2022 01:33:05 +0000
+Subject: [PATCH] Telemetry Service - IPMI Commands
+
+Symptom/Reason:
+- M-BMC-MAN-0080
+- M-BMC-MAN-0083
+- O-BMC-MAN-0087
+
+Root Cause:
+- MS feature implementation
+
+Solution/Change:
+- [phosphor-ipmi-host]
+  - implement ipmi telemetry logging function
+  - implement switch for ipmi telemetry logging function
+- [inv-ipmi-oem]
+  - implement Enable/Disable BMC Telemetry ipmi command
+  - implement Get BMC Telemetry Status ipmi command
+  - implement Get Telemetry Config ipmi command
+  - implement Set Telemetry Config ipmi command
+
+Entry Test:
+- Get BMC Telemetry status
+  - ipmitool raw 0x34 0xe2
+- Enable BMC Telemetry
+  - ipmitool raw 0x34 0xe1 0x01
+- Disable BMC Telemetry
+  - ipmitool raw 0x34 0xe1 0x00
+- Get Telemetry Config
+  - ipmitool raw 0x34 0xee
+- Set log file size limit to 64KB and 32 files rotated
+  - ipmitool raw 0x34 0xef 0x40 0x20
+---
+ include/ipmid/utils.hpp |  4 +++
+ ipmid-new.cpp           | 54 +++++++++++++++++++++++++++++++++++++++++
+ libipmid/utils.cpp      | 17 +++++++++++++
+ 3 files changed, 75 insertions(+)
+
+diff --git a/include/ipmid/utils.hpp b/include/ipmid/utils.hpp
+index b037505..7a0c9f5 100644
+--- a/include/ipmid/utils.hpp
++++ b/include/ipmid/utils.hpp
+@@ -510,4 +510,8 @@ template <typename T> int updateConfigValue(const std::string& file, const std::
+     return 0;
+ }
+ 
++bool getTelemetryStatus(void);
++
++void setTelemetryStatus(bool enable);
++
+ } // namespace ipmi
+diff --git a/ipmid-new.cpp b/ipmid-new.cpp
+index 7f558cd..e57482c 100644
+--- a/ipmid-new.cpp
++++ b/ipmid-new.cpp
+@@ -44,6 +44,7 @@
+ #include <sdbusplus/bus.hpp>
+ #include <sdbusplus/bus/match.hpp>
+ #include <sdbusplus/timer.hpp>
++#include <systemd/sd-journal.h>
+ #include <tuple>
+ #include <unordered_map>
+ #include <utility>
+@@ -56,6 +57,8 @@ using namespace phosphor::logging;
+ // IPMI Spec, shared Reservation ID.
+ static unsigned short selReservationID = 0xFFFF;
+ static bool selReservationValid = false;
++static constexpr char const* ipmiCmdLogId = "b370836ccf2f4850ac5bee185b774747";
++static int ipmiLogPriority = 5; //LOG_NOTICE
+ 
+ unsigned short reserveSel(void)
+ {
+@@ -469,6 +472,20 @@ uint8_t channelFromMessage(sdbusplus::message::message& msg)
+     }
+ } // namespace ipmi
+ 
++template <typename T>
++std::string toHexString(const T& data)
++{
++    std::stringstream stream;
++    stream << std::hex;
++    for (const auto& v : data)
++    {
++        stream << static_cast<int>(v) << " ";
++    }
++    return stream.str();
++}
++
++extern bool getTelemetryStatus(void);
++
+ /* called from sdbus async server context */
+ auto executionEntry(boost::asio::yield_context yield,
+                     sdbusplus::message::message& m, NetFn netFn, uint8_t lun,
+@@ -560,6 +577,25 @@ auto executionEntry(boost::asio::yield_context yield,
+                       entry("PRIVILEGE=%u", static_cast<uint8_t>(privilege)),
+                       entry("RQSA=%x", rqSA));
+ 
++    // Telmetry log for IPMI request
++    std::string ch_name = ipmi::getChannelName(channel);
++    std::stringstream cmd_req;
++    cmd_req << std::hex;
++    cmd_req << "- Req: Ch:" << static_cast<int>(channel)
++            << "; Nfn:" << static_cast<int>(netFn)
++            << "; Cmd:" << static_cast<int>(cmd)
++            << (data.size() > 0 ? ("; Data:" + toHexString(data)) : " ")
++            << "-";
++
++    if (getTelemetryStatus())
++    {
++        sd_journal_send("MESSAGE=%s", "Telmetry req",
++                        "MESSAGE_ID=%s", ipmiCmdLogId,
++                        "PRIORITY=%i", ipmiLogPriority,
++                        "IPMI_CHANNEL=%s", ch_name.c_str(),
++                        "IPMI_CMD_ARGS=%s", cmd_req.str().c_str(), NULL);
++    }
++
+     auto ctx = std::make_shared<ipmi::Context>(getSdBus(), netFn, lun, cmd,
+                                                channel, userId, sessionId,
+                                                privilege, rqSA, hostIdx, yield);
+@@ -567,6 +603,24 @@ auto executionEntry(boost::asio::yield_context yield,
+         ctx, std::forward<ipmi::SecureBuffer>(data));
+     message::Response::ptr response = executeIpmiCommand(request);
+ 
++    // Telmetry log for IPMI response
++    std::stringstream cmd_res;
++    cmd_res << std::hex;
++    cmd_res << "- Res: Ch:" << static_cast<int>(channel)
++            << "; Nfn:" << static_cast<int>(netFn)
++            << "; Cmd:" << static_cast<int>(cmd)
++            << (response->payload.raw.size() > 0 ? ("; Data:" + toHexString(response->payload.raw)) : " ")
++            << "-";
++
++    if (getTelemetryStatus())
++    {
++        sd_journal_send("MESSAGE=%s", "Telmetry res",
++                        "MESSAGE_ID=%s", ipmiCmdLogId,
++                        "PRIORITY=%i", ipmiLogPriority,
++                        "IPMI_CHANNEL=%s", ch_name.c_str(),
++                        "IPMI_CMD_ARGS=%s", cmd_res.str().c_str(), NULL);
++    }
++
+     return dbusResponse(response->cc, response->payload.raw);
+ }
+ 
+diff --git a/libipmid/utils.cpp b/libipmid/utils.cpp
+index 0f6d0dd..2e9453f 100644
+--- a/libipmid/utils.cpp
++++ b/libipmid/utils.cpp
+@@ -32,6 +32,13 @@ bool isLinkLocalIP(const std::string& ipaddress);
+ 
+ } // namespace network
+ 
++namespace
++{
++
++bool telemetryEnabled = true;
++
++}
++
+ // TODO There may be cases where an interface is implemented by multiple
+ //  objects,to handle such cases we are interested on that object
+ //  which are on interested busname.
+@@ -677,4 +684,14 @@ ipmi::Cc i2cWriteRead(std::string i2cBus, const uint8_t slaveAddr,
+     return ipmi::ccSuccess;
+ }
+ 
++bool getTelemetryStatus(void)
++{
++    return telemetryEnabled;
++}
++
++void setTelemetryStatus(bool enable)
++{
++    telemetryEnabled = enable;
++}
++
+ } // namespace ipmi
+-- 
+2.17.1
+

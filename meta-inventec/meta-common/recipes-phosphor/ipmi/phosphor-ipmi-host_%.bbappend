@@ -33,6 +33,7 @@ SRC_URI:append = " file://0001-Sensor-Implement-SetSensorThreshold-command.patch
                    file://0029-Bug-1278-getCPUInfo-completion-code.patch \
                    file://0030-user-management-framework-concurrency-access-issue.patch \
                    file://0031-Remove-setLastPowerEvent-function.patch \
+                   file://0032-Telemetry-Service-IPMI-Commands.patch \
 "
 
 
