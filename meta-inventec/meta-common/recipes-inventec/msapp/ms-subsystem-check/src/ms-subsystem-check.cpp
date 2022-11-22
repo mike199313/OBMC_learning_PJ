@@ -1,19 +1,3 @@
-/*
-// Copyright (c) 2019 Intel Corporation
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-*/
-
 #define BOOST_BIND_NO_PLACEHOLDERS
 
 #include <array>
@@ -105,13 +89,79 @@ using PropertyMap = std::map<std::string, Value>;
 
 using pathsOfServiceAndObject = std::pair<std::string, std::string>;
 
+static const std::string DBUS_OBJPATH_SUBYSTEM_HEALTH_CHECK =
+    "/xyz/openbmc_project/sensors/discrete_6fh/management_subsystem_health/"
+    "Subsystem_health";
+
+static const std::string DBUS_OBJPATH_INTEL_ME_HEALTH_CHECK =
+    "/xyz/openbmc_project/sensors/discrete_6fh/oem_d4h/IntelMEHealth";
+
 static const std::string DBUS_OBJPATH_PSU_STATE_CHECK =
     "/xyz/openbmc_project/sensors/discrete_6fh/power_supply/PSUStateCheck";
 
+static const std::string DBUS_OBJPATH_BMC_HEALTH_CHECK =
+    "/xyz/openbmc_project/sensors/oem_event_70h/oem_e0h/BMC_health";
+
+static const std::string DBUS_OBJPATH_SYSTEM_RECONFIGURE =
+    "/xyz/openbmc_project/sensors/discrete_6fh/system_event/SystemReconfigure";
+
+
+const int I2C_READ_MAX_RETRY=5;
+const int I2C_WAIT_SLEEP_MS = 250; //microseconds
+static int i2c_smbus_read_byte_data_retry(int fh, int cmd)
+{
+    int i;
+    int retv;
+    for(i=0; i<I2C_READ_MAX_RETRY; i++){
+        retv = i2c_smbus_read_byte_data(fh, cmd);
+        if(retv > 0) return retv;
+        usleep(I2C_WAIT_SLEEP_MS);
+    }
+    return retv;
+}
+
+static int i2c_smbus_read_word_data_retry(int fh, int cmd)
+{
+    int i;
+    int retv;
+    for(i=0; i<I2C_READ_MAX_RETRY; i++){
+        retv = i2c_smbus_read_word_data(fh, cmd);
+        if(retv > 0) return retv;
+        usleep(I2C_WAIT_SLEEP_MS);
+    }
+    return retv;
+
+}
+
+
+
+static const int MAX_SLEEP_TIME = 5;
+static const int FULL_DATA = 0xFF;
+
+static const int RESP_INDEX_POWER_STATUS = 1;
+static const int RESP_INDEX_COMPLETE_CODE = 0;
+static const int RESP_INDEX_SENSOR_NUMBER = 10;
+static const int RESP_INDEX_NEXT_RECORD_ID_LSB = 1;
+static const int RESP_INDEX_NEXT_RECORD_ID_MSB = 2;
+static const int RESP_INDEX_READING_STATUS = 2;
+static const int RESP_INDEX_RECORD_TYPE = 6;
+static const int RESP_INDEX_EVENT_STATUS_THRESHOLD_BASED_2 = 3;
+
+static const int CMD_INDEX_RECORD_ID_LSB = 2;
+static const int CMD_INDEX_RECORD_ID_MSB = 3;
+static const int CMD_INDEX_DATA_LENGTH = 5;
+static const int CMD_INDEX_SENSOR_NUMBER = 0;
+
 int CMD_OPTION_TEST_MODE = 0x00; // -t
+
+constexpr std::chrono::microseconds DBUS_TIMEOUT(10000);
 
 static const bool SEL_ASSERTED = true;
 static const bool SEL_DEASSERTED = false;
+static const uint8_t BMC_HEALTH_MASK_EMPTY_INVALID_FRU =
+    static_cast<uint8_t>(0xA4);
+static const uint8_t BMC_HEALTH_MASK_NO_MACADDRESS_PROGRAMMED =
+    static_cast<uint8_t>(0xAC);
 
 
 void do_SystemEventRecordSEL(std::shared_ptr<sdbusplus::asio::connection> conn,
@@ -141,7 +191,150 @@ void do_SystemEventRecordSEL(std::shared_ptr<sdbusplus::asio::connection> conn,
     }
 }
 
+void static check_IntelME_sensor_status(
+    std::shared_ptr<sdbusplus::asio::connection> bus)
+{
 
+    uint8_t lun = 0;
+    uint8_t netfn = 0x06;
+    uint8_t cmd = 0x34; // Send Message
+    std::vector<uint8_t> cmdData = {0x46, 0x2c, 0x18, 0xbc,
+                                    0x20, 0x04, 0x01, 0xdb};
+    auto retConvey = std::make_shared<DbusRspData>();
+    std::vector<uint8_t> eventData = {0x82, 0x00, 0x00};
+
+    if (CMD_OPTION_TEST_MODE)
+    {
+        cmdData.at(6) = 0xFF;
+        cmdData.at(7) = 0xFF;
+    }
+
+    // Using IPMI SendMessage (0x06, 0x34)to test INTEL ME through IPMB driver
+    ipmi_method_call(lun, netfn, cmd, cmdData, retConvey);
+
+    if (retConvey->retData[RESP_INDEX_COMPLETE_CODE] == 0x00)
+    {
+        // Check if data return
+        if (retConvey->retData.size() <= 1)
+        {
+            // only complete code return, treat as error
+            do_SystemEventRecordSEL(bus, DBUS_OBJPATH_INTEL_ME_HEALTH_CHECK,
+                                    eventData,
+                                    std::string("Check Intel ME health event"),
+                                    true, static_cast<uint8_t>(0x20));
+        }
+    }
+    else
+    {
+        do_SystemEventRecordSEL(bus, DBUS_OBJPATH_INTEL_ME_HEALTH_CHECK,
+                                eventData,
+                                std::string("Check Intel ME health event"),
+                                true, static_cast<uint8_t>(0x20));
+    }
+}
+
+
+void static check_FRU_devices_status(
+    std::shared_ptr<sdbusplus::asio::connection> bus)
+{
+    std::vector<pathsOfServiceAndObject> serviceAndObjectList;
+
+    GetSubTreeType resp;
+
+    // If no FRU dbus object is found it is empty/invalid error
+    std::vector<std::string> interfaces = {"xyz.openbmc_project.FruDevice"};
+    auto method =
+        bus->new_method_call("xyz.openbmc_project.ObjectMapper",
+                             "/xyz/openbmc_project/object_mapper",
+                             "xyz.openbmc_project.ObjectMapper", "GetSubTree");
+
+    method.append("/", 0, interfaces);
+    try
+    {
+        auto reply = bus->call(method);
+        reply.read(resp);
+    }
+    catch (const sdbusplus::exception_t& e)
+    {
+        fprintf(stderr, "%s:%d exception:%s \n", __func__, __LINE__, e.what());
+        return;
+    }
+
+    for (auto p1 : resp)
+    {
+        auto objPath = p1.first;
+        auto vect1 = p1.second;
+        for (auto p2 : vect1)
+        {
+            auto service = p2.first;
+            pathsOfServiceAndObject val = {service, objPath};
+            serviceAndObjectList.push_back(val);
+        }
+    }
+
+    for (auto p : serviceAndObjectList)
+    {
+        // Check if the bus/address of the FRU is working by trying opening the
+        // mapped file in /sys/bus/i2c/devices
+        auto busProperty = ipmi::getDbusProperty(
+            *bus, p.first, p.second, "xyz.openbmc_project.FruDevice", "BUS");
+        auto addressProperty =
+            ipmi::getDbusProperty(*bus, p.first, p.second,
+                            "xyz.openbmc_project.FruDevice", "ADDRESS");
+        std::stringstream output;
+        output << "/sys/bus/i2c/devices/" << std::get<uint32_t>(busProperty)
+               << "-" << std::right << std::setfill('0') << std::setw(4)
+               << std::hex << std::get<uint32_t>(addressProperty) << "/eeprom";
+        std::ifstream file(output.str(),
+                           std::ios::in | std::ios::binary | std::ios::ate);
+        if (file.is_open() == false)
+        {
+            std::cerr << "Unable to oepn file " << output.str() << std::endl;
+            std::vector<uint8_t> eventData = {0xFF, 0xFF, 0xFF};
+            eventData.at(0) = BMC_HEALTH_MASK_EMPTY_INVALID_FRU;
+            eventData.at(1) = 0xFF;
+            eventData.at(2) = 0xFF;
+
+            do_SystemEventRecordSEL(bus, DBUS_OBJPATH_BMC_HEALTH_CHECK,
+                                    eventData, std::string("BMC Health Check"),
+                                    true, static_cast<uint8_t>(0x20));
+            return;
+        }
+        else
+        {
+            file.close();
+        }
+
+        // checking if the data in the properties is empty
+
+        ipmi::PropertyMap properties = ipmi::getAllDbusProperties(
+            *bus, p.first, p.second, "xyz.openbmc_project.FruDevice");
+        size_t zeroLengthCount = 0;
+        for (auto map : properties)
+        {
+            try
+            {
+                // only get the std::string.
+                std::string value = std::get<std::string>(map.second);
+                if (value.length() == 0)
+                    zeroLengthCount++;
+            }
+            catch (std::exception& e)
+            {}
+        }
+        // ignore ADDRESS / BUS properties
+        if (zeroLengthCount >= (properties.size() - 2))
+        {
+            std::vector<uint8_t> eventData = {0xFF, 0xFF, 0xFF};
+            eventData.at(0) = BMC_HEALTH_MASK_EMPTY_INVALID_FRU;
+            eventData.at(1) = 0xFF;
+            eventData.at(2) = 0xFF;
+            do_SystemEventRecordSEL(bus, DBUS_OBJPATH_BMC_HEALTH_CHECK,
+                                    eventData, std::string("BMC Health Check"),
+                                    true, static_cast<uint8_t>(0x20));
+        }
+    }
+}
 
 struct PSU{
     int bus;
@@ -310,7 +503,7 @@ void static check_PSU_status(
         }
         
         // query status_word and check the return value.
-        resp_status_word = i2c_smbus_read_word_data(p.fh, CMD_STATUS_WORD);
+        resp_status_word = i2c_smbus_read_word_data_retry(p.fh, CMD_STATUS_WORD);
         if(resp_status_word<0){
             log<level::ERR>("read STATUS_WORD failed");
             dbg("read STATUS_WORD failed \n");
@@ -342,9 +535,16 @@ void static check_PSU_status(
                     for(int& cmd : PMBUS_CMD_MAP[1<<i]){
                         dbg("i=%d, value=%04X cmd=%02X\n", i, value, cmd);
                         uint8_t respv;
+                        int retv;
                         // advanced query status_regisger which mapped to status_word bit.
-                        respv = i2c_smbus_read_byte_data(p.fh, cmd);
+                        retv = i2c_smbus_read_byte_data_retry(p.fh, cmd);
+                        if(retv < 0){
+                            log<level::ERR>("read STATUS register failed");
+                            dbg("read STATUS register failed \n");
+                            continue;
+                        }
 
+                        respv = static_cast<uint8_t>(retv);
                         if (CMD_OPTION_TEST_MODE){
                             respv = 0xFF;
                         }
@@ -381,6 +581,38 @@ void static check_PSU_status(
 }
 
 
+void static check_subsystem_sensor_status(
+    std::shared_ptr<sdbusplus::asio::connection> bus)
+{
+    constexpr auto SENSOR_VALUE_INTERFACE = "xyz.openbmc_project.Sensor.Value";
+    constexpr auto SERVICE_ROOT = "/";
+    auto objTree = ipmi::getAllDbusObjects(*bus, SERVICE_ROOT, SENSOR_VALUE_INTERFACE, {});
+
+    for( const auto& [objPath, objMap] : objTree)
+    {
+        for(const auto& [objService, objIntfs] : objMap){
+            if(objService.find("EventSensor") != std::string::npos){
+                break;
+            }
+            auto property = ipmi::getDbusProperty(*bus, objService, objPath, SENSOR_VALUE_INTERFACE, "Value");
+            double value = std::get<double>(property);
+            if(std::isnan(value)){
+                // Getting value is NaN. do SEL
+                constexpr auto IPMI_SENSOR_INTERFACE = "xyz.openbmc_project.Sensor.IpmiSensor";
+                auto property = ipmi::getDbusProperty(*bus, objService, objPath, IPMI_SENSOR_INTERFACE, "sensorNumber");
+                uint8_t snum = static_cast<uint8_t>(std::get<uint64_t>(property));
+                dbg("objService=%s objPath=%s sensorNumber=%ld value is NaN \n", objService.c_str(), objPath.c_str(), snum);
+                std::vector<uint8_t> eventData = {0xC0, snum, 0xFF};
+
+                do_SystemEventRecordSEL(bus, DBUS_OBJPATH_SUBYSTEM_HEALTH_CHECK,
+                                        eventData, std::string("Check Management Subsystem health event"),
+                                        true, static_cast<uint8_t>(0x20));
+            }
+        }
+    }
+}
+
+
 static void checkStatusWrapper1(
     const boost::system::error_code &ec,
     boost::asio::steady_timer &timer,
@@ -399,6 +631,60 @@ static void checkStatusWrapper1(
     timer.async_wait(boost::bind(&checkStatusWrapper1, boost::asio::placeholders::error, boost::ref(timer), systemBus));
 }
 
+
+static void checkStatusWrapper60(
+    const boost::system::error_code &ec ,
+    boost::asio::steady_timer &timer,
+    std::shared_ptr<sdbusplus::asio::connection> systemBus)
+{
+
+    try
+    {
+        check_FRU_devices_status(systemBus);
+    }
+    catch (std::exception &e)
+    {
+        fprintf(stderr, "%s:%d exception%s \n", __FILE__, __LINE__, e.what());
+    }
+
+    try
+    {
+        check_IntelME_sensor_status(systemBus);
+    }
+    catch (std::exception &e)
+    {
+        fprintf(stderr, "%s:%d exception%s \n", __FILE__, __LINE__, e.what());
+    }
+
+    try
+    {
+        bool powerGood = false;
+        constexpr const char *chassisStatePath =
+            "/xyz/openbmc_project/state/chassis0";
+        constexpr const char *chassisStateIntf =
+            "xyz.openbmc_project.State.Chassis";
+        auto service =
+            ipmi::getService(*systemBus, chassisStateIntf, chassisStatePath);
+        ipmi::Value powerState =
+            ipmi::getDbusProperty(*systemBus, service, chassisStatePath,
+                                  chassisStateIntf, "CurrentPowerState");
+        powerGood = std::get<std::string>(powerState) ==
+                    "xyz.openbmc_project.State.Chassis.PowerState.On";
+        if ( (powerGood) || (CMD_OPTION_TEST_MODE==1) )
+        {
+            // if host power on, do checking of sub system sensor
+            // In testing mode, power off the host, some sensor will return value with NaN
+            check_subsystem_sensor_status(systemBus);
+        }
+    }
+    catch (std::exception &e)
+    {
+        fprintf(stderr, "%s:%d exception%s \n", __FILE__, __LINE__, e.what());
+    }
+
+    timer.expires_after(std::chrono::seconds(60));
+    timer.async_wait(boost::bind(&checkStatusWrapper60, boost::asio::placeholders::error, boost::ref(timer), systemBus));
+}
 
 
 int main(int argc, char** argv)
@@ -421,6 +707,9 @@ int main(int argc, char** argv)
 
     boost::asio::steady_timer timer1(ioservice, std::chrono::seconds(1));
     timer1.async_wait(boost::bind(&checkStatusWrapper1, boost::asio::placeholders::error, boost::ref(timer1), systemBus));
+
+    boost::asio::steady_timer timer60(ioservice, std::chrono::seconds(5));
+    timer60.async_wait(boost::bind(&checkStatusWrapper60, boost::asio::placeholders::error, boost::ref(timer60), systemBus));
 
     ioservice.run();
 }

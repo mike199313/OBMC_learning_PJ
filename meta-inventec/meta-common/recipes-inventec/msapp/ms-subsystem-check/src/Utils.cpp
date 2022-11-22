@@ -37,15 +37,16 @@ void ipmi_method_call(uint8_t& lun, uint8_t& netfn, uint8_t& cmd,
 {
     try
     {
-
+        
         boost::asio::io_service io;
         auto bus = std::make_shared<sdbusplus::asio::connection>(io);
 
         boost::asio::deadline_timer waitTimer(io);
         waitTimer.expires_from_now(boost::posix_time::milliseconds(5000));
         waitTimer.async_wait([&io, convey](const boost::system::error_code& ec) {
+            const uint8_t IPMI_TIMEOUT_ERROR_CODE = 0xFE;
             fprintf(stderr, "ipmi_method_call timer expired ec=%d\n", ec.value());
-            convey->retData.push_back(0xFE);
+            convey->retData.push_back(IPMI_TIMEOUT_ERROR_CODE);
             convey->ec = ec;
             io.stop();
             fprintf(stderr, "%s:%d\n", __func__, __LINE__);
