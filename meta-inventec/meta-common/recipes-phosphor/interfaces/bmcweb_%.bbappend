@@ -24,8 +24,9 @@ PACKAGECONFIG[cpu-log] = "-Dredfish-cpu-log=enabled,-Dredfish-cpu-log=disabled,"
 PACKAGECONFIG[tftp] = "-Dinsecure-tftp-update=enabled,-Dinsecure-tftp-update=disabled,"
 PACKAGECONFIG[etag] = "-Dredfish-enable-etag=enabled,-Dredfish-enable-etag=disabled,"
 PACKAGECONFIG[inv-psu] = "-Dredfish-enable-inv-psu=enabled,-Dredfish-enable-inv-psu=disabled,"
+PACKAGECONFIG[query] = "-Dinsecure-enable-redfish-query=enabled,-Dinsecure-enable-redfish-query=disabled,"
 
-PACKAGECONFIG:append = " journal dump tftp etag inv-psu"
+PACKAGECONFIG:append = " journal dump tftp etag inv-psu query"
 
 SRC_URI:append = " \
     file://0001-Empty-base-dn-error.patch \
