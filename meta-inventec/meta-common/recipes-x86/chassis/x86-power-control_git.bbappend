@@ -1,6 +1,6 @@
 FILESEXTRAPATHS:prepend := "${THISDIR}/${PN}:"
 
-SRC_URI:append += " file://0001-Common-Add-RequestedPowerIntervalMs-property.patch \
+SRC_URI:append  = " file://0001-Common-Add-RequestedPowerIntervalMs-property.patch \
                     file://0002-Common-Add-host-power-off-and-host-power-on-hook-ser.patch \
                     file://0003-Bug623-SW-Transformers-OpenBMC-IPMI-Implement-get-ch.patch \
                     file://0004-Bug-396-Transformers-OpenBMC-Redfish-Should-be-chass.patch \

@@ -34,7 +34,7 @@ do_install:append(){
 
 FILESEXTRAPATHS:append := "${THISDIR}/${PN}:"
 
-SRC_URI:append += " file://0001-Removed-Get-Device-ID-command.patch \
+SRC_URI:append  = " file://0001-Removed-Get-Device-ID-command.patch \
                     file://0002-Remove-Intel-IPMI-OEM-commands.patch \
                     file://0003-SEL-Implement-Set-SEL-Time-command.patch  \
                     file://0004-SEL-Modified-IPMI-command-Add-Get-SEL-Entry.patch \

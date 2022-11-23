@@ -6,7 +6,7 @@ gpioset `gpiofind BMC_READY`=0
 echo BMC ready !!
 gpioset `gpiofind RST_BMC_SGPIO`=1
 echo Release reset SGPIO !!
-
+echo c0000000.spi > /sys/bus/platform/drivers/NPCM-FIU/unbind
 
 # Init SGPIO output pin to high, avoid they reset i2c mux IC
 gpioset `gpiofind RST_CPU_I2C_MUX_R_N`=1

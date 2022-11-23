@@ -7,7 +7,7 @@ PACKAGECONFIG:append = " \
     log-watchdog \
     log-alarm"
 
-SRC_URI:append += " \
+SRC_URI:append = " \
     file://0001-Fix-IPMI-logging-service-fail-to-start-issue.patch \
     file://0002-Support-BMC-Global-Enables-Commands-to-control-SEL.patch \
     file://0003-Implement-PEF-features.patch \

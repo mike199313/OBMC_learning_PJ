@@ -1,4 +1,4 @@
-From d89caaa7a4f293f80f9ab7a0b0373c289236cd98 Mon Sep 17 00:00:00 2001
+From d2040ce5bc801814711f4431a457576fb613c0a1 Mon Sep 17 00:00:00 2001
 From: cynthia <wu.cynthia@inventec.com>
 Date: Mon, 16 May 2022 14:39:13 +0800
 Subject: [PATCH] Redfish Support for composition service
@@ -59,7 +59,7 @@ index 4ee7eaf7..624b9445 100644
  using DBusPropertiesMap = std::vector<std::pair<std::string, DbusVariantType>>;
  using DBusInteracesMap = std::vector<std::pair<std::string, DBusPropertiesMap>>;
 diff --git a/redfish-core/include/redfish.hpp b/redfish-core/include/redfish.hpp
-index beb22754..cec26fdb 100644
+index 90b17668..9c00175c 100644
 --- a/redfish-core/include/redfish.hpp
 +++ b/redfish-core/include/redfish.hpp
 @@ -48,6 +48,7 @@
@@ -90,8 +90,8 @@ index beb22754..cec26fdb 100644
 +        requestRoutesComposedSystemMemory(app);
  
          requestRoutesSystemsCollection(app);
-         requestRoutesSystems(app);
-@@ -228,6 +232,16 @@ class RedfishService
+         requestRoutesSystemsCollectionCapabilities(app);
+@@ -229,6 +233,16 @@ class RedfishService
          requestRoutesTriggerCollection(app);
          requestRoutesTrigger(app);
  
@@ -1117,7 +1117,7 @@ index cab23a23..5bf56a37 100644
                            const std::string& connectionName,
                            const std::string& path)
 diff --git a/redfish-core/lib/systems.hpp b/redfish-core/lib/systems.hpp
-index 3ac81aba..59580ed6 100644
+index 34a130ce..2b01e9d9 100644
 --- a/redfish-core/lib/systems.hpp
 +++ b/redfish-core/lib/systems.hpp
 @@ -31,9 +31,15 @@
@@ -1136,7 +1136,7 @@ index 3ac81aba..59580ed6 100644
  
  /**
   * @brief Updates the Functional State of DIMMs
-@@ -2633,6 +2639,85 @@ inline void setIdlePowerSaver(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
+@@ -2625,6 +2631,85 @@ inline void setIdlePowerSaver(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
      BMCWEB_LOG_DEBUG << "EXIT: Set idle power saver parameters";
  }
  
@@ -1222,7 +1222,7 @@ index 3ac81aba..59580ed6 100644
  /**
   * SystemsCollection derived class for delivering ComputerSystems Collection
   * Schema
-@@ -2676,7 +2761,260 @@ inline void requestRoutesSystemsCollection(App& app)
+@@ -2671,7 +2756,260 @@ inline void requestRoutesSystemsCollection(App& app)
                  count = ifaceArray.size();
              }
              });
@@ -1484,7 +1484,7 @@ index 3ac81aba..59580ed6 100644
  }
  
  /**
-@@ -3077,6 +3415,348 @@ inline void requestRoutesSystems(App& app)
+@@ -3111,6 +3449,348 @@ inline void requestRoutesSystems(App& app)
                                ipsExitUtil, ipsExitTime);
          }
          });
