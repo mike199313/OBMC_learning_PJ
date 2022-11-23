@@ -17,18 +17,18 @@ void interface_init(void){
         configureInterface[i]->register_property_rw(
         "status", uint8_t(),
         sdbusplus::vtable::property_::emits_change,
-            [&i](const auto &newPropertyValue, const auto&){
+            [i](const auto &newPropertyValue, const auto&){
                configure[i].status = newPropertyValue;
                return 1;
-            },[&i](const auto &){return configure[i].status;}
+            },[i](const auto &){return configure[i].status;}
         );
         configureInterface[i]->register_property_rw(
         "force", bool(),
         sdbusplus::vtable::property_::emits_change,
-            [&i](const auto &newPropertyValue, const auto&){
+            [i](const auto &newPropertyValue, const auto&){
                configure[i].force = newPropertyValue;
                return 1;
-            },[&i](const auto &){return configure[i].force;}
+            },[i](const auto &){return configure[i].force;}
         );
         configureInterface[i]->initialize();
     }
