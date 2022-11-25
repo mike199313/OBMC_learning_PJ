@@ -1,4 +1,4 @@
-From 39e1414272ed8b5224eb9828ffe437e73a6ec238 Mon Sep 17 00:00:00 2001
+From 6a426062c053b6ba196a7866de680135bbb7879f Mon Sep 17 00:00:00 2001
 From: Jason Lin <lin.jasonyy@inventec.com>
 Date: Thu, 25 Aug 2022 15:07:23 +0800
 Subject: [PATCH] Bug 1231 - [Common][OpenBmc][Redfish] Enable FRU to set
@@ -26,11 +26,11 @@ Entry Test:
 3. patch function under requestRoutesChassis is implemented in official code,
    remove the related parts in this patch
 ---
- redfish-core/lib/chassis.hpp | 393 +++++++++++++++++++++++++++++++++++
- 1 file changed, 393 insertions(+)
+ redfish-core/lib/chassis.hpp | 392 +++++++++++++++++++++++++++++++++++
+ 1 file changed, 392 insertions(+)
 
 diff --git a/redfish-core/lib/chassis.hpp b/redfish-core/lib/chassis.hpp
-index f1de38c8..36664b69 100644
+index f1de38c8..eb2d8f0d 100644
 --- a/redfish-core/lib/chassis.hpp
 +++ b/redfish-core/lib/chassis.hpp
 @@ -19,6 +19,8 @@
@@ -279,7 +279,7 @@ index f1de38c8..36664b69 100644
  inline void
      handleChassisPatch(App& app, const crow::Request& req,
                         const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
-@@ -581,6 +789,191 @@ inline void requestRoutesChassis(App& app)
+@@ -581,6 +789,190 @@ inline void requestRoutesChassis(App& app)
          .privileges(redfish::privileges::patchChassis)
          .methods(boost::beast::http::verb::patch)(
              std::bind_front(handleChassisPatch, std::ref(app)));
@@ -380,7 +380,6 @@ index f1de38c8..36664b69 100644
 +                std::optional<std::string> Manufacturer;
 +                std::optional<std::string> Model;
 +                std::optional<std::string> AssetTag;
-+                nlohmann::json request;
 +
 +                if (!redfish::setUpRedfishRoute(app, req, asyncResp))
 +                {
@@ -391,7 +390,7 @@ index f1de38c8..36664b69 100644
 +                    return;
 +                }
 +
-+                if (!json_util::readJson(request, asyncResp->res, "SerialNumber",
++                if (!json_util::readJsonPatch(req, asyncResp->res, "SerialNumber",
 +                                         SerialNumber, "PartNumber", PartNumber,
 +                                         "Manufacturer", Manufacturer, "Model",
 +                                         Model, "AssetTag", AssetTag))

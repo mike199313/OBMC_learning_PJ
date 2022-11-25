@@ -1,4 +1,4 @@
-From d2040ce5bc801814711f4431a457576fb613c0a1 Mon Sep 17 00:00:00 2001
+From b81691a1a84db59b8c4ec9f908189824b211c978 Mon Sep 17 00:00:00 2001
 From: cynthia <wu.cynthia@inventec.com>
 Date: Mon, 16 May 2022 14:39:13 +0800
 Subject: [PATCH] Redfish Support for composition service
@@ -1117,7 +1117,7 @@ index cab23a23..5bf56a37 100644
                            const std::string& connectionName,
                            const std::string& path)
 diff --git a/redfish-core/lib/systems.hpp b/redfish-core/lib/systems.hpp
-index 34a130ce..2b01e9d9 100644
+index 34a130ce..f7d633e9 100644
 --- a/redfish-core/lib/systems.hpp
 +++ b/redfish-core/lib/systems.hpp
 @@ -31,9 +31,15 @@
@@ -1280,7 +1280,7 @@ index 34a130ce..2b01e9d9 100644
 +                std::string name;
 +                std::string boot_source = "xyz.openbmc_project.Control.Boot.Source.Sources.Default";
 +                bool boot_enable = true;
-+                nlohmann::json links, request;
++                nlohmann::json links;
 +                std::vector<nlohmann::json> blocks;
 +                std::optional<nlohmann::json> bootProps;
 +
@@ -1291,7 +1291,7 @@ index 34a130ce..2b01e9d9 100644
 +                    return;
 +                }
 +                
-+                if (!json_util::readJson(request, asyncResp->res, "Name", name, "Links", links, "Boot", bootProps) )
++                if (!json_util::readJsonAction(req, asyncResp->res, "Name", name, "Links", links, "Boot", bootProps) )
 +                {
 +                    BMCWEB_LOG_DEBUG << "Missing parameter";
 +                    return;
