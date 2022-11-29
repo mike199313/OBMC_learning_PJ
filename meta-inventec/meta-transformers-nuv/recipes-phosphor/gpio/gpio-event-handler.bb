@@ -6,7 +6,7 @@ SYSTEMD_AUTO_ENABLE = "enable"
 
 inherit obmc-phosphor-systemd
 
-DEPENDS += "systemd sdbusplus libgpiod phosphor-dbus-interfaces"
+DEPENDS += "systemd sdbusplus libgpiod phosphor-dbus-interfaces boost phosphor-ipmi-host phosphor-logging"
 RDEPENDS:${PN} += "libsystemd sdbusplus libgpiod"
 
 S = "${WORKDIR}"
