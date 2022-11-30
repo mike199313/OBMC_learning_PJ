@@ -8,12 +8,11 @@ namespace ipmi::inv::configuration
         // Check system paths
         fs::path ipmiHostDirPath(std::string{CONF_IPMI_HOST_DIR});
         fs::path entityManagerDirPath(std::string{CONF_ENTITY_MANAGER_DIR});
-        fs::path ipmiProvidersDirPath(std::string{CONF_IPMI_PROVIDERS_DIR});
         fs::path goldenConfigurationDirPath(std::string{CONF_GOLDEN_DIR});
         fs::path userConfigurationDirPath(std::string{CONF_USER_DIR});
         fs::path pendingConfigurationDirPath(std::string{CONF_PENDING_DIR});
         fs::path schemaFilePath(std::string{CONF_SCHEMA_FILE});
-        if (!(fs::exists(ipmiHostDirPath) && fs::exists(entityManagerDirPath) && fs::exists(ipmiProvidersDirPath) && fs::exists(goldenConfigurationDirPath) &&
+        if (!(fs::exists(ipmiHostDirPath) && fs::exists(entityManagerDirPath) && fs::exists(goldenConfigurationDirPath) &&
               fs::exists(userConfigurationDirPath) && fs::exists(pendingConfigurationDirPath) && fs::exists(schemaFilePath)))
         {
             std::cerr << "Error system configuration paths do not exist." << std::endl;
@@ -31,7 +30,6 @@ namespace ipmi::inv::configuration
             std::vector<std::pair<json_t, fs::path>> configs = {};
             serviceCount += ConfigurationParser::getJsons(ipmiHostDirPath, schemaFilePath, configs);
             serviceCount += ConfigurationParser::getJsons(entityManagerDirPath, schemaFilePath, configs);
-            serviceCount += ConfigurationParser::getJsons(ipmiProvidersDirPath, schemaFilePath, configs);
 
             // List service name and ID for Microsoft compliant configurations
             // Filling service count field
@@ -78,7 +76,6 @@ namespace ipmi::inv::configuration
             std::vector<std::pair<json_t, fs::path>> configs = {};
             serviceCount += ConfigurationParser::getJsons(ipmiHostDirPath, schemaFilePath, configs);
             serviceCount += ConfigurationParser::getJsons(entityManagerDirPath, schemaFilePath, configs);
-            serviceCount += ConfigurationParser::getJsons(ipmiProvidersDirPath, schemaFilePath, configs);
 
             // Search for service ID
             bool foundID = false;
@@ -254,12 +251,11 @@ namespace ipmi::inv::configuration
         // Check system paths
         fs::path ipmiHostDirPath(std::string{CONF_IPMI_HOST_DIR});
         fs::path entityManagerDirPath(std::string{CONF_ENTITY_MANAGER_DIR});
-        fs::path ipmiProvidersDirPath(std::string{CONF_IPMI_PROVIDERS_DIR});
         fs::path goldenConfigurationDirPath(std::string{CONF_GOLDEN_DIR});
         fs::path userConfigurationDirPath(std::string{CONF_USER_DIR});
         fs::path pendingConfigurationDirPath(std::string{CONF_PENDING_DIR});
         fs::path schemaFilePath(std::string{CONF_SCHEMA_FILE});
-        if (!(fs::exists(ipmiHostDirPath) && fs::exists(entityManagerDirPath) && fs::exists(ipmiProvidersDirPath) && fs::exists(goldenConfigurationDirPath) &&
+        if (!(fs::exists(ipmiHostDirPath) && fs::exists(entityManagerDirPath) && fs::exists(goldenConfigurationDirPath) &&
               fs::exists(userConfigurationDirPath) && fs::exists(pendingConfigurationDirPath) && fs::exists(schemaFilePath)))
         {
             std::cerr << "Error system configuration paths do not exist." << std::endl;
@@ -321,7 +317,6 @@ namespace ipmi::inv::configuration
         uint8_t serviceCount = 0;
         serviceCount += ConfigurationParser::getJsons(ipmiHostDirPath, schemaFilePath, configs);
         serviceCount += ConfigurationParser::getJsons(entityManagerDirPath, schemaFilePath, configs);
-        serviceCount += ConfigurationParser::getJsons(ipmiProvidersDirPath, schemaFilePath, configs);
 
         // Search for service ID and its file path
         bool foundID = false, foundConfig = false;
@@ -378,12 +373,11 @@ namespace ipmi::inv::configuration
         // Check system paths
         fs::path ipmiHostDirPath(std::string{CONF_IPMI_HOST_DIR});
         fs::path entityManagerDirPath(std::string{CONF_ENTITY_MANAGER_DIR});
-        fs::path ipmiProvidersDirPath(std::string{CONF_IPMI_PROVIDERS_DIR});
         fs::path goldenConfigurationDirPath(std::string{CONF_GOLDEN_DIR});
         fs::path userConfigurationDirPath(std::string{CONF_USER_DIR});
         fs::path pendingConfigurationDirPath(std::string{CONF_PENDING_DIR});
         fs::path schemaFilePath(std::string{CONF_SCHEMA_FILE});
-        if (!(fs::exists(ipmiHostDirPath) && fs::exists(entityManagerDirPath) && fs::exists(ipmiProvidersDirPath) && fs::exists(goldenConfigurationDirPath) &&
+        if (!(fs::exists(ipmiHostDirPath) && fs::exists(entityManagerDirPath) && fs::exists(goldenConfigurationDirPath) &&
               fs::exists(userConfigurationDirPath) && fs::exists(pendingConfigurationDirPath) && fs::exists(schemaFilePath)))
         {
             std::cerr << "Error system configuration paths do not exist." << std::endl;
@@ -454,7 +448,6 @@ namespace ipmi::inv::configuration
         uint8_t serviceCount = 0;
         serviceCount += ConfigurationParser::getJsons(ipmiHostDirPath, schemaFilePath, configs);
         serviceCount += ConfigurationParser::getJsons(entityManagerDirPath, schemaFilePath, configs);
-        serviceCount += ConfigurationParser::getJsons(ipmiProvidersDirPath, schemaFilePath, configs);
 
         // Search for service ID and its file path
         bool foundID = false, foundConfig = false;
