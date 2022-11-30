@@ -1,0 +1,459 @@
+From de63f7a5b9a5413702b66c65c82079c7294efb6f Mon Sep 17 00:00:00 2001
+From: bonnie <Liu.Bonnie@inventec.com>
+Date: Wed, 30 Nov 2022 14:46:49 +0800
+Subject: [PATCH] Bug 1360 - [SW][Common]Modify Add/Delete SDR IPMI commands to
+ create external sensor.
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Symptom/Reason：
+        Currently add /delete SDR command only support entity sensors.
+Root Cause：
+        Currently add /delete SDR command only support entity sensors.
+Solution/Change：
+        1.Modify Add SDR commands to create a json config file.
+	2.Entity manager will create an external snesor with object path and interfaces by the config.
+	3.Delete SDR commands will erase the field in config file, depends on sensor number.
+	4.Restart entity manager service, the sensor will be deleted.
+Entry Test：
+	sysadmin@transformers:~# ipmitool raw 0x0a 0x24 0x40 0x00 0x51 0x01 0x3b 0x20 0x00 0x81
+	/ 0x06 0x00 0x80 0x68 0x01 0x01 0x85 0x32 0x85 0x32 0x1b 0x1b 0x80 0x01 0x00 0x00 0x01
+	/ 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x24 0x23 0x00 0x05 0x0a
+	/ 0x00 0x00 0x00 0x00 0x00 0x0a 0x54 0x48 0x45 0x52 0x4d 0x41 0x4c 0x5f 0x55 0x37 0x00
+	/ 0x00 0x00 0x00 0x00 0x00
+
+	63 00
+	sysadmin@transformers:~# ipmitool raw 0x0a 0x24 0x41 0x00 0x51 0x01 0x3b 0x20 0x00 0x81
+	/ 0x06 0x00 0x80 0x68 0x01 0x01 0x85 0x32 0x85 0x32 0x1b 0x1b 0x80 0x01 0x00 0x00 0x01
+	/ 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x24 0x23 0x00 0x05 0x0a
+	/ 0x00 0x00 0x00 0x00 0x00 0x0a 0x54 0x48 0x45 0x52 0x4d 0x41 0x4c 0x5f 0x55 0x37 0x00
+	/ 0x00 0x00 0x00 0x00 0x00
+
+	64 00
+
+	sysadmin@transformers:~# busctl tree xyz.openbmc_project.ExternalSensor
+	`-/xyz
+  	 `-/xyz/openbmc_project
+    	  `-/xyz/openbmc_project/sensors
+      	   `-/xyz/openbmc_project/sensors/temperature
+            |-/xyz/openbmc_project/sensors/temperature/External_129
+	    `-/xyz/openbmc_project/sensors/temperature/External_130
+	sysadmin@transformers:~# ipmitool raw 0x0a 0x22
+	01 00
+	sysadmin@transformers:~# ipmitool raw 0x0a 0x26 0x01 0x00 0x48 0x00
+	63 00
+	sysadmin@transformers:~# busctl tree xyz.openbmc_project.ExternalSensor
+	`-/xyz
+  	 `-/xyz/openbmc_project
+    	  `-/xyz/openbmc_project/sensors
+      	   `-/xyz/openbmc_project/sensors/temperature
+            `-/xyz/openbmc_project/sensors/temperature/External_130
+	sysadmin@transformers:~# ipmitool raw 0x04 0x30 0x81 0x20 0x13 0xff 0x06 0x08 0x01 0xff 0xff 0xff
+
+	sysadmin@transformers:~# ipmitool sel elist
+	   1 | 11/23/22 | 16:07:44 UTC | Temperature #0xff |  | Asserted
+	   2 | 11/23/22 | 16:07:44 UTC | Temperature #0xff |  | Asserted
+	   3 | 11/23/22 | 16:07:44 UTC | Temperature #0xff |  | Asserted
+  	   4 | 11/23/22 | 16:07:44 UTC | Temperature #0xff |  | Deasserted
+---
+ include/dynamic_sdr.hpp    |   2 +-
+ include/sensorcommands.hpp |  16 +++
+ src/dynamic_sdr.cpp        |  12 ++
+ src/sensorcommands.cpp     | 271 ++++++++++++++++++++++++++++++++++++-
+ 4 files changed, 298 insertions(+), 3 deletions(-)
+ mode change 100755 => 100644 include/dynamic_sdr.hpp
+ mode change 100755 => 100644 src/dynamic_sdr.cpp
+
+diff --git a/include/dynamic_sdr.hpp b/include/dynamic_sdr.hpp
+old mode 100755
+new mode 100644
+index d65eaad..ca60ad5
+--- a/include/dynamic_sdr.hpp
++++ b/include/dynamic_sdr.hpp
+@@ -78,7 +78,7 @@ namespace ipmi
+                                       uint8_t& assertionEnabledMsb,
+                                       uint8_t& deassertionEnabledLsb,
+                                       uint8_t& deassertionEnabledMsb);
+-
++            uint8_t GetSensorInitialization(const uint8_t& sensorNumber);
+           public:
+             static void SetRecordId(uint16_t recordId, std::vector<uint8_t>& sdr);
+ 
+diff --git a/include/sensorcommands.hpp b/include/sensorcommands.hpp
+index 858f1a1..4b0f513 100644
+--- a/include/sensorcommands.hpp
++++ b/include/sensorcommands.hpp
+@@ -106,6 +106,22 @@ enum class IPMIGetSensorEventEnableThresholds : uint8_t
+     upperNonRecoverableGoingHigh = 11,
+ };
+ 
++enum class IPMISetSensorEventStatus : uint16_t
++{
++    upperNonCriticalGoingHigh = (1 << 15),
++    upperNonCriticalGoingLow = (1 << 14),
++    lowerNonRecoverableGoingHigh = (1 << 13),
++    lowerNonRecoverableGoingLow = (1 << 12),
++    lowerCriticalGoingHigh = (1 << 11),
++    lowerCriticalGoingLow = (1 << 10),
++    lowerNonCriticalGoingHigh = (1 << 9),
++    lowerNonCriticalGoingLow = (1 << 8),
++    upperNonRecoverableGoingHigh = (1 << 3),
++    upperNonRecoverableGoingLow = (1 << 2),
++    upperCriticalGoingHigh = (1 << 1),
++    upperCriticalGoingLow = (1 << 0),
++};
++
+ enum class IPMINetfnSensorCmds : ipmi_cmd_t
+ {
+     ipmiCmdGetDeviceSDRInfo = 0x20,
+diff --git a/src/dynamic_sdr.cpp b/src/dynamic_sdr.cpp
+old mode 100755
+new mode 100644
+index d6f0e79..3e76a23
+--- a/src/dynamic_sdr.cpp
++++ b/src/dynamic_sdr.cpp
+@@ -613,5 +613,17 @@ namespace ipmi
+         deassertionEnabledMsb = fullRecord->body.supported_deassertions[1];
+         return true;
+     }
++    
++    uint8_t DynamicSDR::GetSensorInitialization(const uint8_t& sensorNumber)
++    {
++        int recordId = this->FindRecordId(sensorNumber);
++
++         get_sdr::SensorDataFullRecord* fullRecord =
++            reinterpret_cast<get_sdr::SensorDataFullRecord*>(
++                sensorDataRecords[recordId].data());
++
++        uint8_t senInit = fullRecord->body.sensor_initialization;
++        return senInit;  
++    }
+ }
+ 
+diff --git a/src/sensorcommands.cpp b/src/sensorcommands.cpp
+index 461225a..6bcd015 100644
+--- a/src/sensorcommands.cpp
++++ b/src/sensorcommands.cpp
+@@ -16,7 +16,7 @@
+ 
+ #include "sensorcommands.hpp"
+ #include "appcommands.hpp"
+-
++#include "nlohmann/json.hpp"
+ #include "commandutils.hpp"
+ #include "dynamic_sdr.hpp"
+ #include "ipmi_to_redfish_hooks.hpp"
+@@ -45,7 +45,8 @@
+ #include <string>
+ #include <utility>
+ #include <variant>
+-
++using Json = nlohmann::json;
++#define SettableSensor 7
+ namespace ipmi
+ {
+ using ManagedObjectType =
+@@ -1471,7 +1472,157 @@ ipmi::RspType<uint8_t,         // sensorEventStatus
+ 
+     return ipmi::responseSuccess(sensorEventStatus, assertions, deassertions);
+ }
++void genSEL(std::vector<uint8_t> eventData, std::string path, bool isAssert)
++{
++    constexpr const uint16_t recordType = 0x02;
++    const char* selAddMessage = "IpmiSelAdd";
++
++    std::shared_ptr<sdbusplus::asio::connection> bus = getSdBus();
++    sdbusplus::message::message writeSEL = bus->new_method_call(
++                             selService, selPath, selAddIntf, selAddMessage);
++    writeSEL.append("External", path, eventData, isAssert, recordType);
++
++    try
++    {
++        auto ret = bus->call(writeSEL);
++    }
++    catch (sdbusplus::exception_t& e)
++    {
++        std::cerr << "WriteSEL failed :"<<e.what()<<"\n";
++    }
++}
++// set sensor reading and event status <bonnie>
++ipmi::RspType<>
++ipmiSenSetSensorReadingAndEventStatus(ipmi::Context::ptr ctx, uint8_t sensorNumber,
++                                      uint8_t operation, uint8_t reading,
++                                      uint16_t setAssert, uint16_t setDeassert,
++                                      std::vector<uint8_t> eventData)
++{
++    std::string connection = "xyz.openbmc_project.ExternalSensor";
++    std::string path = "/xyz/openbmc_project/sensors/temperature/External_" + 
++                                                    std::to_string(sensorNumber);
++
++    if (!setProperty(connection, path, "xyz.openbmc_project.Sensor.Value",
++                     "Value", double(reading)))
++    {
++        std::cerr << "Set sensor reading error:" << double(reading) << "\n";
++        return ipmi::responseResponseError();
++    }
++    
++    // set event status
++    uint8_t senIinit = dynamicSdr.GetSensorInitialization(sensorNumber);  
++    uint8_t settableSensor = (1 << SettableSensor);
++
++    if (!(senIinit & settableSensor))// check sensor settable
++    {
++        std::cerr << "Sensor is not settable.\n";
++        return ipmi::response(ccInvalidNumOfEntries);   //0x80
++    } 
++    else if (!(operation & 0xc0))// check event data bytes settable
++    {
++        std::cerr << "Event Data Bytes is not settable.\n";
++        return ipmi::response(ccInvalidIndex);         //0x81
++    }
++    else
++    {
++        ipmi::Value presentStatus =
++            ipmi::getDbusProperty(*getSdBus(), connection,path, 
++             "xyz.openbmc_project.Sensor.Value","SensorEventStatus");
++        
++        uint32_t presentAll = std::get<uint32_t>(presentStatus);
++        uint16_t presentAssert = 0;
++        uint16_t presentDeassert = 0;
++        presentAssert |= (presentAll >> 16);
++        presentDeassert |= presentAll;  //present status combine 
++
++        //caculate new status
++        auto cal_newStatus =
++        [=](int operation, uint16_t setEventStatus, uint16_t presentStatus)
++        {
++            uint32_t newStatus;
++            switch (operation)
++            {
++            case 0: // 00
++                newStatus = presentStatus;
++                break;
++            case 1: // 01
++                newStatus = setEventStatus;
++                break;
++            case 2: // 10
++                newStatus = setEventStatus | presentStatus;
++                break;
++            case 3: // 11
++                newStatus = setEventStatus & presentStatus;
++                break;
++            }
++            return newStatus;
++        };
++        
++        //caculate operation
++        int AssertOp = (operation & 0x30) >> 4;  //bit5 & bit4
++        int DeassertOp = (operation & 0x0c) >> 2; //bit3 & bit2
++
++        //caculate assert status
++        uint16_t newAssert = cal_newStatus(AssertOp, setAssert, presentAssert);
++        uint16_t newDeassert = cal_newStatus(DeassertOp, setDeassert, presentDeassert);
++        
++        uint32_t newStatusAll =0; 
++        newStatusAll = ((newStatusAll | newAssert) << 16);
++        newStatusAll |= newDeassert;        //new status combine         
++        if (!setProperty(connection, path, "xyz.openbmc_project.Sensor.Value",
++                     "SensorEventStatus", newStatusAll))
++        {
++            return ipmi::responseResponseError();
++        }
++
++        //assert SEL event
++        if ((newAssert &static_cast<uint16_t>(IPMISetSensorEventStatus::upperCriticalGoingHigh)) ||
++            (newAssert &static_cast<uint16_t>(IPMISetSensorEventStatus::upperCriticalGoingLow)))
++        {
++            genSEL(eventData, path, true);
++        }
++        if ((newAssert &static_cast<uint16_t>(IPMISetSensorEventStatus::lowerCriticalGoingHigh)) ||
++            (newAssert &static_cast<uint16_t>(IPMISetSensorEventStatus::lowerCriticalGoingLow)))
++        {
++            genSEL(eventData, path, true);
++        }
++        
++        if ((newAssert &static_cast<uint16_t>(IPMISetSensorEventStatus::upperNonCriticalGoingHigh)) ||
++            (newAssert &static_cast<uint16_t>(IPMISetSensorEventStatus::upperNonCriticalGoingLow)))
++        {
++            genSEL(eventData, path, true);
++        }
++        if ((newAssert &static_cast<uint16_t>(IPMISetSensorEventStatus::lowerNonCriticalGoingHigh)) ||
++            (newAssert &static_cast<uint16_t>(IPMISetSensorEventStatus::lowerNonCriticalGoingLow)))
++        {
++            genSEL(eventData, path, true);
++        }
++
++        //deassert SEL event
++        if ((newDeassert &static_cast<uint16_t>(IPMISetSensorEventStatus::upperCriticalGoingHigh)) ||
++            (newDeassert &static_cast<uint16_t>(IPMISetSensorEventStatus::upperCriticalGoingLow)))
++        {
++            genSEL(eventData, path, false);
++        }
++        if ((newDeassert &static_cast<uint16_t>(IPMISetSensorEventStatus::lowerCriticalGoingHigh)) ||
++            (newDeassert &static_cast<uint16_t>(IPMISetSensorEventStatus::lowerCriticalGoingLow)))
++        {
++            genSEL(eventData, path, false);
++        }
+ 
++        if ((newDeassert &static_cast<uint16_t>(IPMISetSensorEventStatus::upperNonCriticalGoingHigh)) ||
++            (newDeassert &static_cast<uint16_t>(IPMISetSensorEventStatus::upperNonCriticalGoingLow)))
++        {
++            genSEL(eventData, path, false);
++        }
++        if ((newDeassert &static_cast<uint16_t>(IPMISetSensorEventStatus::lowerNonCriticalGoingHigh)) ||
++            (newDeassert &static_cast<uint16_t>(IPMISetSensorEventStatus::lowerNonCriticalGoingLow)))
++        {
++            genSEL(eventData, path, false);
++        }
++        return ipmi::responseSuccess();
++    }
++}
+ static inline uint16_t getNumberOfSensors(void)
+ {
+     return sensorTree.size() > maxIPMISensors ? maxIPMISensors
+@@ -2175,7 +2326,101 @@ ipmi::RspType<uint16_t,            // next record ID
+     return ipmi::responseSuccess(nextRecordId, recordData);
+ }
+ 
++bool writeJsonFile(std::vector<uint8_t> sensorDataRecords)
++{
++    std::string name = "External_" + std::to_string(sensorDataRecords[7]);
++    
++    Json sensorInfo;
++    sensorInfo["Label"] = name;
++    sensorInfo["SensorModel"] = "External";
++    sensorInfo["SensorNum"] = std::to_string(sensorDataRecords[7]);
++    sensorInfo["EntityId"] = std::to_string(sensorDataRecords[8]);
++    sensorInfo["EntityInstance"] = std::to_string(sensorDataRecords[9]);
++
++    Json sensorVal;
++    sensorVal["Name"] = name;
++    sensorVal["Units"] = "DegreesC";//Todo : Sensor type from sensorDataRecords
++    sensorVal["MinValue"] = -128;
++    sensorVal["MaxValue"] = 127;
++    sensorVal["Type"] = "ExternalSensor";
++    sensorVal["SensorInfo"] = Json::array({sensorInfo});
++
++    Json threshold;
++    threshold["Direction"] = "greater than";
++    threshold["Name"] = "upper critical";
++    threshold["Severity"] = 1;
++    threshold["Value"] = sensorDataRecords[37];
++    sensorVal["Thresholds"] = Json::array({threshold});
++    threshold["Direction"] = "greater than";
++    threshold["Name"] = "upper non critical";
++    threshold["Severity"] = 0;
++    threshold["Value"] = sensorDataRecords[38];
++    sensorVal["Thresholds"].push_back(threshold);
++    threshold["Direction"] = "less than";
++    threshold["Name"] = "lower critical";
++    threshold["Severity"] = 1;
++    threshold["Value"] = sensorDataRecords[40];
++    sensorVal["Thresholds"].push_back(threshold);
++    threshold["Direction"] = "less than";
++    threshold["Name"] = "lower non critical";
++    threshold["Severity"] = 0;
++    threshold["Value"] = sensorDataRecords[41];
++    sensorVal["Thresholds"].push_back(threshold);
++    
++    Json entityVal;
++    entityVal["EntityId"] = std::to_string(0x01);
++    entityVal["EntityInstance"] = 1;
++
++    Json externalVal;
++    externalVal["Name"] = "Transformers external";
++    externalVal["Probe"] = "TRUE";
++    externalVal["Type"] = "External";
++    externalVal["xyz.openbmc_project.Inventory.Decorator.Ipmi"] = entityVal;
++    externalVal["Exposes"] = Json::array({sensorVal});
++
++    constexpr const char *json_path = "/usr/share/entity-manager/configurations/external.json";
++    struct stat tmp;
+ 
++    if (stat(json_path, &tmp) == -1) // json file is new build
++    {
++        std::fstream fs(json_path, std::fstream::out);
++        fs << std::setw(4) << externalVal << "\n";
++        fs.close();
++    }
++    else
++    {
++        std::fstream fparse(json_path);
++        Json oldConfig = Json::parse(fparse);
++        fparse.close();
++        oldConfig["Exposes"].push_back(sensorVal);
++
++        std::fstream fs(json_path, std::fstream::out);
++        fs << std::setw(4) << oldConfig << "\n";
++        fs.close();
++    }
++    return true;
++}
++void eraseJsonFile(std::string search_str)
++{
++    constexpr const char *json_path = "/usr/share/entity-manager/configurations/external.json";
++    std::fstream fparse(json_path);
++    Json external = Json::parse(fparse);
++    fparse.close();
++    
++    for (unsigned int i = 0; i < external["Exposes"].size(); i++)
++    {
++        Json sensorInfo = external["Exposes"][i]["SensorInfo"];
++        auto sensorNum = sensorInfo[0].at("SensorNum");
++
++        if(sensorNum == search_str) //find the field
++        {
++            external["Exposes"].erase(i);
++            std::fstream fs(json_path, std::fstream::out);
++            fs << std::setw(4) << external << "\n";
++            fs.close();
++        }
++    }
++}
+ /** @brief implements the Add SDR command
+  *   Privilege Level: Operator
+  *   IPMI v2.0 #33.2 Modal & non-modal SDR Repository
+@@ -2275,6 +2520,12 @@ ipmi::RspType<uint16_t>
+         return ipmi::responseResponseError();
+     }
+ 
++    if(!writeJsonFile(sensorDataRecords))
++    {
++        std::cout << "Writing json file error." << std::endl;
++        return ipmi::responseResponseError();
++    }
++
+     return ipmi::responseSuccess(newRecordId);
+ }
+ 
+@@ -2290,6 +2541,17 @@ ipmi::RspType<uint16_t> ipmiStorageDeleteSDR(ipmi::Context::ptr ctx,
+                                              uint16_t reservationID,
+                                              uint16_t recordID)
+ {
++    uint8_t sensornumber = dynamicSdr.GetSensorNumber(recordID);
++    try
++    {
++        eraseJsonFile(std::to_string(sensornumber));
++    }
++    catch (const std::exception &)
++    {
++        std::cout << "Erasing json file error." << std::endl;
++        return ipmi::responseResponseError();
++    }
++
+     if (!getSensorSubtree(sensorTree) && sensorTree.empty())
+     {
+         return ipmi::responseResponseError();
+@@ -2406,6 +2668,11 @@ void registerSensorFunctions()
+                           ipmi::sensor_event::cmdGetSensorEventStatus,
+                           ipmi::Privilege::User, ipmiSenGetSensorEventStatus);
+ 
++    // <Set Sensor Reading and Event Satus>
++    ipmi::registerHandler(ipmi::prioOemBase, ipmi::netFnSensor,
++                          ipmi::sensor_event::cmdSetSensorReadingAndEvtSts,
++                          ipmi::Privilege::User, ipmiSenSetSensorReadingAndEventStatus);
++
+     // register all storage commands for both Sensor and Storage command
+     // versions
+ 
