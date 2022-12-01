@@ -7,6 +7,7 @@ RDEPENDS:${PN}-extras:remove = " \
 RDEPENDS:${PN}-extrasdevtools:append = " ipmitool"
 RDEPENDS:${PN}-extrasdevtools:append = " openssh-sftp-server"
 RDEPENDS:${PN}-extras += " python3-smbus"
+RDEPENDS:${PN}-extras += " phosphor-dbus-monitor"
 
 #Install publickey for image file verification
 RDEPENDS:${PN}-extras += " phosphor-image-signing"
