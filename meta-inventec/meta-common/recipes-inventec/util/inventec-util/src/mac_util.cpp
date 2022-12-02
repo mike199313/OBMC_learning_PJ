@@ -311,7 +311,7 @@ int main(int argc, char *argv[])
 			checksum_byte = getChecksumByte(path, offset + MAC_UTIL_MAC_LEN);
 
 			// Verify checksum
-			if (checksum != checksum_byte)
+			if ((checksum == 0) || (checksum != checksum_byte))
 			{
 				// Recover MAC if checksum fail
 				if (!recoverMAC())
