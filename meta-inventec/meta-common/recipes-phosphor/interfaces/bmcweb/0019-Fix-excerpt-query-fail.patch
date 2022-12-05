@@ -1,0 +1,39 @@
+From 2c743b3d18c2889039c5b6f6ccead546559b1eba Mon Sep 17 00:00:00 2001
+From: Tommy Lin <lin.tommysc@inventec.com>
+Date: Mon, 5 Dec 2022 07:19:45 +0000
+Subject: [PATCH] Fix excerpt query fail
+
+Symptom/Reason:
+- The excerpt query fail
+
+Root Cause:
+- Design change in bmcweb caused inventec query parameter patch can no longer apply
+
+Solution/Change:
+- [bmcweb]
+  - Add hanlder for excerpt keyword
+
+Entry Test:
+- curl -X GET https://${bmc}/redfish/v1/Managers/bmc/EthernetInterfaces/eth0/ -G -d '$excerpt'
+---
+ redfish-core/include/utils/query_param.hpp | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/redfish-core/include/utils/query_param.hpp b/redfish-core/include/utils/query_param.hpp
+index 868f5e7c..4790d639 100644
+--- a/redfish-core/include/utils/query_param.hpp
++++ b/redfish-core/include/utils/query_param.hpp
+@@ -372,6 +372,10 @@ inline std::optional<Query>
+                 return std::nullopt;
+             }
+         }
++        else if (key == "$excerpt")
++        {
++            // do nothing
++        }
+         else
+         {
+             // Intentionally ignore other errors Redfish spec, 7.3.1
+-- 
+2.17.1
+

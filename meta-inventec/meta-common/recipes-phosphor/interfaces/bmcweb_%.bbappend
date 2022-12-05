@@ -47,4 +47,5 @@ SRC_URI:append = " \
     file://0016-NTP-Server-not-loss-after-reboot.patch \
     file://0017-enable-fru-to-set-product-properties-by-PATCH.patch \
     file://0018-log_service-Fix-error-message-for-non-existing-log-e.patch \
+    file://0019-Fix-excerpt-query-fail.patch \
 "
