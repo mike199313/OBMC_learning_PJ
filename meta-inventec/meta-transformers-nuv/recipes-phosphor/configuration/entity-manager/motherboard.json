@@ -1512,7 +1512,7 @@
                     "Label": "iin",
                     "Name": "lower non critical",
                     "Severity": 0,
-                    "Value": 1
+                    "Value": 0.3
                 },
                 {
                     "Direction": "greater than",
