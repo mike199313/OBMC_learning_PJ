@@ -1,0 +1,14 @@
+{
+    "b":{
+        "cipher":17,
+        "authentication":3,
+        "integrity":4,
+        "confidentiality":1
+    },
+        "c":{
+        "cipher":8,
+        "authentication":2,
+        "integrity":2,
+        "confidentiality":1
+    }
+}
