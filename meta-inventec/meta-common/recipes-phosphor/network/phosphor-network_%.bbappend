@@ -18,4 +18,5 @@ SRC_URI:append = " \
     file://0008-Bug-412-lanpus-can-not-work-with-vlan.patch \
     file://0009-Implement-ChannelAccess-d-bus-interface.patch \
     file://0010-ipv6-function-enhancement.patch \
+    file://0011-create-vlan-object-with-defer-emit-in-EthernetInterface.patch \
 "
