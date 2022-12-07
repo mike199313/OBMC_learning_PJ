@@ -1,4 +1,4 @@
-From 13f441458aad55846d2033488ceabafeb4e67ec3 Mon Sep 17 00:00:00 2001
+From e800cfdf9fbee31d99b79b3a8c63c6228eeeb1c3 Mon Sep 17 00:00:00 2001
 From: Tommy Lin <lin.tommysc@inventec.com>
 Date: Fri, 7 Jan 2022 02:32:51 +0000
 Subject: [PATCH] Add ETag support for Redfish
@@ -19,11 +19,12 @@ Entry Test:
     curl -X GET https://${bmc}/redfish/v1/Managers/bmc/NetworkProtocol
 ---
  http/http_connection.hpp |   3 +-
- http/routing.hpp         | 171 ++++++++++++++++++++++++++++++++++++++-
- http/utility.hpp         |  81 +++++++++++++++++++
+ http/http_response.hpp   |   2 +-
+ http/routing.hpp         | 172 ++++++++++++++++++++++++++++++++++++++-
+ http/utility.hpp         |  81 ++++++++++++++++++
  meson.build              |   1 +
  meson_options.txt        |   8 ++
- 5 files changed, 261 insertions(+), 3 deletions(-)
+ 6 files changed, 263 insertions(+), 4 deletions(-)
 
 diff --git a/http/http_connection.hpp b/http/http_connection.hpp
 index feea8158..d923d59f 100644
@@ -39,22 +40,36 @@ index feea8158..d923d59f 100644
          {
              // Boost beast throws if content is provided on a no-content
              // response.  Ideally, this would never happen, but in the case that
+diff --git a/http/http_response.hpp b/http/http_response.hpp
+index d06c65dd..73367e48 100644
+--- a/http/http_response.hpp
++++ b/http/http_response.hpp
+@@ -134,7 +134,7 @@ struct Response
+             {
+                 size_t hashval = std::hash<nlohmann::json>{}(jsonValue);
+                 std::string hexVal = "\"" + intToHexString(hashval, 8) + "\"";
+-                addHeader(boost::beast::http::field::etag, hexVal);
++                //addHeader(boost::beast::http::field::etag, hexVal);
+             }
+         }
+         if (completed)
 diff --git a/http/routing.hpp b/http/routing.hpp
-index 3c0917f8..4e363f00 100644
+index 3c0917f8..d8d5c9c5 100644
 --- a/http/routing.hpp
 +++ b/http/routing.hpp
-@@ -23,6 +23,10 @@
+@@ -23,6 +23,11 @@
  #include <tuple>
  #include <utility>
  #include <vector>
 +#ifdef BMCWEB_ENABLE_REDFISH_ETAG
 +#include <random>
++#include <utils/hex_utils.hpp>
 +#endif
 +
  
  namespace crow
  {
-@@ -1087,6 +1091,11 @@ class Router
+@@ -1087,6 +1092,11 @@ class Router
          std::unique_ptr<RuleT> ruleObject = std::make_unique<RuleT>(rule);
          RuleT* ptr = ruleObject.get();
          allRules.emplace_back(std::move(ruleObject));
@@ -66,7 +81,7 @@ index 3c0917f8..4e363f00 100644
  
          return *ptr;
      }
-@@ -1289,15 +1298,28 @@ class Router
+@@ -1289,15 +1299,28 @@ class Router
                           << static_cast<uint32_t>(req.method()) << " / "
                           << rules[ruleIndex]->getMethods();
  
@@ -97,7 +112,7 @@ index 3c0917f8..4e363f00 100644
                      const dbus::utility::DBusPropertiesMap& userInfoMap) {
              if (ec)
              {
-@@ -1394,7 +1416,12 @@ class Router
+@@ -1394,7 +1417,12 @@ class Router
              }
  
              req.userRole = userRole;
@@ -110,7 +125,7 @@ index 3c0917f8..4e363f00 100644
              },
              "xyz.openbmc_project.User.Manager", "/xyz/openbmc_project/user",
              "xyz.openbmc_project.User.Manager", "GetUserInfo",
-@@ -1443,5 +1470,145 @@ class Router
+@@ -1443,5 +1471,145 @@ class Router
  
      std::array<PerMethod, maxHttpVerbCount> perMethods;
      std::vector<std::unique_ptr<BaseRule>> allRules;
@@ -248,8 +263,8 @@ index 3c0917f8..4e363f00 100644
 +
 +        if (out_etag)
 +        {
-+            std::string etag_str_out = std::to_string(out_etag);
-+            asyncResp->res.addHeader("ETag", etag_str_out);
++            std::string etag_str_out = "\"" + intToHexString(out_etag, 8) + "\"";
++            asyncResp->res.addHeader(boost::beast::http::field::etag, etag_str_out);
 +            asyncResp->res.jsonValue["@odata.etag"] = etag_str_out;
 +        }
 +    }
@@ -257,7 +272,7 @@ index 3c0917f8..4e363f00 100644
  };
  } // namespace crow
 diff --git a/http/utility.hpp b/http/utility.hpp
-index d6f31d07..06dae0db 100644
+index d6f31d07..52f22189 100644
 --- a/http/utility.hpp
 +++ b/http/utility.hpp
 @@ -9,6 +9,7 @@
@@ -280,7 +295,7 @@ index d6f31d07..06dae0db 100644
 +        return 0;
 +    }
 +
-+    const std::from_chars_result result = std::from_chars(input.data(), input.data() + input.size(), out);
++    const std::from_chars_result result = std::from_chars(input.data(), input.data() + input.size(), out, 16);
 +    if(result.ec == std::errc::invalid_argument || result.ec == std::errc::result_out_of_range)
 +    {
 +        out = 0;
@@ -394,5 +409,5 @@ index a32a4a4f..a849fb64 100644
  # not be enabled by default for any platform, unless the author fully comprehends
  # the implications of doing so.In general, enabling these options will cause security
 -- 
-2.33.0
+2.17.1
 
