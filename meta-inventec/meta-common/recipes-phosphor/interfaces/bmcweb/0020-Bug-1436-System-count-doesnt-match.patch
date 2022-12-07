@@ -1,0 +1,42 @@
+From dd8bf54ccc1be14a58800a022c1794afa1094e3f Mon Sep 17 00:00:00 2001
+From: Matt Cheng <cheng.matt@inventec.com>
+Date: Wed, 7 Dec 2022 11:19:09 +0800
+Subject: [PATCH] =?UTF-8?q?Bug=C2=A01436=20-=20[Transformers][OpenBMC][Red?=
+ =?UTF-8?q?fish]=20System=20count=20doesn't=20match=20to=20member=20list?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Symptom/Reason:
+	The Members@odata.count does not match the Members list in the /redfish/v1/Systems/.
+
+Root Cause:
+    	The count does not include the member that added a new one.
+
+Solution/Change:
+	[bmcweb]
+	1. update the count variable with the new added member.
+
+Entry Test:
+	curl -basic -u root:0penBmc -X POST  https://10.6.141.75/redfish/v1/Systems -d '{"Name": "Sample Composed System", "Links": {"ResourceBlocks":[{"@odata.id":"/redfish/v1/CompositionService/ResourceBlocks/dimm7"}, {"@odata.id":"/redfish/v1/CompositionService/ResourceBlocks/dimm8"}, {"@odata.id":"/redfish/v1/CompositionService/ResourceBlocks/dimm9"}]}}' -i -k
+	curl -basic -u root:0penBmc -X GET https://10.6.141.75/redfish/v1/Systems -k
+---
+ redfish-core/lib/systems.hpp | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/redfish-core/lib/systems.hpp b/redfish-core/lib/systems.hpp
+index f7d633e9..4ae172f9 100644
+--- a/redfish-core/lib/systems.hpp
++++ b/redfish-core/lib/systems.hpp
+@@ -2789,6 +2789,8 @@ inline void requestRoutesSystemsCollection(App& app)
+                         BMCWEB_LOG_ERROR << "Error: " << e.what();
+                     }
+                 }
++
++                asyncResp->res.jsonValue["Members@odata.count"] = asyncResp->res.jsonValue["Members"].size();
+             },
+             "xyz.openbmc_project.ObjectMapper",
+             "/xyz/openbmc_project/object_mapper",
+-- 
+2.25.1
+
