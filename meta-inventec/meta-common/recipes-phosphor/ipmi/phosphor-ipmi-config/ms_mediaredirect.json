@@ -46,7 +46,7 @@
       "Startmount":1,
       "Mountstatus":1,
       "Nbdclient":"/dev/nbd4",
-      "RISstate":0
+      "RISstate":1
     },
     "8":{
       "Servicetype":"Remote Image Service",

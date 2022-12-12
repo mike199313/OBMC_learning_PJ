@@ -42,6 +42,9 @@
     fflush(stderr);
 }
 
+const uint8_t RIS_TYPE_RIS = 0x08;
+const uint8_t RIS_TYPE_HD = 0x04;
+
 using namespace std;
 using namespace ipmi::inv::cmdsNetFnMsMediaRedirect;
 using Json = nlohmann::json;
@@ -336,8 +339,8 @@ namespace ipmi
             fprintf(stderr, "readJsonFile() return nullptr \n");
         }
 
-        uint32_t enabled = root["RIS"][serviceType]["RISstate"].get<uint32_t>();
-        if(enabled == 0){
+        uint32_t risStateEnabled = root["RIS"][serviceType]["RISstate"].get<uint32_t>();
+        if((risStateEnabled == 0) && (st == RIS_TYPE_RIS)){
             std::string stype = root["RIS"][serviceType]["Servicetype"].get<std::string>();
             fprintf(stderr, "%s:%d %s is disabled \n", __func__, __LINE__, stype.c_str());
             return ipmi::response(ccServiceNotEnabled);
