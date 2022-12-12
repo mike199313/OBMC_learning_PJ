@@ -48,4 +48,6 @@ SRC_URI:append = " \
     file://0017-enable-fru-to-set-product-properties-by-PATCH.patch \
     file://0018-log_service-Fix-error-message-for-non-existing-log-e.patch \
     file://0019-Fix-excerpt-query-fail.patch \
+    file://0020-Bug-1436-System-count-doesnt-match.patch \
+    file://0021-Bug-1431-Members-of-PCIe-Functions-are-missing.patch \
 "

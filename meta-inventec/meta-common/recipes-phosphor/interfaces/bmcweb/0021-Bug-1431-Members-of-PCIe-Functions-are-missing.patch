@@ -1,0 +1,56 @@
+From b2c62edffa7d36c6bfadf44c093fdd7ae92ef7e7 Mon Sep 17 00:00:00 2001
+From: Matt Cheng <cheng.matt@inventec.com>
+Date: Mon, 12 Dec 2022 09:28:44 +0800
+Subject: [PATCH] =?UTF-8?q?Bug=C2=A01431=20-=20[Transformers][OpenBMC][Red?=
+ =?UTF-8?q?fish]Members=20of=20PCIe=20Functions=20are=20missing.?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Symptom/Reason:
+        There are no PCIe function members through the redfish getting.
+
+Root Cause:
+        N/A
+
+Solution/Change:
+	[Redfish]
+	1. Don't return the function if the device ID of the PCIe device properties is not empty.
+
+Entry Test:
+	https://10.6.141.99/redfish/v1/Systems/system/PCIeDevices/S0B63D0/PCIeFunctions  -k -l
+---
+ redfish-core/lib/pcie.hpp | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/redfish-core/lib/pcie.hpp b/redfish-core/lib/pcie.hpp
+index b4d64332..955677c4 100644
+--- a/redfish-core/lib/pcie.hpp
++++ b/redfish-core/lib/pcie.hpp
+@@ -303,11 +303,12 @@ inline void requestRoutesSystemPCIeFunctionCollection(App& app)
+                     if (propEntry.first == devIDProperty)
+                     {
+                         property = std::get_if<std::string>(&propEntry.second);
++                        break;
+                     }
+                 }
+-                if (property == nullptr || !property->empty())
++                if (property == nullptr || property->empty())
+                 {
+-                    return;
++                    break;
+                 }
+                 nlohmann::json::object_t pcieFunction;
+                 pcieFunction["@odata.id"] =
+@@ -376,7 +377,7 @@ inline void requestRoutesSystemPCIeFunction(App& app)
+                     continue;
+                 }
+             }
+-            if (devIdProperty == nullptr || !devIdProperty->empty())
++            if (devIdProperty == nullptr || devIdProperty->empty())
+             {
+                 messages::resourceNotFound(asyncResp->res, "PCIeFunction",
+                                            function);
+-- 
+2.25.1
+
