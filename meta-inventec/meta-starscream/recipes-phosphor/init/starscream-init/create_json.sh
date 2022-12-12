@@ -55,14 +55,28 @@ cat <<EOF >$ENTITY_MANAGER_RISER1A_JSON
                     "Label": "in1",
                     "Name": "upper critical",
                     "Severity": 1,
-                    "Value": 13.0
+                    "Value": 13.2
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "in1",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 12.6
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "in1",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 11.4
                 },
                 {
                     "Direction": "less than",
                     "Label": "in1",
                     "Name": "lower critical",
                     "Severity": 1,
-                    "Value": 11.0
+                    "Value": 10.8
                 },
                 {
                     "Direction": "greater than",
@@ -72,25 +86,53 @@ cat <<EOF >$ENTITY_MANAGER_RISER1A_JSON
                     "Value": 3.6
                 },
                 {
+                    "Direction": "greater than",
+                    "Label": "in2",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 3.5
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "in2",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 3.1
+                },
+                {
                     "Direction": "less than",
                     "Label": "in2",
                     "Name": "lower critical",
                     "Severity": 1,
-                    "Value": 2.9
+                    "Value": 3.0
                 },
                 {
                     "Direction": "greater than",
                     "Label": "in3",
                     "Name": "upper critical",
                     "Severity": 1,
-                    "Value": 13.0
+                    "Value": 13.2
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "in3",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 12.6
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "in3",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 11.4
                 },
                 {
                     "Direction": "less than",
                     "Label": "in3",
                     "Name": "lower critical",
                     "Severity": 1,
-                    "Value": 11.0
+                    "Value": 10.8
                 },
                 {
                     "Direction": "greater than",
@@ -100,11 +142,25 @@ cat <<EOF >$ENTITY_MANAGER_RISER1A_JSON
                     "Value": 3.6
                 },
                 {
+                    "Direction": "greater than",
+                    "Label": "in4",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 3.5
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "in4",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 3.1
+                },
+                {
                     "Direction": "less than",
                     "Label": "in4",
                     "Name": "lower critical",
                     "Severity": 1,
-                    "Value": 2.9
+                    "Value": 3.0
                 }
             ],
             "SensorInfo": [
@@ -275,14 +331,28 @@ cat <<EOF >$ENTITY_MANAGER_RISER1B_JSON
                     "Label": "in1",
                     "Name": "upper critical",
                     "Severity": 1,
-                    "Value": 13.0
+                    "Value": 13.2
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "in1",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 12.6
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "in1",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 11.4
                 },
                 {
                     "Direction": "less than",
                     "Label": "in1",
                     "Name": "lower critical",
                     "Severity": 1,
-                    "Value": 11.0
+                    "Value": 10.8
                 },
                 {
                     "Direction": "greater than",
@@ -292,11 +362,25 @@ cat <<EOF >$ENTITY_MANAGER_RISER1B_JSON
                     "Value": 3.6
                 },
                 {
+                    "Direction": "greater than",
+                    "Label": "in2",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 3.5
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "in2",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 3.1
+                },
+                {
                     "Direction": "less than",
                     "Label": "in2",
                     "Name": "lower critical",
                     "Severity": 1,
-                    "Value": 2.9
+                    "Value": 3.0
                 }
             ],
             "SensorInfo": [
@@ -436,14 +520,28 @@ cat <<EOF >$ENTITY_MANAGER_RISER2_JSON
                     "Label": "in1",
                     "Name": "upper critical",
                     "Severity": 1,
-                    "Value": 13.0
+                    "Value": 13.2
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "in1",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 12.6
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "in1",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 11.4
                 },
                 {
                     "Direction": "less than",
                     "Label": "in1",
                     "Name": "lower critical",
                     "Severity": 1,
-                    "Value": 11.0
+                    "Value": 10.8
                 },
                 {
                     "Direction": "greater than",
@@ -453,25 +551,53 @@ cat <<EOF >$ENTITY_MANAGER_RISER2_JSON
                     "Value": 3.6
                 },
                 {
+                    "Direction": "greater than",
+                    "Label": "in2",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 3.5
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "in2",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 3.1
+                },
+                {
                     "Direction": "less than",
                     "Label": "in2",
                     "Name": "lower critical",
                     "Severity": 1,
-                    "Value": 2.9
+                    "Value": 3.0
                 },
                 {
                     "Direction": "greater than",
                     "Label": "in3",
                     "Name": "upper critical",
                     "Severity": 1,
-                    "Value": 13.0
+                    "Value": 13.2
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "in3",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 12.6
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "in3",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 11.4
                 },
                 {
                     "Direction": "less than",
                     "Label": "in3",
                     "Name": "lower critical",
                     "Severity": 1,
-                    "Value": 11.0
+                    "Value": 10.8
                 },
                 {
                     "Direction": "greater than",
@@ -481,11 +607,25 @@ cat <<EOF >$ENTITY_MANAGER_RISER2_JSON
                     "Value": 3.6
                 },
                 {
+                    "Direction": "greater than",
+                    "Label": "in4",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 3.5
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "in4",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 3.1
+                },
+                {
                     "Direction": "less than",
                     "Label": "in4",
                     "Name": "lower critical",
                     "Severity": 1,
-                    "Value": 2.9
+                    "Value": 3.0
                 }
             ],
             "SensorInfo": [
@@ -656,14 +796,28 @@ cat <<EOF >$ENTITY_MANAGER_BP1_JSON
                     "Label": "in1",
                     "Name": "upper critical",
                     "Severity": 1,
-                    "Value": 13.0
+                    "Value": 13.2
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "in1",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 12.6
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "in1",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 11.4
                 },
                 {
                     "Direction": "less than",
                     "Label": "in1",
                     "Name": "lower critical",
                     "Severity": 1,
-                    "Value": 11.0
+                    "Value": 10.8
                 },
                 {
                     "Direction": "greater than",
@@ -673,11 +827,25 @@ cat <<EOF >$ENTITY_MANAGER_BP1_JSON
                     "Value": 3.6
                 },
                 {
+                    "Direction": "greater than",
+                    "Label": "in2",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 3.5
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "in2",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 3.1
+                },
+                {
                     "Direction": "less than",
                     "Label": "in2",
                     "Name": "lower critical",
                     "Severity": 1,
-                    "Value": 2.9
+                    "Value": 3.0
                 }
             ],
             "SensorInfo": [
@@ -703,7 +871,7 @@ cat <<EOF >$ENTITY_MANAGER_BP1_JSON
             "SensorInfo": [
                 {
                     "SensorModel": "Threshold",
-                    "SensorNum": "0x51",
+                    "SensorNum": "0x50",
                     "EntityId": "0x0F",
                     "EntityInstance": "0"
                 }
@@ -714,7 +882,7 @@ cat <<EOF >$ENTITY_MANAGER_BP1_JSON
             "SensorInfo": [
                 {
                     "SensorModel": "Threshold",
-                    "SensorNum": "0x52",
+                    "SensorNum": "0x51",
                     "EntityId": "0x0F",
                     "EntityInstance": "1"
                 }
@@ -1211,14 +1379,28 @@ cat <<EOF >$ENTITY_MANAGER_BP2_JSON
                     "Label": "in1",
                     "Name": "upper critical",
                     "Severity": 1,
-                    "Value": 13.0
+                    "Value": 13.2
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "in1",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 12.6
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "in1",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 11.4
                 },
                 {
                     "Direction": "less than",
                     "Label": "in1",
                     "Name": "lower critical",
                     "Severity": 1,
-                    "Value": 11.0
+                    "Value": 10.8
                 },
                 {
                     "Direction": "greater than",
@@ -1228,11 +1410,25 @@ cat <<EOF >$ENTITY_MANAGER_BP2_JSON
                     "Value": 3.6
                 },
                 {
+                    "Direction": "greater than",
+                    "Label": "in2",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 3.5
+                },
+                {
+                    "Direction": "less than",
+                    "Label": "in2",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 3.1
+                },
+                {
                     "Direction": "less than",
                     "Label": "in2",
                     "Name": "lower critical",
                     "Severity": 1,
-                    "Value": 2.9
+                    "Value": 3.0
                 }
             ],
             "SensorInfo": [
