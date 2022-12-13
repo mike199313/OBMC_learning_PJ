@@ -59,6 +59,141 @@
                 }
             ],
             "Type": "EventSensor"
+        },
+        {
+            "Name": "BMC_health",
+            "ReadingType": "oem_event_70h",
+            "SensorType": "oem_e0h",
+            "SensorInfo": [
+                {
+                    "Label": "BMC_health",
+                    "SensorModel": "Event",
+                    "SensorNum": "0xB1",
+                    "EntityId": "0x7",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+        {
+            "Name": "Fast_throttling",
+            "ReadingType": "oem_event_00h",
+            "SensorType": "oem_d1h",
+            "SensorInfo": [
+                {
+                    "Label": "Fast_throttling",
+                    "SensorModel": "Event",
+                    "SensorNum": "0x04",
+                    "EntityId": "0x7",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+        {
+            "Name": "Sensors_reading_status",
+            "ReadingType": "oem_event_71h",
+            "SensorType": "oem_e1h",
+            "SensorInfo": [
+                {
+                    "Label": "Sensors_reading_status",
+                    "SensorModel": "Event",
+                    "SensorNum": "0xB2",
+                    "EntityId": "0x7",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+        {
+            "Name": "Subsystem_health",
+            "ReadingType": "discrete_6fh",
+            "SensorType": "management_subsystem_health",
+            "SensorInfo": [
+                {
+                    "Label": "Subsystem_health",
+                    "SensorModel": "Event",
+                    "SensorNum": "0xB3",
+                    "EntityId": "0x7",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+        {
+            "Name": "FanRPMReport",
+            "ReadingType": "discrete_6fh",
+            "SensorType": "fan",
+            "SensorInfo": [
+                {
+                    "Label": "FanRPMReport",
+                    "SensorModel": "Event",
+                    "SensorNum": "0x01",
+                    "EntityId": "0x7",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+        {
+            "Name": "IntelMEHealth",
+            "ReadingType": "discrete_6fh",
+            "SensorType": "oem_d4h",
+            "SensorInfo": [
+                {
+                    "Label": "IntelMEHealth",
+                    "SensorModel": "Event",
+                    "SensorNum": "0xB4",
+                    "EntityId": "0x7",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+        {
+            "Name": "PSUStateCheck",
+            "ReadingType": "discrete_6fh",
+            "SensorType": "power_supply",
+            "SensorInfo": [
+                {
+                    "Label": "PSUStateCheck",
+                    "SensorModel": "Event",
+                    "SensorNum": "0xB5",
+                    "EntityId": "0x7",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+        {
+            "Name": "SMITimeoutCheck",
+            "ReadingType": "oem_event_00h",
+            "SensorType": "oem_d5h",
+            "SensorInfo": [
+                {
+                    "Label": "SMITimeoutCheck",
+                    "SensorModel": "Event",
+                    "SensorNum": "0xB6",
+                    "EntityId": "0x7",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+        {
+            "Name": "SystemReconfigure",
+            "ReadingType": "discrete_6fh",
+            "SensorType": "system_event",
+            "SensorInfo": [
+                {
+                    "Label": "SystemReconfigure",
+                    "SensorModel": "Event",
+                    "SensorNum": "0x07",
+                    "EntityId": "0x7",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
         }
     ],
     "Name": "Starscream event",
