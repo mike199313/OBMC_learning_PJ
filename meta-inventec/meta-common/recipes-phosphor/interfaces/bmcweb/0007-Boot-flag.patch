@@ -1,14 +1,14 @@
-From 5aa952fa83ad337695b176771a02a3a058f73321 Mon Sep 17 00:00:00 2001
+From 21d09c69e8aa8f35a4fb9aaece260aafaebbdedb Mon Sep 17 00:00:00 2001
 From: Tommy Lin <lin.tommysc@inventec.com>
 Date: Tue, 11 Jan 2022 06:46:08 +0000
 Subject: [PATCH] Boot flag
 
 ---
- redfish-core/lib/systems.hpp | 7 ++++++-
- 1 file changed, 6 insertions(+), 1 deletion(-)
+ redfish-core/lib/systems.hpp | 20 +++++++++++++++++++-
+ 1 file changed, 19 insertions(+), 1 deletion(-)
 
 diff --git a/redfish-core/lib/systems.hpp b/redfish-core/lib/systems.hpp
-index 81403370..f7e54855 100644
+index 81403370..34f0ad3f 100644
 --- a/redfish-core/lib/systems.hpp
 +++ b/redfish-core/lib/systems.hpp
 @@ -602,6 +602,11 @@ inline std::string dbusToRfBootSource(const std::string& dbusSource)
@@ -32,6 +32,26 @@ index 81403370..f7e54855 100644
      }
      else if (rfSource == "Cd")
      {
+@@ -1609,6 +1614,19 @@ inline void setBootProperties(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
+     setBootModeOrSource(aResp, bootSource);
+     setBootType(aResp, bootType);
+     setBootEnable(aResp, bootEnable);
++
++    auto readyMsg = crow::connections::systemBus->new_method_call( 
++          "xyz.openbmc_project.Settings", "/xyz/openbmc_project/control/host0/boot/boot_options",
++          "org.freedesktop.DBus.Properties", "Set");
++    readyMsg.append("xyz.openbmc_project.Control.Boot.Flag", "BootFlagValid", std::variant<bool>(true) ); 
++    try
++    {
++        auto intMsg = crow::connections::systemBus->call(readyMsg);
++    }catch (const sdbusplus::exception::SdBusError& e)
++    {
++        BMCWEB_LOG_ERROR << "Error: " << e.what();
++    }
++
+ }
+ 
+ /**
 -- 
 2.33.0
 
