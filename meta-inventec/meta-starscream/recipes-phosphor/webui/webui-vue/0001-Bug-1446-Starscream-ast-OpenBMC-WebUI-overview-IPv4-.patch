@@ -1,0 +1,34 @@
+From 8349bc3ccd2ecf6665a15b32f536c501ee8edc11 Mon Sep 17 00:00:00 2001
+From: Jason Lin <lin.jasonyy@inventec.com>
+Date: Wed, 14 Dec 2022 10:42:55 +0800
+Subject: [PATCH] Bug 1446 - [Starscream-ast][OpenBMC][WebUI][overview] IPv4
+ display "--" in network infomation section
+
+Symptom/Reason:
+	The IPv4 static address on Starscream is eth1.
+
+Root Cause:
+	Displaying IPv4 static address using eth0.
+
+Solution/Change:
+	Switch to use eth1's and display dhcp ip for vacant's alternative.
+
+Entry Test:
+	https://${ip}/#/
+---
+ src/views/Overview/OverviewNetwork.vue | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/views/Overview/OverviewNetwork.vue b/src/views/Overview/OverviewNetwork.vue
+index b81e5c7..8da12d6 100644
+--- a/src/views/Overview/OverviewNetwork.vue
++++ b/src/views/Overview/OverviewNetwork.vue
+@@ -59,7 +59,7 @@ export default {
+   mixins: [DataFormatterMixin],
+   computed: {
+     network() {
+-      return this.$store.getters['network/globalNetworkSettings'][0];
++      return this.$store.getters['network/globalNetworkSettings'][1];
+     },
+   },
+   created() {
