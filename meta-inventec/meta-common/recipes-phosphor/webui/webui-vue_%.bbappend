@@ -7,5 +7,6 @@ SRC_URI:append = " \
     file://0004-Bug-1117-Transformers-OpenBMC-WebUI-Display-incorrec.patch \
     file://0005-bug-1073-1074-Transformers-OpenBMC-WebUI-log-error-m.patch \
     file://0006-Bug1120-1121-Common-OpenBMC-WebUI-Loading-bar-won-t-.patch \
+    file://0007-Bug-1469-Starscream-ast-OpenBMC-WebUI-Sessions-page-.patch \
 "
                       
