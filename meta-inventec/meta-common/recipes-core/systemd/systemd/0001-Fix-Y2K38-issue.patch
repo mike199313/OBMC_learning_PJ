@@ -1,34 +1,39 @@
-From 0690d2f4ef97a912305b85efa925a46029ebcc36 Mon Sep 17 00:00:00 2001
-From: Tommy Lin <lin.tommysc@inventec.com>
-Date: Wed, 2 Mar 2022 10:26:23 +0000
-Subject: [PATCH 1/2] Fix Y2K38 issue
+From 5591da581574cc31561ed2941837db8dfc8deb84 Mon Sep 17 00:00:00 2001
+From: Matt Cheng <cheng.matt@inventec.com>
+Date: Sat, 17 Dec 2022 14:53:27 +0800
+Subject: [PATCH] =?UTF-8?q?Bug=C2=A01433=20-=20[Transformers][OpenBMC]=20B?=
+ =?UTF-8?q?MC=20crash=20after=20setting=20date=20to=20"2038-01-18"?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
 
-Symptom/Reason :
-    - system crash after 2038-01-19 03:14:07
+Symptom/Reason:
+	Setting date time over 2038-01-18 00:00:00 will cause system crash.
 
 Root Cause:
-    - time over 2038-01-19 03:14:07
+        N/A
 
 Solution/Change:
-    [systemd]
-        - Protect the usec_add function to avoid the result over MAX.
-    [libsystemd]
-        - Avoid Assertion occurs
-    [timedated]
-        - Avoid the setting time over 2038-01-19 03:14:00
+	[systemd]
+	1. Protect the usec_add function to avoid the result over TIME_T_MAX.
+	2. Avoid Assertion occurs if the time over than the original.
+        3. Avoid the setting time over 2038-01-19 03:14:00.
 
 Entry Test:
-    # ipmitool raw 0x0a 0x49 0xff 0xff 0xff 0x7f
-    # date
-    Sat Jan  1 00:00:00 GMT 2000
+        timedatectl set-time "2038-01-18 00:00:00"
 ---
  src/basic/time-util.h              | 6 +++++-
- src/libsystemd/sd-event/sd-event.c | 4 +++-
- src/timedate/timedated.c           | 7 ++++++-
- 3 files changed, 14 insertions(+), 3 deletions(-)
+ src/libsystemd/sd-event/sd-event.c | 5 ++++-
+ src/timedate/timedated.c           | 8 +++++++-
+ 3 files changed, 16 insertions(+), 3 deletions(-)
+ mode change 100644 => 100755 src/basic/time-util.h
+ mode change 100644 => 100755 src/libsystemd/sd-event/sd-event.c
+ mode change 100644 => 100755 src/timedate/timedated.c
 
 diff --git a/src/basic/time-util.h b/src/basic/time-util.h
-index 895af88299..9c0d9c3555 100644
+old mode 100644
+new mode 100755
+index 895af88299..dea5e8190a
 --- a/src/basic/time-util.h
 +++ b/src/basic/time-util.h
 @@ -173,7 +173,11 @@ static inline usec_t usec_add(usec_t a, usec_t b) {
@@ -37,43 +42,48 @@ index 895af88299..9c0d9c3555 100644
  
 -        return a + b;
 +        usec_t c = a + b;
-+        if(c / USEC_PER_SEC >= TIME_T_MAX)
-+                return TIME_T_MAX - 7;
++        if (c / USEC_PER_SEC >= TIME_T_MAX)
++                return (TIME_T_MAX - 7) * USEC_PER_SEC;
 +
 +        return c;
  }
  
  static inline usec_t usec_sub_unsigned(usec_t timestamp, usec_t delta) {
 diff --git a/src/libsystemd/sd-event/sd-event.c b/src/libsystemd/sd-event/sd-event.c
-index 426a7807f7..1cf8c07399 100644
+old mode 100644
+new mode 100755
+index 426a7807f7..35dfe95e24
 --- a/src/libsystemd/sd-event/sd-event.c
 +++ b/src/libsystemd/sd-event/sd-event.c
-@@ -2985,8 +2985,10 @@ fail:
+@@ -2985,7 +2985,10 @@ fail:
  static usec_t sleep_between(sd_event *e, usec_t a, usec_t b) {
          usec_t c;
          assert(e);
 -        assert(a <= b);
 +        //assert(a <= b);
- 
++
 +        if (a > b)
 +                return a;
+ 
          if (a <= 0)
                  return 0;
-         if (a >= USEC_INFINITY)
 diff --git a/src/timedate/timedated.c b/src/timedate/timedated.c
-index 66b454269d..6c7433819e 100644
+old mode 100644
+new mode 100755
+index 66b454269d..009a73f94a
 --- a/src/timedate/timedated.c
 +++ b/src/timedate/timedated.c
-@@ -867,9 +867,14 @@ static int method_set_time(sd_bus_message *m, void *userdata, sd_bus_error *erro
+@@ -867,9 +867,15 @@ static int method_set_time(sd_bus_message *m, void *userdata, sd_bus_error *erro
                      (utc < 0 && x > n))
                          return sd_bus_error_set(error, SD_BUS_ERROR_INVALID_ARGS, "Time value overflow");
  
-+                if(x / USEC_PER_SEC > TIME_T_MAX-7)
++                if (x / USEC_PER_SEC > TIME_T_MAX - 7)
 +                        x = (TIME_T_MAX - 7) * USEC_PER_SEC;
++
                  timespec_store(&ts, x);
 -        } else
 +        } else {
-+                if(utc / USEC_PER_SEC > TIME_T_MAX-7)
++                if (utc / USEC_PER_SEC > TIME_T_MAX - 7)
 +                        utc = (TIME_T_MAX - 7) * USEC_PER_SEC;
                  timespec_store(&ts, (usec_t) utc);
 +        }
@@ -81,5 +91,5 @@ index 66b454269d..6c7433819e 100644
          r = bus_verify_polkit_async(
                          m,
 -- 
-2.33.0
+2.25.1
 

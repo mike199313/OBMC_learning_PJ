@@ -1,6 +1,7 @@
 FILESEXTRAPATHS:prepend := "${THISDIR}/${PN}:"
 
 SRC_URI += " file://wait_interface.conf \
+             file://0001-Fix-Y2K38-issue.patch \
 "
 
 
