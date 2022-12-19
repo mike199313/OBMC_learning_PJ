@@ -1275,7 +1275,20 @@
                     "Name": "upper critical",
                     "Severity": 1,
                     "Value": 43992
-                },                {
+                },
+                {
+                    "Direction": "greater than",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 43000
+                },   
+                {
+                    "Direction": "less than",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 1400
+                },
+                {
                     "Direction": "less than",
                     "Name": "lower critical",
                     "Severity": 1,
@@ -1319,7 +1332,20 @@
                     "Name": "upper critical",
                     "Severity": 1,
                     "Value": 43992
-                },                {
+                },
+                {
+                    "Direction": "greater than",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 43000
+                },   
+                {
+                    "Direction": "less than",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 1400
+                },
+                {
                     "Direction": "less than",
                     "Name": "lower critical",
                     "Severity": 1,
@@ -1363,7 +1389,20 @@
                     "Name": "upper critical",
                     "Severity": 1,
                     "Value": 43992
-                },                {
+                },
+                {
+                    "Direction": "greater than",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 43000
+                },   
+                {
+                    "Direction": "less than",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 1400
+                },
+                {
                     "Direction": "less than",
                     "Name": "lower critical",
                     "Severity": 1,
@@ -1446,7 +1485,20 @@
                     "Name": "upper critical",
                     "Severity": 1,
                     "Value": 43992
-                },                {
+                },
+                {
+                    "Direction": "greater than",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 43000
+                },   
+                {
+                    "Direction": "less than",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 1400
+                },
+                {
                     "Direction": "less than",
                     "Name": "lower critical",
                     "Severity": 1,
@@ -1490,7 +1542,20 @@
                     "Name": "upper critical",
                     "Severity": 1,
                     "Value": 43992
-                },                {
+                },
+                {
+                    "Direction": "greater than",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 43000
+                },   
+                {
+                    "Direction": "less than",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 1400
+                },
+                {
                     "Direction": "less than",
                     "Name": "lower critical",
                     "Severity": 1,
@@ -1534,7 +1599,20 @@
                     "Name": "upper critical",
                     "Severity": 1,
                     "Value": 43992
-                },                {
+                },
+                {
+                    "Direction": "greater than",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 43000
+                },   
+                {
+                    "Direction": "less than",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 1400
+                },
+                {
                     "Direction": "less than",
                     "Name": "lower critical",
                     "Severity": 1,
@@ -1627,56 +1705,112 @@
                     "Label": "in1",
                     "Name": "upper critical",
                     "Severity": 1,
-                    "Value": 13.0
+                    "Value": 13.2
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "in1",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 12.6
+                },   
+                {
+                    "Direction": "less than",
+                    "Label": "in1",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 11.4
                 },
                 {
                     "Direction": "less than",
                     "Label": "in1",
                     "Name": "lower critical",
                     "Severity": 1,
-                    "Value": 11.0
+                    "Value": 10.8
                 },
                 {
                     "Direction": "greater than",
                     "Label": "in2",
                     "Name": "upper critical",
                     "Severity": 1,
-                    "Value": 13.0
+                    "Value": 13.2
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "in2",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 12.6
+                },   
+                {
+                    "Direction": "less than",
+                    "Label": "in2",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 11.4
                 },
                 {
                     "Direction": "less than",
                     "Label": "in2",
                     "Name": "lower critical",
                     "Severity": 1,
-                    "Value": 11.0
+                    "Value": 10.8
                 },
                 {
                     "Direction": "greater than",
                     "Label": "in3",
                     "Name": "upper critical",
                     "Severity": 1,
-                    "Value": 13.0
+                    "Value": 13.2
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "in3",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 12.6
+                },   
+                {
+                    "Direction": "less than",
+                    "Label": "in3",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 11.4
                 },
                 {
                     "Direction": "less than",
                     "Label": "in3",
                     "Name": "lower critical",
                     "Severity": 1,
-                    "Value": 11.0
+                    "Value": 10.8
                 },
                 {
                     "Direction": "greater than",
                     "Label": "in4",
                     "Name": "upper critical",
                     "Severity": 1,
-                    "Value": 13.0
+                    "Value": 13.2
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "in4",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 12.6
+                },   
+                {
+                    "Direction": "less than",
+                    "Label": "in4",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 11.4
                 },
                 {
                     "Direction": "less than",
                     "Label": "in4",
                     "Name": "lower critical",
                     "Severity": 1,
-                    "Value": 11.0
+                    "Value": 10.8
                 }
             ],
             "SensorInfo": [
@@ -1843,28 +1977,56 @@
                     "Label": "in1",
                     "Name": "upper critical",
                     "Severity": 1,
-                    "Value": 13.0
+                    "Value": 13.2
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "in1",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 12.6
+                },   
+                {
+                    "Direction": "less than",
+                    "Label": "in1",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 11.4
                 },
                 {
                     "Direction": "less than",
                     "Label": "in1",
                     "Name": "lower critical",
                     "Severity": 1,
-                    "Value": 11.0
+                    "Value": 10.8
                 },
                 {
                     "Direction": "greater than",
                     "Label": "in2",
                     "Name": "upper critical",
                     "Severity": 1,
-                    "Value": 13.0
+                    "Value": 13.2
+                },
+                {
+                    "Direction": "greater than",
+                    "Label": "in2",
+                    "Name": "upper non critical",
+                    "Severity": 0,
+                    "Value": 12.6
+                },   
+                {
+                    "Direction": "less than",
+                    "Label": "in2",
+                    "Name": "lower non critical",
+                    "Severity": 0,
+                    "Value": 11.4
                 },
                 {
                     "Direction": "less than",
                     "Label": "in2",
                     "Name": "lower critical",
                     "Severity": 1,
-                    "Value": 11.0
+                    "Value": 10.8
                 }
             ],
             "SensorInfo": [
