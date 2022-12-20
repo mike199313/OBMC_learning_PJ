@@ -50,4 +50,5 @@ SRC_URI:append = " \
     file://0019-Fix-excerpt-query-fail.patch \
     file://0020-Bug-1436-System-count-doesnt-match.patch \
     file://0021-Bug-1431-Members-of-PCIe-Functions-are-missing.patch \
+    file://0022-Bug-1075-Transformers-OpenBMC-WebUI-network-Unable-t.patch \
 "
