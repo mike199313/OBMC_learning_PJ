@@ -5,6 +5,27 @@ useradd -e '' -ou 0 -d /var/wcs/home -G priv-admin,root,sudo,ipmi,web,redfish -p
 useradd -e '' -ou 0 -d /var/wcs/home -G priv-admin,root,sudo,ipmi,web,redfish -p 'kFdHdjRkot8KQ' admin; \
 "
 
+do_prepare_bootloaders() {
+    local olddir="$(pwd)"
+    cd ${DEPLOY_DIR_IMAGE}
+    bingo ${IGPS_DIR}/BootBlockAndHeader_${IGPS_MACHINE}.xml \
+            -o ${DEPLOY_DIR_IMAGE}/${BOOTBLOCK}.${FULL_SUFFIX}
+
+    bingo ${IGPS_DIR}/UbootHeader_${IGPS_MACHINE}.xml \
+            -o ${DEPLOY_DIR_IMAGE}/${UBOOT_BINARY}.${FULL_SUFFIX}
+
+    bingo ${IGPS_DIR}/mergedBootBlockAndUboot.xml \
+            -o ${DEPLOY_DIR_IMAGE}/${UBOOT_BINARY}.${MERGED_SUFFIX}
+
+    mv ${UBOOT_BINARY}.${MERGED_SUFFIX} uboot-tmp.bin
+    filesize=$(stat -c %s "uboot-tmp.bin")
+    checksum=`md5sum uboot-tmp.bin | awk '{ print $1 }'`
+    echo "INVENTEC_UBOOT_SIZE_${filesize}_CHECKSUM_${checksum}" > uboot-checksum
+    cat uboot-tmp.bin uboot-checksum >> ${UBOOT_BINARY}.${MERGED_SUFFIX}
+
+    cd "$olddir"
+}
+
 OBMC_IMAGE_EXTRA_INSTALL:append = " openssh-sftp-server"
 OBMC_IMAGE_EXTRA_INSTALL:append = " phosphor-ipmi-ipmb"
 OBMC_IMAGE_EXTRA_INSTALL:append = " python3-smbus"
