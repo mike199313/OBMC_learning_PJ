@@ -1,14 +1,203 @@
-From bc2fa40fd6b60c63b01594daa68728ca9c64e054 Mon Sep 17 00:00:00 2001
+From cc22b886a8a167adcd0e6fa725d0fc06467abc4f Mon Sep 17 00:00:00 2001
 From: link <link@inventec.com>
 Date: Tue, 10 May 2022 09:51:05 +0800
-Subject: [PATCH 2/2] ms spec of sensor reading fail condition and fail safe
- mode
+Subject: [PATCH] ms spec of sensor reading fail condition and fail safe mode
 
+20221222 - Bug 1444 - [Transformers][OpenBMC] Verify the SEL event failed after chassis power off then power on
+20220527 - Bug 1012 - [SW][transformers][transformers-nuv][phosphor-pid-control] - Implement ms spec and remove conclict of acpi power control
+
+======================================================================================================
+Bug 1444 - [Transformers][OpenBMC] Verify the SEL event failed after chassis power off then power on
+
+Symptom/Reason :
+    - Sensor Die_CPU is judged to be a failed sensor, because it reach the lower critical threshold.
+Root Cause     :
+    - After the host is powered on, we will restart cpu sensor.
+      Sometimes pid will receive "true" lower critical alarm before we restart cpu sensor.
+      Pid will not received "false" lower critical alarm after this, because cpu sensor is restarted and initialized.
+      Cpu sensor do not know Die_CPU has a "true" lower critical alarm at previous status.
+
+Solution/Change:
+    [meta-transformers][recpies-phosphor][phosphor-pid-control]
+        - Add a additional alarm check after entering fail safe mode
+    [meta-transformers-nuv][recpies-phosphor][phosphor-pid-control]
+        - Add a additional alarm check after entering fail safe mode
+Entry Test     :
+    <check zone is startup>
+        sysadmin@transformers:~# journalctl -u phosphor-pid-control -n 20
+        Dec 21 08:42:38 transformers swampd[503]: pushing zone 0
+    <Host off and check enter fail safe mode>
+        sysadmin@transformers:~# ipmitool power off
+        Chassis Power Control: Down/Off
+        sysadmin@transformers:~# journalctl -u phosphor-pid-control -n 10
+        Dec 21 08:44:31 transformers swampd[503]: Entering fail safe mode
+        sysadmin@transformers:~# ipmitool sel elist | grep Sensors
+         5d4 | 12/21/22 | 08:44:31 UTC | Unknown Sensors_reading_ |  | Asserted
+        sysadmin@transformers:~# cat /var/lib/sel_log/ipmi_sel | grep Sensors_reading_status
+        2022-12-21T08:44:31.933593+00:00 1492,2,1000FF,20,/xyz/openbmc_project/sensors/oem_event_71h/oem_e1h/Sensors_reading_status,1
+    <Host on and check exit fail safe mode>
+        sysadmin@transformers:~# ipmitool power on
+        Chassis Power Control: Up/On
+        sysadmin@transformers:~# journalctl -u phosphor-pid-control -n 20
+        Dec 21 08:47:23 transformers swampd[503]: Exiting fail safe mode
+        sysadmin@transformers:~# ipmitool sdr list
+        DTS_CPU1         | 50 degrees C      | ok
+        Die_CPU1         | 51 degrees C      | ok
+        PCH_Temp         | 31 degrees C      | ok
+        DIMM_A1_CPU1     | 32 degrees C      | ok
+        sysadmin@transformers:~# ipmitool sel elist | grep Sensors
+         5d4 | 12/21/22 | 08:44:31 UTC | Unknown Sensors_reading_ |  | Asserted
+         623 | 12/21/22 | 08:47:23 UTC | Unknown Sensors_reading_ |  | Asserted
+        sysadmin@transformers:~# cat /var/lib/sel_log/ipmi_sel | grep Sensors_reading_status
+        2022-12-21T08:44:31.933593+00:00 1492,2,1000FF,20,/xyz/openbmc_project/sensors/oem_event_71h/oem_e1h/Sensors_reading_status,1
+        2022-12-21T08:47:23.092225+00:00 1571,2,1001FF,20,/xyz/openbmc_project/sensors/oem_event_71h/oem_e1h/Sensors_reading_status,1
+
+======================================================================================================
+Bug 1012 - [SW][transformers][transformers-nuv][phosphor-pid-control] - Implement ms spec and remove conclict of acpi power control
+    Symptom/Reason :
+        - Implement ms spec of sensor reading fail and fail safe mode condition
+        - Remove the stop and restart of related service
+        - Remove the conclict part of acpi power state
+    Root Cause     : N/A
+
+    Solution/Change:
+        [common][phosphor-pid-control]
+            - Add step wise fail reading tolerance
+            - Add update period to common patch of phosphor pid control
+        [transformers][transformers-nuv][x86-power-control]
+            - Remove the stop and restart of related service
+        [transformers][transformers-nuv][acpi-power-state]
+            - Remove the conclict part of acpi power state
+        [transformers][transformers-nuv][phosphor-pid-control]
+            - Implement ms reading sensor fail condition
+            - Add SEL when reading sensor fail
+            - Change fail safe mode trigger condition and fan duty
+    Entry Test     :
+        <check fan speed will be set to 60% at startup>
+            sysadmin@transformers:~# systemctl restart phosphor-pid-control
+            sysadmin@transformers:~# ipmitool sdr list
+            FAN_PWM_1        | 59.98 unspecifi   | ok
+            FAN_PWM_2        | 59.98 unspecifi   | ok
+            FAN_PWM_3        | 59.98 unspecifi   | ok
+            FAN_PWM_4        | 59.98 unspecifi   | ok
+            FAN_PWM_5        | 59.98 unspecifi   | ok
+            FAN_PWM_6        | 59.98 unspecifi   | ok
+            FAN_PWM_7        | 59.98 unspecifi   | ok
+            FAN_PWM_8        | 59.98 unspecifi   | ok
+        <check zone fail safe percent>
+            sysadmin@transformers:~# cat /usr/share/swampd/config.json
+            "zones" : [{
+                    "id": 0,
+                    "failsafePercent": 100.0,
+                    "UpdateTime": 10
+            }]
+        <check zone is startup>
+            sysadmin@transformers:~# journalctl -u phosphor-pid-control
+            May 17 05:02:57 transformers swampd[801]: Zone Id: 0
+            May 17 05:02:57 transformers swampd[801]: PID name: CPU_DIMM
+            May 17 05:02:57 transformers swampd[801]: inputs: DIMM_A1_CPU1,
+            May 17 05:02:57 transformers swampd[801]: PID name: CPU_Temp
+            May 17 05:02:57 transformers swampd[801]: inputs: DTS_CPU1, Die_CPU1,
+            May 17 05:02:57 transformers swampd[801]: PID name: PCH_Temp
+            May 17 05:02:57 transformers swampd[801]: inputs: PCH_Temp,
+            May 17 05:02:57 transformers swampd[801]: PID name: fan-group
+            May 17 05:02:57 transformers swampd[801]: inputs: FAN1_TACH1, FAN2_TACH1, FAN3_TACH1, FAN4_TACH1, FAN5_TACH1, FAN6_TACH1, FAN7_TACH1, FAN8_TACH1,
+            May 17 05:02:57 transformers swampd[801]: pushing zone 0
+            sysadmin@transformers:~# busctl tree xyz.openbmc_project.State.FanCtrl
+            └─/xyz/openbmc_project/settings/fanctrl/zone0
+        <check fan is being control>
+            sysadmin@transformers:~# cat /sys/class/hwmon/*/pwm*
+            81 81 81 81 81 81 81 81
+            sysadmin@transformers:~# echo 255 > /sys/class/hwmon/*/pwm1
+            sysadmin@transformers:~# cat /sys/class/hwmon/*/pwm*
+            97 97 97 97 97 97 97 97
+        <simulate fan is losing speed and check sel>
+            sysadmin@transformers:~# cat fan-disturbing.sh
+            #!/bin/sh
+            while :do
+                echo 1 > /sys/class/hwmon/*/pwm0
+                echo 3 > /sys/class/hwmon/*/pwm2
+                echo 5 > /sys/class/hwmon/*/pwm4
+            done
+            sysadmin@transformers:~# bash fan-disturbing.sh
+            sysadmin@transformers:~# cat /sys/class/hwmon/*/pwm*
+            1 114 3 114 5 114 114 114
+            sysadmin@transformers:~# ipmitool sel elist
+            2e5d | 05/25/22 | 07:02:43 UTC | Unknown Sensors_reading_ |  | Asserted
+            sysadmin@transformers:~# cat  /var/lib/sel_log/ipmi_sel
+            2022-05-25T07:02:43.891101+00:00 11869,2,0500FF,20,/xyz/openbmc_project/sensors/oem_event_71h/oem_e1h/Sensors_reading_status,1
+        <check thermal read fail>
+            sysadmin@transformers:~# ipmitool sdr list
+            DTS_CPU1         | 55 degrees C      | ok
+            Die_CPU1         | 55 degrees C      | ok
+            sysadmin@transformers:~# ipmitool power cycle
+            Chassis Power Control: Cycle
+            sysadmin@transformers:~# ipmitool sdr list
+            DTS_CPU1         | no reading        | ns
+            Die_CPU1         | no reading        | ns
+        <check fail safe mode 100% pwm and sel>
+            (wait for 60 seconds)
+            sysadmin@transformers:~# journalctl -u phosphor-pid-control -n 10
+            May 25 07:13:25 transformers swampd[393]: Entering fail safe mode
+            sysadmin@transformers:~# ipmitool sdr list
+            FAN_PWM_1        | 99.96 unspecifi   | ok
+            FAN_PWM_2        | 99.96 unspecifi   | ok
+            FAN_PWM_3        | 99.96 unspecifi   | ok
+            FAN_PWM_4        | 99.96 unspecifi   | ok
+            FAN_PWM_5        | 99.96 unspecifi   | ok
+            FAN_PWM_6        | 99.96 unspecifi   | ok
+            FAN_PWM_7        | 99.96 unspecifi   | ok
+            FAN_PWM_8        | 99.96 unspecifi   | ok
+            sysadmin@transformers:~# ipmitool sel elist
+            2eb8 | 05/25/22 | 07:13:25 UTC | Unknown Sensors_reading_ |  | Asserted
+            sysadmin@transformers:~# cat /var/lib/sel_log/ipmi_sel
+            2022-05-25T07:13:25.935376+00:00 11960,2,1000FF,20,/xyz/openbmc_project/sensors/oem_event_71h/oem_e1h/Sensors_reading_status,1
+        <check sensors are back and sel>
+            sysadmin@transformers:~# ipmitool sdr list
+            DTS_CPU1         | 51 degrees C      | ok
+            Die_CPU1         | 51 degrees C      | ok
+            sysadmin@transformers:~# journalctl -u phosphor-pid-control -n 20
+            May 25 07:14:47 transformers swampd[393]: Exiting fail safe mode
+            sysadmin@transformers:~# ipmitool sel elist
+            2f2b | 05/25/22 | 07:14:47 UTC | Unknown Sensors_reading_ |  | Asserted
+            sysadmin@transformers:~# cat /var/lib/sel_log/ipmi_sel
+            2022-05-25T07:14:47.269385+00:00 12075,2,1001FF,20,/xyz/openbmc_project/sensors/oem_event_71h/oem_e1h/Sensors_reading_status,1
+            sysadmin@transformers:~#
+        <check acpi control conflict is remove>
+            sysadmin@transformers:~#  cat /sys/class/hwmon/*/pwm*
+            107 107 107 107 107 107 107 107
+            sysadmin@transformers:~# ipmitool power off
+            Chassis Power Control: Down/Off
+            sysadmin@transformers:~#  cat /sys/class/hwmon/*/pwm*
+            110 110 110 110 110 110 110 110
 ---
- pid/zone.cpp | 107 +++++++++++++++++++++++++++++++++++++++++++++------
- pid/zone.hpp |  18 +++++++++
- 2 files changed, 113 insertions(+), 12 deletions(-)
+ dbus/dbuspassive.cpp |  11 +++++
+ pid/zone.cpp         | 107 ++++++++++++++++++++++++++++++++++++++-----
+ pid/zone.hpp         |  18 ++++++++
+ 3 files changed, 124 insertions(+), 12 deletions(-)
 
+diff --git a/dbus/dbuspassive.cpp b/dbus/dbuspassive.cpp
+index 56b85ed..de8b1fa 100644
+--- a/dbus/dbuspassive.cpp
++++ b/dbus/dbuspassive.cpp
+@@ -244,6 +244,17 @@ void DbusPassive::updateValue(double value, bool force)
+             _marginHot = true;
+         }
+     }
++    /*
++     * After the host is powered on, we will restart cpu sensor.
++     * Sometimes pid will receive "true" lower critical alarm before we restart cpu sensor.
++     * Pid will not received "false" lower critical alarm after this, because cpu sensor is restarted and initialized.
++     * Cpu sensor do not know Die_CPU has a "true" lower critical alarm at previous status.
++     * Add a additional threholds alarm check after entering fail safe mode.
++     */
++    if(_failed){
++        std::string service = _helper->getService(sensorintf, path);
++        _failed = _helper->thresholdsAsserted(service, path);
++    }
+ 
+     setValue(value);
+ }
 diff --git a/pid/zone.cpp b/pid/zone.cpp
 index 6acce79..5e76458 100644
 --- a/pid/zone.cpp
@@ -246,5 +435,5 @@ index d1bed57..a569393 100644
      std::vector<double> _RPMCeilings;
      std::vector<std::string> _fanInputs;
 -- 
-2.33.0
+2.17.1
 
