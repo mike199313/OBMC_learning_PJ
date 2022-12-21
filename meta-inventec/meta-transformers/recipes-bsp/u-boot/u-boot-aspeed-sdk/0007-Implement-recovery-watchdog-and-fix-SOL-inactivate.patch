@@ -1,31 +1,61 @@
-From c9fcb528cb0401aed5e697da4f610e38140666c0 Mon Sep 17 00:00:00 2001
-From: link <link@inventec.com>
-Date: Tue, 18 Oct 2022 05:34:45 +0000
-Subject: [PATCH] Bug 764 - [SW][Transformers][watchdog] - Implement recovery
- watchdog
+From 45c3aa842fce68447cb6684224a3330e765d99ff Mon Sep 17 00:00:00 2001
+From: Matt Cheng <cheng.matt@inventec.com>
+Date: Wed, 21 Dec 2022 10:05:57 +0800
+Subject: [PATCH] Bug 764/1294-Implement recovery watchdog and fix SOL
+ inactivate issue
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Bug 764 - [SW][Transformers][watchdog] - Implement recovery watchdog.
+Bug 1294 - [Transformers][OpenBMC][IPMI]Can't type any command when execute sol activate after bmc fw update.
+Bug 987 - [Transformers][OpenBMC][IPMI] Can't type any command after SOL activate.
 
 Symptom/Reason:
-    Implement recovery watchdog, if recovery watchdog timeout, reboot from another flash.
+    [Recovery watchdog]
+        Implement recovery watchdog, if recovery watchdog timeout, reboot from another flash.
+    [SOL inactivate issue]
+        SOL disconnected while BMC system reboot or after firmware upgrade.
 
 Root Cause:
-    N/A
+    [Recovery watchdog]
+        N/A
+    [SOL inactivate issue]
+        Can't type any command when execute sol activate after bmc fw update.
 
 Solution/Change:
-    Implement inv_watchdog_reset and place in each place.
+    [Recovery watchdog]
+        Implement inv_watchdog_reset and place in each place.
+    [SOL inactivate issue]
+        Set the reset eSPI controller bit to zero in the uboot.
 
 Enrty Test:
-    N/A
+    [SOL activate test]
+        Test command:
+            ipmitool -C 17 -I lanplus -H 10.6.141.106 -U root -P 0penBmc  sol activate
+        Test situation:
+            AC on -> run ipmi sol activate command. -> type enter to test SOL is activated.
+            Only reboot bmc when host is on with sol activated -> run ipmi sol activate.
+            Upgrade bmc fw  when host is on with sol activated -> run ipmi sol activate.
 ---
- arch/arm/mach-aspeed/ast2600/board_common.c | 28 +++++++++++++++++++++
- common/bootm.c                              | 17 ++++++++++++-
- common/console.c                            |  9 +++++++
- drivers/mtd/spi/spi-nor-core.c              | 21 ++++++++++++++++
+ arch/arm/mach-aspeed/ast2600/board_common.c | 34 +++++++++++++++++++++
+ common/bootm.c                              | 17 ++++++++++-
+ common/console.c                            |  9 ++++++
+ drivers/mtd/spi/spi-nor-core.c              | 21 +++++++++++++
  include/watchdog.h                          |  2 ++
- net/net.c                                   |  8 ++++++
- 6 files changed, 84 insertions(+), 1 deletion(-)
+ net/net.c                                   |  8 +++++
+ 6 files changed, 90 insertions(+), 1 deletion(-)
+ mode change 100644 => 100755 arch/arm/mach-aspeed/ast2600/board_common.c
+ mode change 100644 => 100755 common/bootm.c
+ mode change 100644 => 100755 common/console.c
+ mode change 100644 => 100755 drivers/mtd/spi/spi-nor-core.c
+ mode change 100644 => 100755 include/watchdog.h
+ mode change 100644 => 100755 net/net.c
 
 diff --git a/arch/arm/mach-aspeed/ast2600/board_common.c b/arch/arm/mach-aspeed/ast2600/board_common.c
-index f30cc852fc..8b8721fff6 100644
+old mode 100644
+new mode 100755
+index f30cc852fc..a8e2fef260
 --- a/arch/arm/mach-aspeed/ast2600/board_common.c
 +++ b/arch/arm/mach-aspeed/ast2600/board_common.c
 @@ -62,6 +62,14 @@
@@ -36,7 +66,7 @@ index f30cc852fc..8b8721fff6 100644
 +#define FMC_WDT2_TIMER_RELOAD_VALUE     ASPEED_FMC_WDT2 + 0x4
 +#define FMC_WDT2_RESTART                ASPEED_FMC_WDT2 + 0x8
 +#define FMC_WDT2_RESTART_MAGIC          0x4755
-+
++#define WDT20_RESET_MASK_2              0x1E785020
 +
 +void inv_watchdog_reset(void);
 +
@@ -52,14 +82,20 @@ index f30cc852fc..8b8721fff6 100644
  	gpio_init();
  	/*
  	 * Loop over all MISC uclass drivers to call the comphy code
-@@ -168,6 +178,14 @@ int arch_early_init_r(void)
+@@ -168,6 +178,20 @@ int arch_early_init_r(void)
  	return 0;
  }
  
 +int watchdog_init(void)
 +{
++    u32 reg;
++	
 +    /* Set FMC_WDT2 timeout to 60 sec */
 +    writel(600, FMC_WDT2_TIMER_RELOAD_VALUE);
++
++    /* Disable reset eSPI controller (Bit 26) */
++    reg = readl(WDT20_RESET_MASK_2);
++    writel(reg & 0xFBFFFFFF, WDT20_RESET_MASK_2);
 +
 +    inv_watchdog_reset();
 +}
@@ -67,7 +103,7 @@ index f30cc852fc..8b8721fff6 100644
  int gpio_init(void)
  {
      u32 reg;
-@@ -271,3 +289,13 @@ int sgpio_init_port80(void) {
+@@ -271,3 +295,13 @@ int sgpio_init_port80(void) {
      return 0;
  }
  
@@ -82,7 +118,9 @@ index f30cc852fc..8b8721fff6 100644
 +}
 +
 diff --git a/common/bootm.c b/common/bootm.c
-index b76410825e..1a77451fcc 100644
+old mode 100644
+new mode 100755
+index b76410825e..1a77451fcc
 --- a/common/bootm.c
 +++ b/common/bootm.c
 @@ -28,6 +28,7 @@
@@ -139,7 +177,9 @@ index b76410825e..1a77451fcc 100644
  }
  
 diff --git a/common/console.c b/common/console.c
-index 0b0dd76256..5688f249f3 100644
+old mode 100644
+new mode 100755
+index 0b0dd76256..5688f249f3
 --- a/common/console.c
 +++ b/common/console.c
 @@ -310,12 +310,21 @@ int serial_printf(const char *fmt, ...)
@@ -165,7 +205,9 @@ index 0b0dd76256..5688f249f3 100644
  			/*
  			 * Upper layer may have already called tstc() so
 diff --git a/drivers/mtd/spi/spi-nor-core.c b/drivers/mtd/spi/spi-nor-core.c
-index dfa191845a..1144895d88 100644
+old mode 100644
+new mode 100755
+index dfa191845a..1144895d88
 --- a/drivers/mtd/spi/spi-nor-core.c
 +++ b/drivers/mtd/spi/spi-nor-core.c
 @@ -575,6 +575,7 @@ static int spi_nor_erase(struct mtd_info *mtd, struct erase_info *instr)
@@ -232,7 +274,9 @@ index dfa191845a..1144895d88 100644
  		 * If page_size is a power of two, the offset can be quickly
  		 * calculated with an AND operation. On the other cases we
 diff --git a/include/watchdog.h b/include/watchdog.h
-index 14073cfdd2..2baa26bf40 100644
+old mode 100644
+new mode 100755
+index 14073cfdd2..2baa26bf40
 --- a/include/watchdog.h
 +++ b/include/watchdog.h
 @@ -35,6 +35,8 @@ int init_func_watchdog_reset(void);
@@ -245,7 +289,9 @@ index 14073cfdd2..2baa26bf40 100644
  	#if defined(__ASSEMBLY__)
  		#define WATCHDOG_RESET bl hw_watchdog_reset
 diff --git a/net/net.c b/net/net.c
-index f0f9cd4d94..4aa5ff83a5 100644
+old mode 100644
+new mode 100755
+index f0f9cd4d94..4aa5ff83a5
 --- a/net/net.c
 +++ b/net/net.c
 @@ -572,8 +572,16 @@ restart:
@@ -266,5 +312,5 @@ index f0f9cd4d94..4aa5ff83a5 100644
  		show_activity(1);
  #endif
 -- 
-2.17.1
+2.25.1
 
