@@ -39,9 +39,8 @@ pmbus_read() {
     len=$(($len_string))
 
     data=$(i2cget -f -y $1 $2 $3 i $(($len+1)))
-    replace=$(echo $(($len+1)): $len_string)
 
-    arry=$(echo ${data} | sed -e "s/$replace//" | sed -e "s/\0x00//g" | sed -e "s/\0xff//g" | sed -e "s/\0x7f//g" | sed -e "s/\0x0f//g" | sed -e "s/\0x14//g")
+    arry=$(echo ${data} | sed -e "s/$len_string//" | sed -e "s/\0x00//g" | sed -e "s/\0xff//g" | sed -e "s/\0x7f//g" | sed -e "s/\0x0f//g" | sed -e "s/\0x14//g")
 
     for d in ${arry}
     do
