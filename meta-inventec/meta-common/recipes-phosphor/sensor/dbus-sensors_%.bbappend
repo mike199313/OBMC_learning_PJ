@@ -21,6 +21,7 @@ SRC_URI += "\
             file://0018-NvmeSensor-patches.patch \
             file://0024-Event-generation-enabled-disabled.patch \
             file://0025-get-sensor-enable-after-setting.patch \
+            file://0026-Bug-1453-Set-sensor-reading-and-event-status.patch \
            "
 
 PACKAGECONFIG:append =" \

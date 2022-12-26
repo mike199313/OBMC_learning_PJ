@@ -1,0 +1,156 @@
+From 2bb5b2801847b8bf77aada5072d2b507b3d84a65 Mon Sep 17 00:00:00 2001
+From: bonnie <Liu.Bonnie@inventec.com>
+Date: Fri, 16 Dec 2022 15:26:47 +0800
+Subject: [PATCH] Bug 1453 - [SW][Common]Set sensor reading and event status
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Symptom/Reason：
+        Sensor can not get by ipmitool.SEL log show error event.
+Root Cause：
+        Sensor in sdr is not add to sensor map.Automatic scanning is not banned.
+Solution/Change：
+        1.Add ipmi interfaces to add sensor to sensor map, and can get sensor by ipmitool.
+	2.Set the sensor event enable property to 0, then will not trigger event automatically.
+
+Entry Test：
+	sysadmin@transformers:~# ipmitool raw 0x0a 0x24 0x40 0x00 0x51 0x01 0x3b 0x20 0x00 0x81
+	/ 0x06 0x00 0xa0 0x68 0x01 0x01 0x85 0x32 0x85 0x32 0x1b 0x1b 0x80 0x01 0x00 0x00 0x01
+	/ 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x24 0x23 0x00 0x05 0x0a
+	/ 0x00 0x00 0x00 0x00 0x00 0x83 0x29 0xdc 0xa6
+
+	63 00
+
+	sysadmin@transformers:~# busctl tree xyz.openbmc_project.ExternalSensor
+	`-/xyz
+  	 `-/xyz/openbmc_project
+    	  `-/xyz/openbmc_project/sensors
+      	   `-/xyz/openbmc_project/sensors/temperature
+            |-/xyz/openbmc_project/sensors/temperature/IPMI
+	    `-/xyz/openbmc_project/sensors/temperature/Test
+
+	sysadmin@transformers:~# ipmitool raw 0x04 0x30 0x81 0x20 0x13 0xff 0x06 0x08 0x01 0xff 0xff 0xff
+
+	sysadmin@transformers:~# ipmitool sensor get IPMI
+	Locating sensor record...
+	Sensor ID              : IPMI (0x82)
+	Entity ID             : 6.0
+	Sensor Type (Threshold)  : Temperature
+	Sensor Reading        : 102 (+/- 0) degrees C
+	Status                : Upper Critical
+	Lower Non-Recoverable : na
+	Lower Critical        : 5.000
+	Lower Non-Critical    : 10.000
+	Upper Non-Critical    : 35.000
+	Upper Critical        : 36.000
+	Upper Non-Recoverable : na
+	Positive Hysteresis   : Unspecified
+	Negative Hysteresis   : Unspecified
+	Assertion Events      : unc+ ucr+
+	Assertions Enabled    : lnc- lnc+ lcr- lcr+ lnr- lnr+ unc- unc+ ucr- ucr+ unr- unr+
+	Deassertions Enabled  : ucr-
+
+	sysadmin@transformers:~# ipmitool sel elist
+	   1 | 12/16/22 | 06:41:41 UTC | Temperature #0x82 |  | Asserted
+	   2 | 12/16/22 | 06:41:41 UTC | Temperature #0x82 |  | Asserted
+	   3 | 12/16/22 | 06:41:41 UTC | Temperature #0x82 |  | Asserted
+  	   4 | 12/16/22 | 06:41:41 UTC | Temperature #0x82 |  | Deasserted
+
+---
+ include/ExternalSensor.hpp |  2 ++
+ src/ExternalSensor.cpp     | 23 ++++++++++++++++++++++-
+ src/ExternalSensorMain.cpp | 10 +++++++++-
+ 3 files changed, 33 insertions(+), 2 deletions(-)
+
+diff --git a/include/ExternalSensor.hpp b/include/ExternalSensor.hpp
+index 3ca3c8a..414b54b 100644
+--- a/include/ExternalSensor.hpp
++++ b/include/ExternalSensor.hpp
+@@ -8,6 +8,7 @@
+ #include <chrono>
+ #include <string>
+ #include <vector>
++#include <IpmiInfo.hpp>
+ 
+ class ExternalSensor :
+     public Sensor,
+@@ -20,6 +21,7 @@ class ExternalSensor :
+                    const std::string& sensorName,
+                    const std::string& sensorMeasure,
+                    std::vector<thresholds::Threshold>&& thresholdsIn,
++                   std::vector<ipmidata::IpmiConfig>&& ipmiinfo,
+                    const std::string& sensorConfiguration, double maxReading,
+                    double minReading, double timeoutSecs,
+                    const PowerState& powerState);
+diff --git a/src/ExternalSensor.cpp b/src/ExternalSensor.cpp
+index 5fba9b4..edb9fbd 100644
+--- a/src/ExternalSensor.cpp
++++ b/src/ExternalSensor.cpp
+@@ -24,6 +24,7 @@ ExternalSensor::ExternalSensor(
+     std::shared_ptr<sdbusplus::asio::connection>& conn,
+     const std::string& sensorName, const std::string& sensorUnits,
+     std::vector<thresholds::Threshold>&& thresholdsIn,
++    std::vector<ipmidata::IpmiConfig>&& _ipmiinfo,
+     const std::string& sensorConfiguration, double maxReading,
+     double minReading, double timeoutSecs, const PowerState& powerState) :
+     Sensor(escapeName(sensorName), std::move(thresholdsIn), sensorConfiguration,
+@@ -51,6 +52,26 @@ ExternalSensor::ExternalSensor(
+     sensorInterface = objectServer.add_interface(
+         objectPath, "xyz.openbmc_project.Sensor.Value");
+ 
++    ipmiInterface = objectServer.add_interface(
++        objectPath, "xyz.openbmc_project.Sensor.IpmiSensor");
++
++    if (_ipmiinfo.empty())
++    {
++        // Default
++        ipmiInterface->register_property("sensorNumber", 0);
++        ipmiInterface->register_property("entityID", 0);
++        ipmiInterface->register_property("entityInstance", 0);
++    }
++    else
++    {
++        for (auto& ipmi : _ipmiinfo)
++        {
++            ipmiInterface->register_property("sensorNumber", ipmi.number);
++            ipmiInterface->register_property("entityID", ipmi.entityId);
++            ipmiInterface->register_property("entityInstance", ipmi.entityIns);
++        }
++    }
++    
+     for (const auto& threshold : thresholds)
+     {
+         std::string interface = thresholds::getInterface(threshold.level);
+@@ -119,7 +140,7 @@ ExternalSensor::~ExternalSensor()
+ 
+ void ExternalSensor::checkThresholds(void)
+ {
+-    thresholds::checkThresholds(this);
++    //thresholds::checkThresholds(this);
+ }
+ 
+ bool ExternalSensor::isAliveAndPerishable(void) const
+diff --git a/src/ExternalSensorMain.cpp b/src/ExternalSensorMain.cpp
+index 477a4c6..2c5324a 100644
+--- a/src/ExternalSensorMain.cpp
++++ b/src/ExternalSensorMain.cpp
+@@ -320,9 +320,17 @@ void createSensors(
+                 auto& sensorEntry = sensors[sensorName];
+                 sensorEntry = nullptr;
+ 
++                std::vector<ipmidata::IpmiConfig> sensorIpmiConfig;
++                std::string labelHead = sensorName.substr(0, sensorName.find(" "));
++                if (!parseIpmiDataFromConfig(sensorData, sensorIpmiConfig, &labelHead))
++                {
++                    std::cerr << "error populating ipmi for "
++                              << sensorName << "\n";
++                }
+                 sensorEntry = std::make_shared<ExternalSensor>(
+                     sensorType, objectServer, dbusConnection, sensorName,
+-                    sensorUnits, std::move(sensorThresholds), interfacePath,
++                    sensorUnits, std::move(sensorThresholds), 
++                    std::move(sensorIpmiConfig), interfacePath,
+                     maxValue, minValue, timeoutSecs, readState);
+                 sensorEntry->initWriteHook(
+                     [&sensors, &reaperTimer](
