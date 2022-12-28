@@ -1356,7 +1356,7 @@
             "pin_Max" : 2650,
             "pin_Name" : "PSU1_Input_Power",
             "pout1_Scale" : 1000000,
-            "pout1_Max" : 2500,
+            "pout1_Max" : 2650,
             "pout1_Name" : "PSU1_Output_Power",
             "iin_Scale" : 1000,
             "iin_Max" : 38.78,
