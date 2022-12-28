@@ -1,0 +1,35 @@
+From f5b04b7dc9ebd610f6e8828e7a70b7816281ab8e Mon Sep 17 00:00:00 2001
+From: Jason Lin <lin.jasonyy@inventec.com>
+Date: Wed, 28 Dec 2022 14:48:23 +0800
+Subject: [PATCH] Bug 1506 - [Transformers][OpenBMC][Redfish] Modify IPv4
+ address failedSymptom/Reason:
+
+Symptom/Reason:
+	Not considering errors other than file_exists
+
+Root Cause:
+	Not considering errors other than file_exists
+
+Solution/Change:
+	Adding handlings of errors other than file_exists
+
+Entry Test:
+	1. curl -k -basic -u root:0penBmc -XGET  https://10.6.141.106/redfish/v1/Managers/bmc/EthernetInterfaces/eth0
+	2. curl -k -basic -u root:0penBmc -XPATCH  https://10.6.141.106/redfish/v1/Managers/bmc/EthernetInterfaces/eth0/ -d '{"IPv4StaticAddresses": [{"Address": "10.6.141.207", "SubnetMask": "255.255.255.0", "Gateway": "10.6.141.254"}, {}]}'
+---
+ redfish-core/lib/ethernet.hpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/redfish-core/lib/ethernet.hpp b/redfish-core/lib/ethernet.hpp
+index 4b3186d9..4c565119 100644
+--- a/redfish-core/lib/ethernet.hpp
++++ b/redfish-core/lib/ethernet.hpp
+@@ -778,7 +778,7 @@ inline void
+ 
+         crow::connections::systemBus->async_method_call(
+             [asyncResp, ifaceId, gateway](const boost::system::error_code ec2) {
+-            if (ec2 != boost::system::errc::file_exists)
++            if (ec2 && (ec2 != boost::system::errc::file_exists))
+             {
+                 messages::internalError(asyncResp->res);
+                 return;
