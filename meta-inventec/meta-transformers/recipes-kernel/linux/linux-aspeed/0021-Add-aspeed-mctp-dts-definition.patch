@@ -1,0 +1,41 @@
+From 79aa8a2b9aa3a8e86d871b7df124c6a9d476947d Mon Sep 17 00:00:00 2001
+From: Wein <kuo.wein@inventec.com>
+Date: Fri, 6 Jan 2023 17:23:15 +0800
+Subject: [PATCH] Add-aspeed-mctp-dts-definition
+
+---
+ arch/arm/boot/dts/aspeed-g6.dtsi | 11 ++++++++++-
+ 1 file changed, 10 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm/boot/dts/aspeed-g6.dtsi b/arch/arm/boot/dts/aspeed-g6.dtsi
+index e2688f93797a..f639acd2f91f 100644
+--- a/arch/arm/boot/dts/aspeed-g6.dtsi
++++ b/arch/arm/boot/dts/aspeed-g6.dtsi
+@@ -586,6 +586,15 @@ pcie_intc1: interrupt-controller {
+ 				};
+ 			};
+ 
++			pcie_ep:pcie_ep@1e6ed000 {
++				compatible = "aspeed,ast2600-pcie-ep", "syscon";
++				reg = <0x1e6ed000 0x100>;
++				resets = <&syscon ASPEED_RESET_PCIE_DEV_O>;
++				rc_offset = <0x80>;
++				msi_address = <0x1e770058>;
++				status = "disabled";
++			};
++
+ 			jtag0: jtag@1e6e4000 {
+ 				compatible = "aspeed,ast2600-jtag";
+ 				reg= <0x1e6e4000 0x20>;
+@@ -653,7 +662,7 @@ mctp0: mctp@1e6e8000 {
+ 				interrupt-names = "mctp", "pcie";
+ 				resets = <&syscon ASPEED_RESET_DEV_MCTP>;
+ 				aspeed,scu = <&syscon>;
+-				aspeed,pcieh = <&pcie_phy0>;
++				aspeed,pcieh = <&pcie_ep>;
+ 				status = "disabled";
+ 			};
+ 
+-- 
+2.33.0
+

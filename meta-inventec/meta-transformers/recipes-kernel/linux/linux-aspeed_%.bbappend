@@ -23,6 +23,8 @@ SRC_URI:append = " file://transformers.cfg \
                    file://0018-force-spi-to-run-at-single-mode.patch \
                    file://0019-Implement-a-memory-driver-share-memory.patch \
                    file://0020-roll-back-the-ipmi-driver-to-2.10.patch \
+                   file://0021-Add-aspeed-mctp-dts-definition.patch \ 
+                   file://0022-Patch-for-Slave-mqueue-driver-porting.patch \
                  "
 
 do_add_overwrite_files () {

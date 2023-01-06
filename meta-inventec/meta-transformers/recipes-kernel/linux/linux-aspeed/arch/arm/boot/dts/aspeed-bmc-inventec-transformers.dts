@@ -14,6 +14,7 @@
 
         aliases {
                 serial4 = &uart5;
+                mctp0 = &mctp0;
         };
 
         chosen {
@@ -208,6 +209,12 @@
 
 &uart5 {
         status = "okay";
+};
+
+&mctp0 {
+    tx-payload-bytes= <64>;
+    rx-payload-bytes= <64>;
+    status = "okay";
 };
 
 &uart_routing {
