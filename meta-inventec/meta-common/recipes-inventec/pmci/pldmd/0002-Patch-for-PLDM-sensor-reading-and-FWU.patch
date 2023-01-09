@@ -1,0 +1,181 @@
+From 8938eaeac0e045790b078d9240363ae7374b103c Mon Sep 17 00:00:00 2001
+From: Wein <kuo.wein@inventec.com>
+Date: Mon, 9 Jan 2023 15:35:40 +0800
+Subject: [PATCH] Patch for PLDM sensor reading and FWU
+
+---
+ CMakeLists.txt                                 |  3 +--
+ include/base.hpp                               |  2 +-
+ .../xyz.openbmc_project.pldmd.service          |  3 +++
+ src/base.cpp                                   | 13 ++++++++++++-
+ src/fwu_inventory.cpp                          | 18 ++++++++++++------
+ src/numeric_sensor.cpp                         |  3 ++-
+ src/pdr_manager.cpp                            | 10 ++++++----
+ src/pldmd.cpp                                  |  2 +-
+ 8 files changed, 38 insertions(+), 16 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 9888881..628bd76 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -4,7 +4,7 @@ project (pldmd CXX)
+ 
+ option (BUILD_STANDALONE "Use outside of YOCTO depedencies system" OFF)
+ option (EXPOSE_BASEBOARD_SENSOR "Expose PLDM sensors in baseboard Redfish Chassis interface" OFF)
+-option (EXPOSE_CHASSIS "Expose PLDM device as a standalone chassis in Redfish Chassis interface" OFF)
++option (EXPOSE_CHASSIS "Expose PLDM device as a standalone chassis in Redfish Chassis interface" ON)
+ 
+ set (BUILD_SHARED_LIBRARIES OFF)
+ set (CMAKE_CXX_STANDARD 17)
+@@ -28,7 +28,6 @@ set (
+     -Wduplicated-cond \
+     -Wduplicated-branches \
+     -Wlogical-op \
+-    -Wnull-dereference \
+     -Wuseless-cast \
+     -Wdouble-promotion \
+     -Wno-strict-aliasing \
+diff --git a/include/base.hpp b/include/base.hpp
+index 27330bc..8c682c3 100644
+--- a/include/base.hpp
++++ b/include/base.hpp
+@@ -50,7 +50,7 @@ namespace base
+ using SupportedCommands = std::array<bitfield8_t, 32>;
+ // [PLDMType -> [PLDMVersion -> SupportedCommands]] Mapping
+ using CommandSupportTable =
+-    std::unordered_map<uint8_t, std::unordered_map<ver32_t, SupportedCommands>>;
++    std::unordered_map<uint8_t, std::unordered_map<uint32_t, SupportedCommands>>;
+ 
+ struct PLDMMsgTypes
+ {
+diff --git a/service_files/xyz.openbmc_project.pldmd.service b/service_files/xyz.openbmc_project.pldmd.service
+index a59e68c..6ba0b49 100644
+--- a/service_files/xyz.openbmc_project.pldmd.service
++++ b/service_files/xyz.openbmc_project.pldmd.service
+@@ -1,5 +1,8 @@
+ [Unit]
+ Description=PLDM daemon
++After=xyz.openbmc_project.EntityManager.service
++Wants=xyz.openbmc_project.EntityManager.service
++StartLimitBurst=5
+ 
+ [Service]
+ ExecStart=/usr/bin/pldmd
+diff --git a/src/base.cpp b/src/base.cpp
+index 79061e4..9ac35fb 100644
+--- a/src/base.cpp
++++ b/src/base.cpp
+@@ -492,6 +492,17 @@ VersionSupportTable
+     return versionSupportTable;
+ }
+ 
++uint32_t ver32tToUint32(const ver32_t& ver) {
++    uint32_t result = ver.major;
++    result <<= 8;
++    result |= ver.minor;
++    result <<= 8;
++    result |= ver.update;
++    result <<= 8;
++    result |= ver.alpha;
++    return result;
++}
++
+ CommandSupportTable
+     createCommandSupportTable(boost::asio::yield_context yield,
+                               const mctpw_eid_t eid,
+@@ -513,7 +524,7 @@ CommandSupportTable
+         if (supportedCommands)
+         {
+             cmdSupportTable[versionTable.first].emplace(
+-                firstVersion, supportedCommands.value());
++                ver32tToUint32(firstVersion), supportedCommands.value());
+         }
+         else
+         {
+diff --git a/src/fwu_inventory.cpp b/src/fwu_inventory.cpp
+index e507dd6..a32c3c4 100644
+--- a/src/fwu_inventory.cpp
++++ b/src/fwu_inventory.cpp
+@@ -128,9 +128,12 @@ void FWInventoryInfo::copyCompData(
+         componentData->comp_classification_index;
+     compProperties["ActiveComponentComparisonStamp"] =
+         componentData->active_comp_comparison_stamp;
+-    compProperties["ActiveComponentReleaseDate"] =
+-        le64toh(*reinterpret_cast<const uint64_t*>(
+-            componentData->active_comp_release_date));
++    uint64_t activeComponentReleaseDate = 0;
++    memcpy(&activeComponentReleaseDate,
++           reinterpret_cast<const uint64_t*>(
++               componentData->active_comp_release_date),
++           sizeof(uint64_t));
++    compProperties["ActiveComponentReleaseDate"] = activeComponentReleaseDate;
+     std::string activeCompVerStr(
+         reinterpret_cast<const char*>(activeCompVerData->ptr),
+         activeCompVerData->length);
+@@ -138,9 +141,12 @@ void FWInventoryInfo::copyCompData(
+ 
+     compProperties["PendingComponentComparisonStamp"] =
+         componentData->pending_comp_comparison_stamp;
+-    compProperties["PendingComponentReleaseDate"] =
+-        le64toh(*reinterpret_cast<const uint64_t*>(
+-            componentData->pending_comp_release_date));
++    uint64_t pendingComponentReleaseDate = 0;
++    memcpy(&pendingComponentReleaseDate,
++           reinterpret_cast<const uint64_t*>(
++               componentData->pending_comp_release_date),
++           sizeof(uint64_t));
++    compProperties["PendingComponentReleaseDate"] = pendingComponentReleaseDate;
+     std::string pendingCompVerStr(
+         reinterpret_cast<const char*>(pendingCompVerData->ptr),
+         pendingCompVerData->length);
+diff --git a/src/numeric_sensor.cpp b/src/numeric_sensor.cpp
+index 044dadb..f6bbfab 100644
+--- a/src/numeric_sensor.cpp
++++ b/src/numeric_sensor.cpp
+@@ -81,7 +81,8 @@ NumericSensor::NumericSensor(const std::string& sensorName,
+     if (!associationPath.empty())
+     {
+         std::vector<std::tuple<std::string, std::string, std::string>>
+-            association = {{"chassis", "all_sensors", associationPath}};
++            association = {{"inventory", "sensors", associationPath},
++                           {"chassis", "all_sensors", associationPath}};
+ 
+         associationInterface = objectServer->add_interface(
+             path + name, "xyz.openbmc_project.Association.Definitions");
+diff --git a/src/pdr_manager.cpp b/src/pdr_manager.cpp
+index 6a46f9b..881c3b3 100644
+--- a/src/pdr_manager.cpp
++++ b/src/pdr_manager.cpp
+@@ -871,10 +871,12 @@ void PDRManager::populateSystemHierarchy()
+             pathName += "/" + entityAuxName;
+             DBusObjectPath objPath = pldmDevObj + pathName;
+ 
+-            DBusInterfacePtr entityIntf;
+-            populateEntity(entityIntf, objPath, entity);
+-            _systemHierarchyIntf.emplace(entity,
+-                                         std::make_pair(entityIntf, objPath));
++            if (_systemHierarchyIntf.count(entity) == 0) {
++                DBusInterfacePtr entityIntf;
++                populateEntity(entityIntf, objPath, entity);
++                _systemHierarchyIntf.emplace(entity,
++                                            std::make_pair(entityIntf, objPath));
++            }
+         }
+     }
+     // Clear after usage
+diff --git a/src/pldmd.cpp b/src/pldmd.cpp
+index 238cd28..bdcd091 100644
+--- a/src/pldmd.cpp
++++ b/src/pldmd.cpp
+@@ -699,7 +699,7 @@ int main(void)
+     // TODO - Read from entity manager about the transport bindings to be
+     // supported by PLDM
+     mctpw::MCTPConfiguration config(mctpw::MessageType::pldm,
+-                                    mctpw::BindingType::mctpOverSmBus);
++                                    mctpw::BindingType::mctpOverPcieVdm);
+ 
+     pldm::mctpWrapper = std::make_unique<mctpw::MCTPWrapper>(
+         conn, config, onDeviceUpdate, pldm::msgRecvCallback);
+-- 
+2.33.0
+

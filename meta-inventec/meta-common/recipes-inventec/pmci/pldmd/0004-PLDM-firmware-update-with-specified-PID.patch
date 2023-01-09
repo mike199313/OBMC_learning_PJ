@@ -1,0 +1,82 @@
+From 346cde37ab9af69dd47a81f1dfbe0df189b4932f Mon Sep 17 00:00:00 2001
+From: Wein <kuo.wein@inventec.com>
+Date: Thu, 12 Jan 2023 15:43:31 +0800
+Subject: [PATCH] PLDM firmware update with specified PID
+
+---
+ src/firmware_update.cpp | 21 +++++++++++++++++----
+ 1 file changed, 17 insertions(+), 4 deletions(-)
+
+diff --git a/src/firmware_update.cpp b/src/firmware_update.cpp
+index 340b072..0fd6fc1 100644
+--- a/src/firmware_update.cpp
++++ b/src/firmware_update.cpp
+@@ -2384,7 +2384,7 @@ bool deleteFWDevice(const pldm_tid_t tid)
+ }
+ 
+ static bool updateMode = false;
+-static int initUpdate(const boost::asio::yield_context yield)
++static int initUpdate(const uint8_t tid, const boost::asio::yield_context yield)
+ {
+     if (updateMode)
+     {
+@@ -2395,9 +2395,16 @@ static int initUpdate(const boost::asio::yield_context yield)
+     }
+     bool fwUpdateStatus = true;
+     auto matchedTermini = pldmImg->getMatchedTermini();
++    uint8_t fwuCount = 0;
+     for (const auto& it : matchedTermini)
+     {
++        // In the case of tid = 0, all devices with matched tid will be updated,
++        // Otherwise, update a device with a specific tid.
+         pldm_tid_t matchedTid = it.second;
++        if ((matchedTid != tid) && (tid != 0))
++        {
++            continue;
++        }
+         uint8_t matchedDevIdRecord = it.first;
+         fwUpdate = std::make_unique<FWUpdate>(matchedTid, matchedDevIdRecord);
+         if (!fwUpdate->setMatchedFDDescriptors())
+@@ -2422,6 +2429,7 @@ static int initUpdate(const boost::asio::yield_context yield)
+         }
+         pldm::platform::resumeSensorPolling();
+         updateMode = false;
++        fwuCount++;
+     }
+ 
+     if (!fwUpdateStatus)
+@@ -2436,6 +2444,11 @@ static int initUpdate(const boost::asio::yield_context yield)
+             yield, "xyz.openbmc_project.Software.Activation", "Activation",
+             "xyz.openbmc_project.Software.Activation.Activations.Active");
+     }
++    
++    if (!fwuCount)
++    {
++        return PLDM_ERROR;
++    }
+     return PLDM_SUCCESS;
+ }
+ 
+@@ -2448,7 +2461,7 @@ static void initializeFWUBase()
+     auto objServer = getObjServer();
+     auto fwuBaseIface = objServer->add_interface(objPath, FWUBase::interface);
+     fwuBaseIface->register_method(
+-        "StartFWUpdate", [](const std::string filePath) {
++        "StartFWUpdate", [](const uint8_t tid, const std::string filePath) {
+             int rc = -1;
+             if (pldmImg)
+             {
+@@ -2477,8 +2490,8 @@ static void initializeFWUBase()
+                                              filePath.c_str()));
+                 return rc;
+             }
+-            boost::asio::spawn([](boost::asio::yield_context yield) {
+-                int ret = initUpdate(yield);
++            boost::asio::spawn([tid](boost::asio::yield_context yield) {
++                int ret = initUpdate(tid, yield);
+                 if (ret != PLDM_SUCCESS)
+                 {
+                     phosphor::logging::log<phosphor::logging::level::ERR>(
+-- 
+2.33.0
+

@@ -1,0 +1,29 @@
+From a2281e749581aaacb9461c96172af66628a6848d Mon Sep 17 00:00:00 2001
+From: Wein <kuo.wein@inventec.com>
+Date: Tue, 10 Jan 2023 18:22:20 +0800
+Subject: [PATCH] Fix the findBusByBindingType error and core dump
+
+---
+ mctp_impl.cpp | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/mctp_impl.cpp b/mctp_impl.cpp
+index 5d59fdf..14f7d64 100644
+--- a/mctp_impl.cpp
++++ b/mctp_impl.cpp
+@@ -329,6 +329,12 @@ std::optional<std::vector<std::pair<unsigned, std::string>>>
+ 
+         for (const auto& [service, intfs] : services)
+         {
++            if (!boost::algorithm::contains(service, "xyz.openbmc_project.MCTP-"))
++            {
++                phosphor::logging::log<phosphor::logging::level::INFO>(("Skipping  " + service).c_str());
++                continue;
++            }
++
+             try
+             {
+                 int bus = this->getBusId(service);
+-- 
+2.33.0
+

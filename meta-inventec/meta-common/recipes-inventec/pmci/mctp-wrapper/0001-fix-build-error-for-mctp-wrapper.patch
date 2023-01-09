@@ -1,0 +1,21 @@
+From cc8695edba4f357dc1bdbfd548eb828f8a5dfdea Mon Sep 17 00:00:00 2001
+From: "Fred.Chang" <chang.fredys@inventec.com>
+Date: Tue, 23 Aug 2022 14:27:12 +0800
+Subject: [PATCH] fix build error for mctp-wrapper
+
+---
+ CMakeLists.txt | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index ca47e35..e6fc816 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -27,7 +27,6 @@ set (
+     -Wduplicated-cond \
+     -Wduplicated-branches \
+     -Wlogical-op \
+-    -Wnull-dereference \
+     -Wuseless-cast \
+     -Wdouble-promotion \
+     -Wno-strict-aliasing \

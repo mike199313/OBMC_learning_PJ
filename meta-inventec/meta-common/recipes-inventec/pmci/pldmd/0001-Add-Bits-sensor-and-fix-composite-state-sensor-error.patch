@@ -1,0 +1,39 @@
+From 99f93400e854a83fba77d3572e82170e06741190 Mon Sep 17 00:00:00 2001
+From: Wein <kuo.wein@inventec.com>
+Date: Mon, 9 Jan 2023 11:22:25 +0800
+Subject: [PATCH] Add Bits sensor and fix composite state sensor error
+
+---
+ src/pdr_utils.cpp            | 2 ++
+ src/state_sensor_handler.cpp | 2 +-
+ 2 files changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/pdr_utils.cpp b/src/pdr_utils.cpp
+index 20bf65c..b16244a 100644
+--- a/src/pdr_utils.cpp
++++ b/src/pdr_utils.cpp
+@@ -94,6 +94,8 @@ std::optional<SensorUnit>
+             return SensorUnit::Watts;
+         case PLDM_SENSOR_UNIT_RPM:
+             return SensorUnit::RPMS;
++        case PLDM_SENSOR_UNIT_BITS:
++            return SensorUnit::Bits;
+         default:
+             phosphor::logging::log<phosphor::logging::level::ERR>(
+                 "Sensor unit not recognized");
+diff --git a/src/state_sensor_handler.cpp b/src/state_sensor_handler.cpp
+index b16580a..957edb0 100644
+--- a/src/state_sensor_handler.cpp
++++ b/src/state_sensor_handler.cpp
+@@ -406,7 +406,7 @@ bool StateSensorHandler::getStateSensorReadings(
+     uint8_t completionCode;
+     // Pass compositeSensorCount as 1 to indicate that only one sensor instance
+     // is supported
+-    uint8_t compositeSensorCount = 1;
++    uint8_t compositeSensorCount = _pdr->stateSensorData.composite_sensor_count;
+     constexpr size_t maxCompositeSensorCount = 0x08;
+     std::array<get_sensor_state_field, maxCompositeSensorCount> stateField{};
+     auto rspMsg = reinterpret_cast<pldm_msg*>(resp.data());
+-- 
+2.33.0
+

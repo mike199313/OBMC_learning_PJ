@@ -1,0 +1,65 @@
+From 84d2bb030262f42cbe611a2525bd0041ea02ecfc Mon Sep 17 00:00:00 2001
+From: "Fred.Chang" <chang.fredys@inventec.com>
+Date: Tue, 23 Aug 2022 14:10:06 +0800
+Subject: [PATCH] fix the build error on lpc and i3c test procedure.
+
+---
+ tests/test_asti3c.c | 12 +++++++++---
+ tests/test_astlpc.c | 13 ++++++-------
+ 2 files changed, 15 insertions(+), 10 deletions(-)
+
+diff --git a/tests/test_asti3c.c b/tests/test_asti3c.c
+index 3143324..159d212 100644
+--- a/tests/test_asti3c.c
++++ b/tests/test_asti3c.c
+@@ -173,16 +173,22 @@ int poll(struct pollfd *fds, nfds_t nfds, int timeout)
+ 	/* mctp_asti3c_poll always has nfds = 1 */
+ 	assert(nfds == 1);
+ 
+-	if (fds[0].fd != stubbed_fd)
++	if(fds == NULL)
++		return -1;
++
++	struct pollfd ins;
++	memcpy(&ins,fds,sizeof(struct pollfd));
++
++	if (ins.fd != stubbed_fd)
+ 		return -1;
+ 
+ 	switch (test) {
+ 	case i3c_poll_test_pollin:
+-		fds[0].revents = (rc | POLLIN);
++		ins.revents = (rc | POLLIN);
+ 		return 1;
+ 
+ 	case i3c_poll_test_pollout:
+-		fds[0].revents = (rc | POLLOUT);
++		ins.revents = (rc | POLLOUT);
+ 		return 1;
+ 
+ 	case i3c_poll_test_poll_timeout:
+diff --git a/tests/test_astlpc.c b/tests/test_astlpc.c
+index 0e0dcca..70f8f9f 100644
+--- a/tests/test_astlpc.c
++++ b/tests/test_astlpc.c
+@@ -89,14 +89,13 @@ int mctp_astlpc_mmio_kcs_write(void *data, enum mctp_binding_astlpc_kcs_reg reg,
+ {
+ 	struct mctp_binding_astlpc_mmio *mmio = binding_to_mmio(data);
+ 
+-	if (reg == MCTP_ASTLPC_KCS_REG_DATA)
++	if (reg == MCTP_ASTLPC_KCS_REG_STATUS) {
++		mmio->kcs[MCTP_ASTLPC_KCS_REG_STATUS] = val & ~0xaU;
++	} else {
+ 		mmio->kcs[MCTP_ASTLPC_KCS_REG_STATUS] |= KCS_STATUS_OBF;
+-
+-	if (reg == MCTP_ASTLPC_KCS_REG_STATUS)
+-		mmio->kcs[reg] = val & ~0xaU;
+-	else
+-		mmio->kcs[reg] = val;
+-
++		mmio->kcs[MCTP_ASTLPC_KCS_REG_DATA] = val;
++	}
++	
+ 	mctp_prdebug("%s: 0x%hhx to %s", __func__, val,
+ 		     reg ? "status" : "data");
+ 

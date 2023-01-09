@@ -1,0 +1,144 @@
+From 8722d9bf434625129cb062f2e51a3429cf53ddf6 Mon Sep 17 00:00:00 2001
+From: Wein <kuo.wein@inventec.com>
+Date: Fri, 29 Jul 2022 12:30:41 +0800
+Subject: [PATCH] Patch for PLDM firmware update
+
+Symptom/Reason:
+    - Patch for PLDM firmware update
+
+Root Cause: N/A
+
+Solution/Change:
+    - [pldm, libpldm-intel] fix endianness issue, and fix E810's reply message of activateFirmware command issue
+
+Note:
+    - Service xyz.openbmc_project.Software.BMC.Updater failed and needs to be fixed, which will result in warning messages "Firmware update property updation failed."
+    - E810's reply message of activateFirmware command only contains "estimatedTimeForSelfContainedActivation" field, there is no "completionCode" field
+
+Entry Test:
+```
+sysadmin@ZTS0003FF0000CC:~# busctl tree xyz.openbmc_project.MCTP-pcie
+`-/xyz
+  `-/xyz/openbmc_project
+    `-/xyz/openbmc_project/mctp
+      `-/xyz/openbmc_project/mctp/device
+        |-/xyz/openbmc_project/mctp/device/29
+        |-/xyz/openbmc_project/mctp/device/8
+        `-/xyz/openbmc_project/mctp/device/9
+
+sysadmin@ZTS0003FF0000CC:~# busctl tree xyz.openbmc_project.pldm
+`-/xyz
+  `-/xyz/openbmc_project
+    |-/xyz/openbmc_project/inventory
+    | `-/xyz/openbmc_project/inventory/system
+    |   `-/xyz/openbmc_project/inventory/system/board
+    |     `-/xyz/openbmc_project/inventory/system/board/galene
+    |-/xyz/openbmc_project/pldm
+    | |-/xyz/openbmc_project/pldm/1
+    | | `-/xyz/openbmc_project/pldm/1/state_sensor
+    | |   |-/xyz/openbmc_project/pldm/1/state_sensor/SC_1_Sensor_5
+    | |   |-/xyz/openbmc_project/pldm/1/state_sensor/SC_1_Sensor_50
+    | |   |-/xyz/openbmc_project/pldm/1/state_sensor/SC_1_Sensor_500
+    | |   |-/xyz/openbmc_project/pldm/1/state_sensor/SC_1_Sensor_501
+    | |   |-/xyz/openbmc_project/pldm/1/state_sensor/SC_1_Sensor_502
+    | |   |-/xyz/openbmc_project/pldm/1/state_sensor/SC_1_Sensor_503
+    | |   |-/xyz/openbmc_project/pldm/1/state_sensor/SC_1_Sensor_700
+    | |   |-/xyz/openbmc_project/pldm/1/state_sensor/SC_1_Sensor_701
+    | |   |-/xyz/openbmc_project/pldm/1/state_sensor/SC_1_Sensor_702
+    | |   `-/xyz/openbmc_project/pldm/1/state_sensor/SC_1_Sensor_703
+    | `-/xyz/openbmc_project/pldm/fwu
+    |   `-/xyz/openbmc_project/pldm/fwu/1
+    |     |-/xyz/openbmc_project/pldm/fwu/1/componentImageSetInfo
+    |     | |-/xyz/openbmc_project/pldm/fwu/1/componentImageSetInfo/component_1
+    |     | |-/xyz/openbmc_project/pldm/fwu/1/componentImageSetInfo/component_2
+    |     | `-/xyz/openbmc_project/pldm/fwu/1/componentImageSetInfo/component_3
+    |     `-/xyz/openbmc_project/pldm/fwu/1/deviceDescriptors
+    |-/xyz/openbmc_project/sensors
+    | |-/xyz/openbmc_project/sensors/network
+    | | |-/xyz/openbmc_project/sensors/network/SC_1_Sensor_600
+    | | |-/xyz/openbmc_project/sensors/network/SC_1_Sensor_601
+    | | |-/xyz/openbmc_project/sensors/network/SC_1_Sensor_602
+    | | `-/xyz/openbmc_project/sensors/network/SC_1_Sensor_603
+    | `-/xyz/openbmc_project/sensors/temperature
+    |   `-/xyz/openbmc_project/sensors/temperature/SC_1_E810
+    |-/xyz/openbmc_project/software
+    | `-/xyz/openbmc_project/software/pldm_fd_1
+    `-/xyz/openbmc_project/system
+      `-/xyz/openbmc_project/system/1
+        `-/xyz/openbmc_project/system/1/68_1_0
+          |-/xyz/openbmc_project/system/1/68_1_0/144_1_100
+          | |-/xyz/openbmc_project/system/1/68_1_0/144_1_100/6_1_1000
+          | |-/xyz/openbmc_project/system/1/68_1_0/144_1_100/6_2_1000
+          | |-/xyz/openbmc_project/system/1/68_1_0/144_1_100/6_3_1000
+          | `-/xyz/openbmc_project/system/1/68_1_0/144_1_100/6_4_1000
+          |-/xyz/openbmc_project/system/1/68_1_0/185_1_100
+          |-/xyz/openbmc_project/system/1/68_1_0/185_2_100
+          |-/xyz/openbmc_project/system/1/68_1_0/185_3_100
+          `-/xyz/openbmc_project/system/1/68_1_0/185_4_100
+
+sysadmin@ZTS0003FF0000CC:~# ls
+Verizon_E810_XXVDA4_LP_O_SEC_FW_1p5p5p7_NVM_2p54_PLDMoMCTP_8000CF15_pldm_fixed_signed.bin  bmcweb_persistent_data.json
+sysadmin@ZTS0003FF0000CC:~# busctl call xyz.openbmc_project.pldm /xyz/openbmc_project/pldm/fwu xyz.openbmc_project.PLDM.FWU.FWUBase StartFWUpdate s ~/Verizon_E810_XXVDA4_LP_O_SEC_FW_1p5p5p7_NVM_2p54_PLDMoMCTP_8000CF15_pldm_fixed_signed.bin
+i 0
+
+sysadmin@ZTS0003FF0000CC:~# journalctl -u  xyz.openbmc_project.pldmd.service  -f
+Jul 29 02:54:40 ZTS0003FF0000CC pldmd[277]: FD changed state to LEARN COMPONENTS
+Jul 29 02:54:40 ZTS0003FF0000CC pldmd[277]: Firmware update in progress for TID: 1
+Jul 29 02:54:42 ZTS0003FF0000CC pldmd[277]: sendPackageData successful
+Jul 29 02:54:42 ZTS0003FF0000CC pldmd[277]: PassComponentTable command success, component: 0
+Jul 29 02:54:43 ZTS0003FF0000CC pldmd[277]: PassComponentTable command success, component: 1
+Jul 29 02:54:43 ZTS0003FF0000CC pldmd[277]: PassComponentTable command success, component: 2
+Jul 29 02:54:44 ZTS0003FF0000CC pldmd[277]: PassComponentTable command is success
+Jul 29 02:54:44 ZTS0003FF0000CC pldmd[277]: FD changed state to READY XFER
+Jul 29 02:54:44 ZTS0003FF0000CC pldmd[277]: FD changed state to DOWNLOAD
+Jul 29 02:54:44 ZTS0003FF0000CC pldmd[277]: UpdateComponent command is success. COMPONENT: 0
+Jul 29 02:56:57 ZTS0003FF0000CC pldmd[277]: TID: 1 Component: 1 update package transfered: 25%
+Jul 29 02:58:26 ZTS0003FF0000CC pldmd[277]: TID: 1 Component: 1 update package transfered: 50%
+Jul 29 02:59:56 ZTS0003FF0000CC pldmd[277]: TID: 1 Component: 1 update package transfered: 75%
+Jul 29 03:01:26 ZTS0003FF0000CC pldmd[277]: TID: 1 Component: 1 update package transfered: 100%
+Jul 29 03:01:26 ZTS0003FF0000CC pldmd[277]: TransferComplete received from TID: 1
+Jul 29 03:01:26 ZTS0003FF0000CC pldmd[277]: Firmware update property updation failed. PROPERTY: Progress
+Jul 29 03:01:26 ZTS0003FF0000CC pldmd[277]: TransferComplete command is success. COMPONENT: 0
+Jul 29 03:01:26 ZTS0003FF0000CC pldmd[277]: VerifyComplete command is success. COMPONENT: 0
+Jul 29 03:01:26 ZTS0003FF0000CC pldmd[277]: ApplyComplete command is success. COMPONENT: 0
+Jul 29 03:01:26 ZTS0003FF0000CC pldmd[277]: COMPONENT: 1 will not be updated, ComponentCompatibilityResponse Code: 1
+Jul 29 03:01:26 ZTS0003FF0000CC pldmd[277]: Firmware update property updation failed. PROPERTY: Progress
+Jul 29 03:01:26 ZTS0003FF0000CC pldmd[277]: FD changed state to DOWNLOAD
+Jul 29 03:01:26 ZTS0003FF0000CC pldmd[277]: UpdateComponent command is success. COMPONENT: 2
+Jul 29 03:01:27 ZTS0003FF0000CC pldmd[277]: TID: 1 Component: 3 update package transfered: 25%
+Jul 29 03:01:27 ZTS0003FF0000CC pldmd[277]: TID: 1 Component: 3 update package transfered: 50%
+Jul 29 03:01:28 ZTS0003FF0000CC pldmd[277]: TID: 1 Component: 3 update package transfered: 75%
+Jul 29 03:01:29 ZTS0003FF0000CC pldmd[277]: TID: 1 Component: 3 update package transfered: 100%
+Jul 29 03:01:29 ZTS0003FF0000CC pldmd[277]: TransferComplete received from TID: 1
+Jul 29 03:01:29 ZTS0003FF0000CC pldmd[277]: Firmware update property updation failed. PROPERTY: Progress
+Jul 29 03:01:29 ZTS0003FF0000CC pldmd[277]: TransferComplete command is success. COMPONENT: 2
+Jul 29 03:01:29 ZTS0003FF0000CC pldmd[277]: VerifyComplete command is success. COMPONENT: 2
+Jul 29 03:01:29 ZTS0003FF0000CC pldmd[277]: ApplyComplete command is success. COMPONENT: 2
+Jul 29 03:01:29 ZTS0003FF0000CC pldmd[277]: ActivateFirmware command is success
+Jul 29 03:01:29 ZTS0003FF0000CC pldmd[277]: Firmware update completed successfully for TID:1
+Jul 29 03:01:30 ZTS0003FF0000CC pldmd[277]: Sensor polling triggered
+Jul 29 03:01:30 ZTS0003FF0000CC pldmd[277]: Firmware update property updation failed. PROPERTY: Activation
+```
+---
+ firmware_update.c | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/firmware_update.c b/firmware_update.c
+index cebe952..ee5414e 100644
+--- a/firmware_update.c
++++ b/firmware_update.c
+@@ -1132,8 +1132,9 @@ int decode_cancel_update_resp(const struct pldm_msg *msg,
+ 	    response->non_functioning_component_indication;
+ 
+ 	if (*non_functioning_component_indication) {
+-		non_functioning_component_bitmap->value =
+-		    le64toh(response->non_functioning_component_bitmap);
++		memcpy(&non_functioning_component_bitmap->value,
++		       &response->non_functioning_component_bitmap,
++		       sizeof(uint64_t));
+ 	}
+ 
+ 	return PLDM_SUCCESS;
+-- 
+2.17.1
+

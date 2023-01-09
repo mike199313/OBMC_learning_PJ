@@ -1,0 +1,129 @@
+From 23ee11984c624a31aa847bbfd18e29b737ed446f Mon Sep 17 00:00:00 2001
+From: Wein <kuo.wein@inventec.com>
+Date: Wed, 11 Jan 2023 13:48:27 +0800
+Subject: [PATCH] PLDMD with multiple interface support
+
+---
+ CMakeLists.txt                                |  2 +-
+ .../xyz.openbmc_project.pldmd.service         | 17 -----------------
+ .../xyz.openbmc_project.pldmd@.service        | 18 ++++++++++++++++++
+ src/pldmd.cpp                                 | 19 ++++++++++++++-----
+ 4 files changed, 33 insertions(+), 23 deletions(-)
+ delete mode 100644 service_files/xyz.openbmc_project.pldmd.service
+ create mode 100644 service_files/xyz.openbmc_project.pldmd@.service
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 628bd76..2294475 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -81,7 +81,7 @@ set (HEADER_FILES ${PROJECT_SOURCE_DIR}/include/pldm.hpp
+ include_directories (${PROJECT_SOURCE_DIR}/include)
+ 
+ set (SERVICE_FILES
+-     ${PROJECT_SOURCE_DIR}/service_files/xyz.openbmc_project.pldmd.service)
++     ${PROJECT_SOURCE_DIR}/service_files/xyz.openbmc_project.pldmd@.service)
+ 
+ add_executable(${PROJECT_NAME} ${SRC_FILES} ${HEADER_FILES})
+ 
+diff --git a/service_files/xyz.openbmc_project.pldmd.service b/service_files/xyz.openbmc_project.pldmd.service
+deleted file mode 100644
+index 6ba0b49..0000000
+--- a/service_files/xyz.openbmc_project.pldmd.service
++++ /dev/null
+@@ -1,17 +0,0 @@
+-[Unit]
+-Description=PLDM daemon
+-After=xyz.openbmc_project.EntityManager.service
+-Wants=xyz.openbmc_project.EntityManager.service
+-StartLimitBurst=5
+-
+-[Service]
+-ExecStart=/usr/bin/pldmd
+-Type=dbus
+-BusName=xyz.openbmc_project.pldm
+-SyslogIdentifier=pldmd
+-Restart=always
+-RestartSec=5
+-
+-[Install]
+-WantedBy=multi-user.target
+-
+diff --git a/service_files/xyz.openbmc_project.pldmd@.service b/service_files/xyz.openbmc_project.pldmd@.service
+new file mode 100644
+index 0000000..15dc306
+--- /dev/null
++++ b/service_files/xyz.openbmc_project.pldmd@.service
+@@ -0,0 +1,18 @@
++[Unit]
++Description=PLDM daemon
++Requires=xyz.openbmc_project.mctpd@%i.service
++After=xyz.openbmc_project.mctpd@%i.service
++StartLimitBurst=5
++
++[Service]
++ExecStartPre=/bin/sleep 15
++ExecStart=/usr/bin/pldmd -b %i
++Type=dbus
++BusName=xyz.openbmc_project.pldm-%i
++SyslogIdentifier=pldmd-%i
++Restart=always
++RestartSec=5
++
++[Install]
++WantedBy=multi-user.target
++
+diff --git a/src/pldmd.cpp b/src/pldmd.cpp
+index bdcd091..4165b83 100644
+--- a/src/pldmd.cpp
++++ b/src/pldmd.cpp
+@@ -19,7 +19,7 @@
+ #include "platform.hpp"
+ #include "pldm.hpp"
+ #include "utils.hpp"
+-
++#include <CLI/CLI.hpp>
+ #include <queue>
+ 
+ extern "C" {
+@@ -669,8 +669,15 @@ void enableDebug()
+     }
+ }
+ 
+-int main(void)
++int main(int argc, char* argv[])
+ {
++    CLI::App app("PLDM Daemon");
++    std::string binding;
++    app.add_option("-b,--binding", binding,
++                   "PLDM Physical Binding. Supported: -b smbus, -b pcie")
++        ->required();
++    CLI11_PARSE(app, argc, argv);
++    
+     auto ioc = std::make_shared<boost::asio::io_context>();
+     setIoContext(ioc);
+     boost::asio::signal_set signals(*ioc, SIGINT, SIGTERM);
+@@ -690,7 +697,7 @@ int main(void)
+     auto conn = std::make_shared<sdbusplus::asio::connection>(*ioc);
+ 
+     auto objectServer = std::make_shared<sdbusplus::asio::object_server>(conn);
+-    conn->request_name(pldmService);
++    conn->request_name((std::string(pldmService) + "-" + binding).c_str());
+     setSdBus(conn);
+     setObjServer(objectServer);
+ 
+@@ -698,8 +705,10 @@ int main(void)
+ 
+     // TODO - Read from entity manager about the transport bindings to be
+     // supported by PLDM
+-    mctpw::MCTPConfiguration config(mctpw::MessageType::pldm,
+-                                    mctpw::BindingType::mctpOverPcieVdm);
++    mctpw::BindingType bindingType{};
++    (binding == "pcie") ? bindingType = mctpw::BindingType::mctpOverPcieVdm
++                        : bindingType = mctpw::BindingType::mctpOverSmBus;
++    mctpw::MCTPConfiguration config(mctpw::MessageType::pldm, bindingType);
+ 
+     pldm::mctpWrapper = std::make_unique<mctpw::MCTPWrapper>(
+         conn, config, onDeviceUpdate, pldm::msgRecvCallback);
+-- 
+2.33.0
+

@@ -31,3 +31,6 @@ OBMC_IMAGE_EXTRA_INSTALL:append = " acpi-power-state-daemon"
 OBMC_IMAGE_EXTRA_INSTALL:append = " system-watchdog"
 OBMC_IMAGE_EXTRA_INSTALL:append = " configuration-manager"
 OBMC_IMAGE_EXTRA_INSTALL:append = " configure-firmware-status"
+OBMC_IMAGE_EXTRA_INSTALL:append = " mctpd"
+OBMC_IMAGE_EXTRA_INSTALL:append = " pldmd"
+

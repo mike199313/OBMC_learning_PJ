@@ -1,0 +1,14 @@
+diff --git a/platform.h b/platform.h
+index 9d73203..5b363d1 100644
+--- a/platform.h
++++ b/platform.h
+@@ -240,7 +240,8 @@ enum pldm_sensor_unit {
+ 	PLDM_SENSOR_UNIT_AMPS = 6,
+ 	PLDM_SENSOR_UNIT_WATTS = 7,
+ 	PLDM_SENSOR_UNIT_RPM = 19,
+-	PLDM_SENSOR_UNIT_SECONDS = 21
++	PLDM_SENSOR_UNIT_SECONDS = 21,
++	PLDM_SENSOR_UNIT_BITS = 60
+ 	// TODO: Add other sensor units
+ };
+ 

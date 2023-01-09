@@ -1,0 +1,21 @@
+From ef8b02e16fb09bedea5a96023b937fbec1e298d3 Mon Sep 17 00:00:00 2001
+From: "Fred.Chang" <chang.fredys@inventec.com>
+Date: Tue, 23 Aug 2022 14:28:04 +0800
+Subject: [PATCH] fix build error for mctpd
+
+---
+ CMakeLists.txt | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 7ad941c..4d7ad41 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -24,7 +24,6 @@ set(CMAKE_CXX_FLAGS
+     -Woverloaded-virtual \
+     -Wpedantic \
+     -Wconversion \
+-    -Wnull-dereference \
+     -Wdouble-promotion \
+     -Wformat=2 \
+ ")

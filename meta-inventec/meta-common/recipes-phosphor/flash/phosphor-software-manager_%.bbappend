@@ -6,6 +6,8 @@ SRC_URI += " \
             file://0004-Fix-Updateable-parameter-displays-false-issue.patch \
             file://0005-add-cpld-mb-and-scm-dbus-object-and-version.patch \
             file://0006-MS-spec-BIOS-securely-transfer.patch \
+            file://0007-PLDM-BMC-software-updater-integration.patch \
+            file://0008-PLDM-firmware-update-with-specified-PID-and-interface.patch \
            "
 
 #add cpld service

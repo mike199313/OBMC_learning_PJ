@@ -1,0 +1,25 @@
+From 138c195c043a167b3c3ab1a59e7f877077cbe27e Mon Sep 17 00:00:00 2001
+From: Wein <kuo.wein@inventec.com>
+Date: Fri, 13 Jan 2023 15:40:47 +0800
+Subject: [PATCH] Custom modification of ACC100 for MCTPD
+
+---
+ src/mctp_bridge.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/mctp_bridge.cpp b/src/mctp_bridge.cpp
+index 1dc0992..56b64b2 100644
+--- a/src/mctp_bridge.cpp
++++ b/src/mctp_bridge.cpp
+@@ -196,7 +196,7 @@ bool MCTPBridge::getMsgTypeSupportCtrlCmd(
+ 
+     std::copy_n(resp.begin(), minMsgTypeRespLen,
+                 reinterpret_cast<uint8_t*>(msgTypeSupportResp));
+-    if ((resp.size() - minMsgTypeRespLen) != msgTypeSupportResp->msgTypeCount)
++    if ((resp.size() - minMsgTypeRespLen) < msgTypeSupportResp->msgTypeCount)
+     {
+         phosphor::logging::log<phosphor::logging::level::ERR>(
+             "Get Message Type Support: Invalid response length");
+-- 
+2.33.0
+

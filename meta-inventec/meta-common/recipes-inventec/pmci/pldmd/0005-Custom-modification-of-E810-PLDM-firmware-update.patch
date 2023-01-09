@@ -1,0 +1,41 @@
+From 7d00cbbd59a9da7b91ec45be29cbbb6762c6ac81 Mon Sep 17 00:00:00 2001
+From: Wein <kuo.wein@inventec.com>
+Date: Thu, 12 Jan 2023 16:20:34 +0800
+Subject: [PATCH] Custom modification of E810 PLDM firmware update
+
+---
+ src/firmware_update.cpp | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/firmware_update.cpp b/src/firmware_update.cpp
+index 0fd6fc1..ed39d36 100644
+--- a/src/firmware_update.cpp
++++ b/src/firmware_update.cpp
+@@ -883,6 +883,7 @@ int FWUpdate::processUpdateComponent(const boost::asio::yield_context yield,
+ 
+         return PLDM_SUCCESS;
+     }
++    component.update_option_flags.value = 1; // set force update flag
+     componentVersionString.ptr =
+         reinterpret_cast<const uint8_t*>(versionStr.c_str());
+     componentVersionString.length = versionStr.length();
+@@ -1689,6 +1690,7 @@ int FWUpdate::activateFirmware(
+     std::vector<uint8_t> pldmReq(sizeof(struct PLDMEmptyRequest) +
+                                  sizeof(struct activate_firmware_req));
+     struct pldm_msg* msgReq = reinterpret_cast<pldm_msg*>(pldmReq.data());
++    selfContainedActivationReq = false; // disable self-contained activation for e810
+     int retVal = encode_activate_firmware_req(
+         instanceID, msgReq, sizeof(struct activate_firmware_req),
+         selfContainedActivationReq);
+@@ -1698,7 +1700,7 @@ int FWUpdate::activateFirmware(
+         return retVal;
+     }
+     std::vector<uint8_t> pldmResp;
+-    if (!sendReceivePldmMessage(yield, currentTid, timeout, retryCount, pldmReq,
++    if (!sendReceivePldmMessage(yield, currentTid, 20000, retryCount, pldmReq,
+                                 pldmResp))
+     {
+         phosphor::logging::log<phosphor::logging::level::ERR>(
+-- 
+2.33.0
+
