@@ -8,7 +8,7 @@
 
 namespace ipmi
 {
-static constexpr const bool featureSelfTestFruSupported = false;
+static constexpr const bool featureSelfTestFruSupported = true;
 static constexpr const bool featureSelfTestSelSupported = true;
 static constexpr const bool featureSelfTestSDRSupported = true;
 static constexpr const bool featureSelfTestIpmbSupported = false;

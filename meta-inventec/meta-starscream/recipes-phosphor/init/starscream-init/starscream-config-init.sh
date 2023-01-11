@@ -1,84 +1,5 @@
 #!/bin/sh
 
-#fru device path & binary path
-MB_PATH="/sys/bus/i2c/devices/i2c-6/6-0051"
-MB_BIN_PATH="/usr/sbin/fru_eeprom_init.bin"
-SCM_PATH="/sys/bus/i2c/devices/i2c-12/12-0051"
-SCM_BIN_PATH="/usr/sbin/fru_eeprom_init_1.bin"
-RUNBMC_PATH="/sys/bus/i2c/devices/i2c-8/8-0051"
-RUNBMC_BIN_PATH="/usr/sbin/fru_eeprom_init_2.bin"
-RISER1A_PATH=""
-RISER1A_BIN_PATH="/usr/sbin/fru_eeprom_init_3.bin"
-RISER1B_PATH=""
-RISER1B_BIN_PATH="/usr/sbin/fru_eeprom_init_4.bin"
-RISER2_PATH=""
-RISER2_BIN_PATH="/usr/sbin/fru_eeprom_init_5.bin"
-BP1_PATH=""
-BP1_BIN_PATH="/usr/sbin/fru_eeprom_init_6.bin"
-BP2_PATH=""
-BP2_BIN_PATH="/usr/sbin/fru_eeprom_init_7.bin"
-
-#cut hexdump string 2 Btyes
-DEVICE_EEPROM_BYTE=4
-
-#check and program eeprom
-program_eeprom()
-{
-    echo "Programming FRU Deivce : $1"
-    if [ -z $3 ]; then
-        echo "eeprom disable : $1"
-    else
-        DIVICE_EEPORM_START_BYTE=8
-        hexdump_data=`hexdump -n 8 ${3}/eeprom`
-        hexdump_data_len=$(echo $hexdump_data | wc -L)
-        # "hexdump -n 8 eeprom" will get data from 8 Bytes=0000000 0001 0e01 001e d200 0000008 data length=35
-        if [ $hexdump_data_len == 35 ]; then
-            data_cut=0
-            data_checksum=0
-            # cut the data 0001 0e01 001e d200 and accumulate all
-            for (( k=1; k<=4; k=k+1 )); do
-                data_cut="${hexdump_data:$DIVICE_EEPORM_START_BYTE:$DEVICE_EEPROM_BYTE}"
-                data_cutbyte1="0x${data_cut:0:2}"
-                data_cutbyte2="0x${data_cut:2:2}"
-                data_checksum=$(($data_checksum+$data_cutbyte1+$data_cutbyte2))
-                # 2 bytes + 1 '\n' = 5 Length
-                DIVICE_EEPORM_START_BYTE=$(($DIVICE_EEPORM_START_BYTE+5))
-            done
-            # accumulate checksum data must be 0x100=256
-            if [ $data_checksum == 256 ]; then
-                echo "${3} already have eeprom"
-            else
-                program_data=`cat ${2} > ${3}/eeprom`
-                if [ -x $program_data ]; then
-                    echo "${3} program succeeded"
-                else
-                    echo "program error"
-                fi
-            fi
-        else
-            echo "error eeprom : ${3}"
-            program_data=`cat ${2} > ${3}/eeprom`
-            if [ -x $program_data ]; then
-                echo "${3} program succeeded"
-            else
-                echo "program error"
-            fi
-        fi
-    fi
-}
-
-#fru list to program
-program_eeprom_main()
-{
-    program_eeprom "MB" $MB_BIN_PATH $MB_PATH
-    program_eeprom "SCM" $SCM_BIN_PATH $SCM_PATH
-    program_eeprom "RUNBMC" $RUNBMC_BIN_PATH $RUNBMC_PATH 
-    program_eeprom "RISER1A" $RISER1A_BIN_PATH $RISER1A_PATH
-    program_eeprom "RISER1B" $RISER1B_BIN_PATH $RISER1B_PATH
-    program_eeprom "RISER2" $RISER2_BIN_PATH $RISER2_PATH
-    program_eeprom "BP1" $BP1_BIN_PATH $BP1_PATH
-    program_eeprom "BP2" $BP2_BIN_PATH $BP2_PATH
-}
 
 # Remove Riser and BP json config for entity-manager
 ENTITY_MANAGER_CONIG_PATH="/usr/share/entity-manager/configurations"
@@ -282,6 +203,3 @@ echo "BP1 $BP1_PRESENT, BP2 $BP2_PRESENT"
 # Give BP1 basic I2C bus and BP2 basic I2C bus
 # If not present, set to 0
 bash $CREATE_JSON_SH nvme $BP1_NVME_BASIC_I2C $BP2_NVME_BASIC_I2C
-
-#program the fru devices
-program_eeprom_main
