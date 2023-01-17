@@ -1,0 +1,279 @@
+From 3d488effd86a375cbc0e93b564552a57cf765725 Mon Sep 17 00:00:00 2001
+From: link <link@inventec.com>
+Date: Thu, 29 Dec 2022 16:42:15 +0800
+Subject: [PATCH] Modify zone startup mechanism
+
+- When count < 5, zone will not startup if there has unreadable sensor
+- When count >= 5, zone will startup and ignore unreadable sensor
+- When count >= 10, zone will ignore all the rules and startup
+---
+ main.cpp            | 16 ++++++++-----
+ pid/builder.cpp     | 57 +++++++++++++++++++++++++++++++++++++++++++--
+ pid/builder.hpp     |  4 ++--
+ sensors/builder.cpp | 22 +++++++++++++----
+ sensors/builder.hpp |  3 ++-
+ 5 files changed, 87 insertions(+), 15 deletions(-)
+
+diff --git a/main.cpp b/main.cpp
+index 09d9b70..028c990 100644
+--- a/main.cpp
++++ b/main.cpp
+@@ -64,6 +64,8 @@ std::map<int64_t, conf::ZoneConfig> zoneDetailsConfig = {};
+ /** the swampd daemon will check for the existence of this file. */
+ constexpr auto jsonConfigurationPath = "/usr/share/swampd/config.json";
+ std::string configPath = "";
++/** when counting over, ignore all the sensor whether is success or failed*/
++constexpr int overWaitCount = 10;
+ 
+ /* async io context for operation */
+ boost::asio::io_context io;
+@@ -80,7 +82,7 @@ static sdbusplus::asio::connection
+ namespace pid_control
+ {
+ 
+-void restartControlLoops()
++void restartControlLoops(const int count)
+ {
+     static SensorManager mgmr;
+     static std::unordered_map<int64_t, std::shared_ptr<ZoneInterface>> zones;
+@@ -133,8 +135,10 @@ void restartControlLoops()
+         }
+     }
+ 
+-    mgmr = buildSensors(sensorConfig, passiveBus, hostBus);
+-    zones = buildZones(zoneConfig, zoneDetailsConfig, mgmr, modeControlBus);
++    //validSensor to record sensor status
++    std::map<std::string, bool> validSensor = {};
++    mgmr = buildSensors(sensorConfig, passiveBus, hostBus, validSensor, count);
++    zones = buildZones(zoneConfig, zoneDetailsConfig, mgmr, modeControlBus, validSensor);
+ 
+     if (0 == zones.size())
+     {
+@@ -172,9 +176,9 @@ void tryRestartControlLoops(bool first)
+         }
+ 
+         // for the last loop, don't elminate the failure of restartControlLoops.
+-        if (count >= 5)
++        if (count >= overWaitCount)
+         {
+-            restartControlLoops();
++            restartControlLoops(count);
+             // reset count after succesful restartControlLoops()
+             count = 0;
+             return;
+@@ -183,7 +187,7 @@ void tryRestartControlLoops(bool first)
+         // retry when restartControlLoops() has some failure.
+         try
+         {
+-            restartControlLoops();
++            restartControlLoops(count);
+             // reset count after succesful restartControlLoops()
+             count = 0;
+         }
+diff --git a/pid/builder.cpp b/pid/builder.cpp
+index d7a60b4..ce1bae1 100644
+--- a/pid/builder.cpp
++++ b/pid/builder.cpp
+@@ -23,7 +23,7 @@
+ #include "pid/thermalcontroller.hpp"
+ #include "pid/zone.hpp"
+ #include "pid/zone_interface.hpp"
+-
++#include "errors/exception.hpp"
+ #include <sdbusplus/bus.hpp>
+ 
+ #include <cstdint>
+@@ -47,7 +47,8 @@ static std::string getControlPath(int64_t zone)
+ std::unordered_map<int64_t, std::shared_ptr<ZoneInterface>>
+     buildZones(const std::map<int64_t, conf::PIDConf>& zonePids,
+                std::map<int64_t, conf::ZoneConfig>& zoneConfigs,
+-               SensorManager& mgr, sdbusplus::bus_t& modeControlBus)
++               SensorManager& mgr, sdbusplus::bus_t& modeControlBus,
++          std::map<std::string, bool>& validSensor)
+ {
+     std::unordered_map<int64_t, std::shared_ptr<ZoneInterface>> zones;
+ 
+@@ -73,6 +74,46 @@ std::unordered_map<int64_t, std::shared_ptr<ZoneInterface>>
+             modeControlBus, getControlPath(zoneId).c_str(), deferSignals);
+ 
+         std::cerr << "Zone Id: " << zone->getZoneID() << "\n";
++        /*
++         * counting each and total of valid sensor fan and temp
++         * pchFind for checking Zone must have PCH sensor
++         */
++        int missingFanCount = 0, totalFanCount = 0,
++            missingTmpCount = 0, totalTmpCount = 0;
++        for (const auto& [name, info] : pidConfig){
++            if(info.type == "fan"){
++                for (const auto& f : info.inputs){
++                    totalFanCount++;
++                    if(!validSensor[f]){
++                        missingFanCount++;
++                    }
++                }
++            }else if (isThermalType(info.type)){
++                for (const auto& t : info.inputs){
++                    totalTmpCount++;
++                    if(!validSensor[t]){
++                        missingTmpCount++;
++                    }
++                }
++            }else if (info.type == "stepwise"){
++                for (const auto& t : info.inputs){
++                    totalTmpCount++;
++                    if(!validSensor[t]){
++                        missingTmpCount++;
++                    }
++                }
++            }
++        }
++        if(missingFanCount == totalFanCount){
++            throw SensorBuildException(
++                "Failed to create zone " + std::to_string(zone->getZoneID()) +
++                " due to all fans fail");
++        }
++        if(missingTmpCount == totalTmpCount){
++            throw SensorBuildException(
++                "Failed to create zone " + std::to_string(zone->getZoneID()) +
++                " due to all thermal and stepwise fail");
++        }
+ 
+         // For each PID create a Controller and a Sensor.
+         for (const auto& [name, info] : pidConfig)
+@@ -88,6 +129,10 @@ std::unordered_map<int64_t, std::shared_ptr<ZoneInterface>>
+             {
+                 for (const auto& i : info.inputs)
+                 {
++                    if(!validSensor[i]){
++                        std::cerr << "Missing fan " << i << " is not added to zone\n";
++                        continue;
++                    }
+                     inputs.push_back(i);
+                     zone->addFanInput(i);
+                 }
+@@ -100,6 +145,10 @@ std::unordered_map<int64_t, std::shared_ptr<ZoneInterface>>
+             {
+                 for (const auto& i : info.inputs)
+                 {
++                    if(!validSensor[i]){
++                        std::cerr << "Missing thermal " << i << " is not added to zone\n";
++                        continue;
++                    }
+                     inputs.push_back(i);
+                     zone->addThermalInput(i);
+                 }
+@@ -114,6 +163,10 @@ std::unordered_map<int64_t, std::shared_ptr<ZoneInterface>>
+             {
+                 for (const auto& i : info.inputs)
+                 {
++                    if(!validSensor[i]){
++                        std::cerr << "Missing stepwise " << i << " is not added to zone\n";
++                        continue;
++                    }
+                     inputs.push_back(i);
+                     zone->addThermalInput(i);
+                 }
+diff --git a/pid/builder.hpp b/pid/builder.hpp
+index dbfc229..1669a29 100644
+--- a/pid/builder.hpp
++++ b/pid/builder.hpp
+@@ -15,6 +15,6 @@ namespace pid_control
+ std::unordered_map<int64_t, std::shared_ptr<ZoneInterface>>
+     buildZones(const std::map<int64_t, conf::PIDConf>& zonePids,
+                std::map<int64_t, conf::ZoneConfig>& zoneConfigs,
+-               SensorManager& mgr, sdbusplus::bus_t& modeControlBus);
+-
++               SensorManager& mgr, sdbusplus::bus_t& modeControlBus,
++               std::map<std::string, bool>& missingSensor);
+ }
+diff --git a/sensors/builder.cpp b/sensors/builder.cpp
+index 7c335c6..67e1ea2 100644
+--- a/sensors/builder.cpp
++++ b/sensors/builder.cpp
+@@ -37,6 +37,9 @@
+ #include "sysfs/sysfswrite.hpp"
+ #include "util.hpp"
+ 
++/* dbus need time to build path, ignore unread sensor if over the count */
++constexpr int waitingDBusCount = 5;
++
+ namespace pid_control
+ {
+ 
+@@ -44,7 +47,8 @@ static constexpr bool deferSignals = true;
+ 
+ SensorManager
+     buildSensors(const std::map<std::string, conf::SensorConfig>& config,
+-                 sdbusplus::bus_t& passive, sdbusplus::bus_t& host)
++                 sdbusplus::bus_t& passive, sdbusplus::bus_t& host,
++                 std::map<std::string, bool>& validSensor,const int count)
+ {
+     SensorManager mgmr(passive, host);
+     auto& hostSensorBus = mgmr.getHostBus();
+@@ -96,9 +100,13 @@ SensorManager
+                 }
+                 if (ri == nullptr)
+                 {
+-                    throw SensorBuildException(
+-                        "Failed to create dbus passive sensor: " + name +
+-                        " of type: " + info->type);
++                    //waiting dbus start the sensor service, it needs time to start
++                    if(count < waitingDBusCount){
++                        throw SensorBuildException(
++                            "Failed to create dbuspassive sensor, maybe the service is not ready");
++                    }else{
++                        continue;
++                    }
+                 }
+                 break;
+             case IOInterfaceType::EXTERNAL:
+@@ -106,6 +114,9 @@ SensorManager
+                 break;
+             case IOInterfaceType::SYSFS:
+                 ri = std::make_unique<SysFsRead>(info->readPath);
++                if (ri == nullptr){
++                    std::cerr << "Failed to create sysfs sensor: " << name << " of type: " << info->type;
++                }
+                 break;
+             default:
+                 ri = std::make_unique<WriteOnly>();
+@@ -160,6 +171,7 @@ SensorManager
+ 
+             auto sensor = std::make_unique<PluggableSensor>(
+                 name, info->timeout, std::move(ri), std::move(wi));
++            validSensor[name] = !std::isnan(sensor->read().value);
+             mgmr.addSensor(info->type, name, std::move(sensor));
+         }
+         else if (info->type == "temp" || info->type == "margin" ||
+@@ -181,6 +193,7 @@ SensorManager
+                 auto sensor = HostSensor::createTemp(
+                     name, info->timeout, hostSensorBus, info->readPath.c_str(),
+                     deferSignals);
++                validSensor[name] = !std::isnan(sensor->read().value);
+                 mgmr.addSensor(info->type, name, std::move(sensor));
+             }
+             else
+@@ -188,6 +201,7 @@ SensorManager
+                 wi = std::make_unique<ReadOnlyNoExcept>();
+                 auto sensor = std::make_unique<PluggableSensor>(
+                     name, info->timeout, std::move(ri), std::move(wi));
++                validSensor[name] = !std::isnan(sensor->read().value);
+                 mgmr.addSensor(info->type, name, std::move(sensor));
+             }
+         }
+diff --git a/sensors/builder.hpp b/sensors/builder.hpp
+index 14eabad..553d7fe 100644
+--- a/sensors/builder.hpp
++++ b/sensors/builder.hpp
+@@ -17,6 +17,7 @@ namespace pid_control
+  */
+ SensorManager
+     buildSensors(const std::map<std::string, conf::SensorConfig>& config,
+-                 sdbusplus::bus_t& passive, sdbusplus::bus_t& host);
++                 sdbusplus::bus_t& passive, sdbusplus::bus_t& host,
++                 std::map<std::string, bool>& validSensor, const int count);
+ 
+ } // namespace pid_control
+-- 
+2.17.1
+

@@ -1,0 +1,674 @@
+From b132bc62f918d2af8fbd618a02ab195616767e26 Mon Sep 17 00:00:00 2001
+From: link <link@inventec.com>
+Date: Tue, 31 Jan 2023 17:25:35 +0800
+Subject: [PATCH] ms spec of sensor reading fail condition and fail safe mode
+
+20230207 - Bug 1545 - [SW][common][phosphor-pid-control] - Update phosphor pid control
+20221222 - Bug 1444 - [Transformers][OpenBMC] Verify the SEL event failed after chassis power off then power on
+20220527 - Bug 1012 - [SW][transformers][transformers-nuv][phosphor-pid-control] - Implement ms spec and remove conclict of acpi power control
+
+======================================================================================================
+Bug 1545 - [SW][common][phosphor-pid-control] - Update phosphor pid control
+
+Symptom/Reason :
+    - Update pid commit to latest commit 239aa7d705e69d37383df37f6cbb67c0d9425423 of openbmc phosphor-pid-control
+    - Porting patch from Viztruck
+    - Update old patch to match the latest commit
+    - Remove duplication of functions compare to the latest commit
+Root Cause     : N/A
+
+Solution/Change:
+    [common][phosphor-pid-control]
+        - Remove duplicate function, fix-sensor-reading-logging-problem.patch
+        - Remove duplicate function, Change-service-setting-from-name-to-readpath.patch
+        - Porting moving average method from Viztruck and additonal add to thermal controller
+        - Update zone startup mechanism
+        - Add patch of reading check from starscream to solve some sensor is in sdr but actually no reading
+        - Remove duplicate function, Add-upatetime-attribute-to-config-json-for-different.patch
+        - Add accept missing flag to allow all sensors in the group to be unfound
+        - Move pid control algorithm from platform layer to common layer
+        - Update pid control algorithm
+        - Porting p gain config from vizturck
+    [transformers][transformers-nuv][phosphor-pid-control]
+        - Move pid control algorithm to common layer
+        - Update ms spec patch
+        - Modify the timing of ms sensors checking
+        - Update config json
+    [starscream][phosphor-pid-control]
+        - Move pid control algorithm to common layer
+        - Remove duplicate function, allow-sensor-inputs-all-fail-except-CPU-and-DIMM.patch
+        - Remove duplicate function, Add-sensor-value-reading-to-check-sensor-is-really-o.patch
+        - Update config json
+
+Entry Test     :
+    <Check new config attribute is in config>
+        sysadmin@transformers:~# cat /usr/share/swampd/config.json
+        "zones" : [{"id": 0,
+            "updateThermalsTimeMS": 1000,
+            "pids": [
+                {   "acceptAllSensorsMissing": false,
+                    "inputs": ["FAN1_TACH1","FAN2_TACH1","FAN3_TACH1","FAN4_TACH1",
+                        "FAN5_TACH1","FAN6_TACH1","FAN7_TACH1","FAN8_TACH1"],
+                },{ "name": "PCH_Temp",
+                    "acceptAllSensorsMissing": false,
+                    "inputs": ["PCH_Temp"],
+                    "pid": {
+                        "movingAveragePoint": 2,
+                        "proportionalGains":{
+                            "reading":{"0": 0.0,"1": 1.0,"2": 3.0,
+                                "3": 5.0,"4": 7.0,"5": 9.0,"6": 11.0
+                            },"output":{"0": 0.07,"1": 0.45,"2": 0.55,
+                                "3": 0.65,"4": 0.75,"5": 0.85,"6": 1.0}
+                        }
+                    }
+                },{ "name": "CPU_Temp",
+                    "acceptAllSensorsMissing": false,
+                    "inputs": ["DTS_CPU1","Die_CPU1","DTS_CPU2","Die_CPU2"],
+                    "pid": {
+                        "movingAveragePoint": 2,
+                        "proportionalGains":{
+                            "reading":{"0": 0.0,"1": 1.0,"2": 3.0,
+                                "3": 5.0,"4": 7.0,"5": 9.0,"6": 11.0
+                            },"output":{"0": 0.07,"1": 0.45,"2": 0.55,
+                                "3": 0.65,"4": 0.75,"5": 0.85,"6": 1.0}
+                        }
+                    }
+                },{
+                    "name": "CPU_DIMM",
+                    "acceptAllSensorsMissing": false,
+                    "inputs": ["DIMM_A0_CPU1","DIMM_B0_CPU1","DIMM_C0_CPU1","DIMM_D0_CPU1",
+                        "DIMM_E0_CPU1","DIMM_F0_CPU1","DIMM_G0_CPU1","DIMM_H0_CPU1","DIMM_A1_CPU1",
+                        "DIMM_B1_CPU1","DIMM_C1_CPU1","DIMM_D1_CPU1","DIMM_E1_CPU1","DIMM_F1_CPU1",
+                        "DIMM_G1_CPU1","DIMM_H1_CPU1","DIMM_A0_CPU2","DIMM_B0_CPU2","DIMM_C0_CPU2",
+                        "DIMM_D0_CPU2","DIMM_E0_CPU2","DIMM_F0_CPU2","DIMM_G0_CPU2","DIMM_H0_CPU2",
+                        "DIMM_A1_CPU2","DIMM_B1_CPU2","DIMM_C1_CPU2","DIMM_D1_CPU2","DIMM_E1_CPU2",
+                        "DIMM_F1_CPU2","DIMM_G1_CPU2","DIMM_H1_CPU2"],
+                    "pid": {
+                        "movingAveragePoint": 2,
+                        "proportionalGains":{
+                            "reading":{"0": 0.0,"1": 1.0,"2": 3.0,
+                                "3": 5.0,"4": 7.0,"5": 9.0,"6": 11.0
+                            },"output":{"0": 0.07,"1": 0.45,"2": 0.55,
+                                "3": 0.65,"4": 0.75,"5": 0.85,"6": 1.0}
+                        }
+                    }
+                }
+            ]
+        }]
+    <Check sdr list and pid is startup>
+        sysadmin@transformers:~# ipmitool sdr list
+        DTS_CPU1         | 62 degrees C      | ok
+        Die_CPU1         | 62 degrees C      | ok
+        PCH_Temp         | 30 degrees C      | ok
+        DIMM_A1_CPU1     | 34 degrees C      | ok
+        sysadmin@transformers:~# journalctl -u phosphor-pid-control
+        Jan 31 09:32:54 transformers swampd[469]: Zone Id: 0
+        Jan 31 09:32:54 transformers swampd[469]: PID name: CPU_DIMM
+        Jan 31 09:32:54 transformers swampd[469]: inputs: DIMM_A1_CPU1,
+        Jan 31 09:32:54 transformers swampd[469]: PID name: CPU_Temp
+        Jan 31 09:32:54 transformers swampd[469]: inputs: DTS_CPU1, Die_CPU1,
+        Jan 31 09:32:54 transformers swampd[469]: PID name: PCH_Temp
+        Jan 31 09:32:54 transformers swampd[469]: inputs: PCH_Temp,
+        Jan 31 09:32:54 transformers swampd[469]: PID name: fan-group
+        Jan 31 09:32:54 transformers swampd[469]: inputs: FAN1_TACH1, FAN2_TACH1, FAN3_TACH1, FAN4_TACH1, FAN5_TACH1, FAN6_TACH1, FAN7_TACH1, FAN8_TACH1,
+        Jan 31 09:32:54 transformers swampd[469]: pushing zone 0
+    <Remove chassis and check pwm is rise>
+        admin@transformers:~# ipmitool sdr list
+       <Simulate fan is losing speed and check sel>
+        sysadmin@transformers:~# cat fan-disturbing.sh
+        #!/bin/sh
+        while :
+        do
+            echo 1 > /sys/class/hwmon/*/pwm0
+            echo 3 > /sys/class/hwmon/*/pwm2
+            echo 5 > /sys/class/hwmon/*/pwm4
+        done
+        sysadmin@transformers:~# bash fan-disturbing.sh
+        sysadmin@transformers:~# cat /sys/class/hwmon/*/pwm*
+        1 137 3 137 5 137 137 137
+        sysadmin@transformers:~# ipmitool sel elist | grep Sensors_read
+          33 | 01/31/23 | 09:33:42 UTC | Unknown Sensors_reading_ |  | Asserted
+          3c | 01/31/23 | 09:33:45 UTC | Unknown Sensors_reading_ |  | Asserted
+        sysadmin@transformers:~# cat  /var/lib/sel_log/ipmi_sel | grep Sensors_read
+        2023-01-31T09:33:42.605725+00:00 51,2,0500FF,20,/xyz/openbmc_project/sensors/oem_event_71h/oem_e1h/Sensors_reading_status,1
+        2023-01-31T09:33:45.605615+00:00 60,2,0500FF,20,/xyz/openbmc_project/sensors/oem_event_71h/oem_e1h/Sensors_reading_status,1
+    <Check thermal read fail>
+        sysadmin@transformers:~# ipmitool sdr list
+        DTS_CPU1         | 55 degrees C      | ok
+        Die_CPU1         | 55 degrees C      | ok
+        sysadmin@transformers:~# ipmitool power off
+        Chassis Power Control: Cycle
+        sysadmin@transformers:~# ipmitool sdr list
+        DTS_CPU1         | no reading        | ns
+        Die_CPU1         | no reading        | ns
+    <Check fail safe mode 100% pwm and sel>
+        (wait for about 60 seconds)
+        sysadmin@transformers:~# journalctl -u phosphor-pid-control -n 10
+        Jan 31 09:40:58 transformers swampd[469]: Entering fail safe mode
+        sysadmin@transformers:~# ipmitool sdr list
+        FAN_PWM_1        | 99.96 unspecifi   | ok
+        FAN_PWM_2        | 99.96 unspecifi   | ok
+        FAN_PWM_3        | 99.96 unspecifi   | ok
+        FAN_PWM_4        | 99.96 unspecifi   | ok
+        FAN_PWM_5        | 99.96 unspecifi   | ok
+        FAN_PWM_6        | 99.96 unspecifi   | ok
+        FAN_PWM_7        | 99.96 unspecifi   | ok
+        FAN_PWM_8        | 99.96 unspecifi   | ok
+        sysadmin@transformers:~# ipmitool sel elist | grep Sensors_read
+          4d | 01/31/23 | 09:40:58 UTC | Unknown Sensors_reading_ |  | Asserted
+        sysadmin@transformers:~# cat  /var/lib/sel_log/ipmi_sel | grep Sensors_read
+        2023-01-31T09:40:58.709209+00:00 77,2,1000FF,20,/xyz/openbmc_project/sensors/oem_event_71h/oem_e1h/Sensors_reading_status,1
+    <Power on, check sensors are ok and fail safe mode sel>
+        sysadmin@transformers:~# ipmitool power on
+        Chassis Power Control: Up/On
+        sysadmin@transformers:~# ipmitool sdr list
+        DTS_CPU1         | 51 degrees C      | ok
+        Die_CPU1         | 51 degrees C      | ok
+        sysadmin@transformers:~# journalctl -u phosphor-pid-control -n 10
+        Jan 31 09:45:33 transformers swampd[469]: Exiting fail safe mode
+        sysadmin@transformers:~# ipmitool sel elist | grep Sensors_read
+          c1 | 01/31/23 | 09:45:33 UTC | Unknown Sensors_reading_ |  | Asserted
+        sysadmin@transformers:~# cat  /var/lib/sel_log/ipmi_sel | grep Sensors_read
+        2023-01-31T09:45:33.807093+00:00 193,2,1001FF,20,/xyz/openbmc_project/sensors/oem_event_71h/oem_e1h/Sensors_reading_status,1
+    <Check unfound sensor is not added to zone>
+        sysadmin@starscream:~# journalctl -u phosphor-pid-control
+        Sep 03 00:19:32 starscream swampd[554]: Zone Id: 0
+        Sep 03 00:19:32 starscream swampd[554]: PID name: DIMM_Temp
+        Sep 03 00:19:32 starscream swampd[554]: inputs: DIMM_P0_A0_TEMP,
+        Sep 03 00:19:32 starscream swampd[554]: PID name: Rightear_Temp
+        Sep 03 00:19:32 starscream swampd[554]: inputs: Temp_rightear,
+        Sep 03 00:19:32 starscream swampd[554]: PID name: fan-group
+        Sep 03 00:19:32 starscream swampd[554]: inputs: FAN0, FAN1, FAN2, FAN3, FAN4, FAN5,
+        Sep 03 00:19:32 starscream swampd[554]: PID name: nvme
+        Sep 03 00:19:32 starscream swampd[554]: Missing thermal BP1_EDSFF_J1 is not added to zone
+        Sep 03 00:19:32 starscream swampd[554]: Missing thermal BP1_EDSFF_J2 is not added to zone
+        Sep 03 00:19:32 starscream swampd[554]: Missing thermal BP1_EDSFF_J3 is not added to zone
+        Sep 03 00:19:32 starscream swampd[554]: Missing thermal BP1_EDSFF_J4 is not added to zone
+        Sep 03 00:19:32 starscream swampd[554]: Missing thermal BP1_EDSFF_J5 is not added to zone
+        Sep 03 00:19:32 starscream swampd[554]: Missing thermal BP1_EDSFF_J6 is not added to zone
+        Sep 03 00:19:32 starscream swampd[554]: Missing thermal BP1_EDSFF_J7 is not added to zone
+        Sep 03 00:19:32 starscream swampd[554]: Missing thermal BP1_EDSFF_J8 is not added to zone
+        Sep 03 00:19:32 starscream swampd[554]: Missing thermal BP1_EDSFF_J9 is not added to zone
+        Sep 03 00:19:32 starscream swampd[554]: Missing thermal BP1_EDSFF_J10 is not added to zone
+        Sep 03 00:19:32 starscream swampd[554]: Missing thermal BP1_EDSFF_J11 is not added to zone
+        Sep 03 00:19:32 starscream swampd[554]: Missing thermal BP2_EDSFF_J1 is not added to zone
+        Sep 03 00:19:32 starscream swampd[554]: Missing thermal BP2_EDSFF_J2 is not added to zone
+        Sep 03 00:19:32 starscream swampd[554]: Missing thermal BP2_EDSFF_J3 is not added to zone
+        Sep 03 00:19:32 starscream swampd[554]: Missing thermal BP2_EDSFF_J4 is not added to zone
+        Sep 03 00:19:32 starscream swampd[554]: Missing thermal BP2_EDSFF_J5 is not added to zone
+        Sep 03 00:19:32 starscream swampd[554]: Missing thermal BP2_EDSFF_J6 is not added to zone
+        Sep 03 00:19:32 starscream swampd[554]: Missing thermal BP2_EDSFF_J7 is not added to zone
+        Sep 03 00:19:32 starscream swampd[554]: Missing thermal BP2_EDSFF_J8 is not added to zone
+        Sep 03 00:19:32 starscream swampd[554]: Missing thermal BP2_EDSFF_J9 is not added to zone
+        Sep 03 00:19:32 starscream swampd[554]: Missing thermal BP2_EDSFF_J10 is not added to zone
+        Sep 03 00:19:32 starscream swampd[554]: Missing thermal BP2_EDSFF_J11 is not added to zone
+        Sep 03 00:19:32 starscream swampd[554]: sensors missing, but accpeted flag is true
+        Sep 03 00:19:32 starscream swampd[554]: PID name: riser
+        Sep 03 00:19:32 starscream swampd[554]: Missing thermal Riser1_Temp is not added to zone
+        Sep 03 00:19:32 starscream swampd[554]: Missing thermal Riser2_Temp is not added to zone
+        Sep 03 00:19:32 starscream swampd[554]: sensors missing, but accpeted flag is true
+        Sep 03 00:19:32 starscream swampd[554]: Zone Id: 1
+        Sep 03 00:19:32 starscream swampd[554]: PID name: CPU_Temp
+        Sep 03 00:19:32 starscream swampd[554]: inputs: CPU1_Temp, CPU2_Temp,
+        Sep 03 00:19:32 starscream swampd[554]: PID name: pump-group
+        Sep 03 00:19:32 starscream swampd[554]: inputs: PUMP1_PWM,
+        Sep 03 00:19:32 starscream swampd[554]: pushing zone 1
+        Sep 03 00:19:32 starscream swampd[554]: PID Zone 1 max SetPoint 30 requested by CPU_Temp PUMP1_PWM
+        Sep 03 00:19:32 starscream swampd[554]: pushing zone 0
+        Sep 03 00:19:32 starscream swampd[554]: PID Zone 0 max SetPoint 30 requested by DIMM_Temp FAN0 FAN1 FAN2 FAN3 FAN4 FAN5
+
+======================================================================================================
+Bug 1444 - [Transformers][OpenBMC] Verify the SEL event failed after chassis power off then power on
+
+Symptom/Reason :
+    - Sensor Die_CPU is judged to be a failed sensor, because it reach the lower critical threshold.
+Root Cause     :
+    - After the host is powered on, we will restart cpu sensor.
+      Sometimes pid will receive "true" lower critical alarm before we restart cpu sensor.
+      Pid will not received "false" lower critical alarm after this, because cpu sensor is restarted and initialized.
+      Cpu sensor do not know Die_CPU has a "true" lower critical alarm at previous status.
+
+Solution/Change:
+    [meta-transformers][recpies-phosphor][phosphor-pid-control]
+        - Add a additional alarm check after entering fail safe mode
+    [meta-transformers-nuv][recpies-phosphor][phosphor-pid-control]
+        - Add a additional alarm check after entering fail safe mode
+Entry Test     :
+    <check zone is startup>
+        sysadmin@transformers:~# journalctl -u phosphor-pid-control -n 20
+        Dec 21 08:42:38 transformers swampd[503]: pushing zone 0
+    <Host off and check enter fail safe mode>
+        sysadmin@transformers:~# ipmitool power off
+        Chassis Power Control: Down/Off
+        sysadmin@transformers:~# journalctl -u phosphor-pid-control -n 10
+        Dec 21 08:44:31 transformers swampd[503]: Entering fail safe mode
+        sysadmin@transformers:~# ipmitool sel elist | grep Sensors
+         5d4 | 12/21/22 | 08:44:31 UTC | Unknown Sensors_reading_ |  | Asserted
+        sysadmin@transformers:~# cat /var/lib/sel_log/ipmi_sel | grep Sensors_reading_status
+        2022-12-21T08:44:31.933593+00:00 1492,2,1000FF,20,/xyz/openbmc_project/sensors/oem_event_71h/oem_e1h/Sensors_reading_status,1
+    <Host on and check exit fail safe mode>
+        sysadmin@transformers:~# ipmitool power on
+        Chassis Power Control: Up/On
+        sysadmin@transformers:~# journalctl -u phosphor-pid-control -n 20
+        Dec 21 08:47:23 transformers swampd[503]: Exiting fail safe mode
+        sysadmin@transformers:~# ipmitool sdr list
+        DTS_CPU1         | 50 degrees C      | ok
+        Die_CPU1         | 51 degrees C      | ok
+        PCH_Temp         | 31 degrees C      | ok
+        DIMM_A1_CPU1     | 32 degrees C      | ok
+        sysadmin@transformers:~# ipmitool sel elist | grep Sensors
+         5d4 | 12/21/22 | 08:44:31 UTC | Unknown Sensors_reading_ |  | Asserted
+         623 | 12/21/22 | 08:47:23 UTC | Unknown Sensors_reading_ |  | Asserted
+        sysadmin@transformers:~# cat /var/lib/sel_log/ipmi_sel | grep Sensors_reading_status
+        2022-12-21T08:44:31.933593+00:00 1492,2,1000FF,20,/xyz/openbmc_project/sensors/oem_event_71h/oem_e1h/Sensors_reading_status,1
+        2022-12-21T08:47:23.092225+00:00 1571,2,1001FF,20,/xyz/openbmc_project/sensors/oem_event_71h/oem_e1h/Sensors_reading_status,1
+
+======================================================================================================
+Bug 1012 - [SW][transformers][transformers-nuv][phosphor-pid-control] - Implement ms spec and remove conclict of acpi power control
+    Symptom/Reason :
+        - Implement ms spec of sensor reading fail and fail safe mode condition
+        - Remove the stop and restart of related service
+        - Remove the conclict part of acpi power state
+    Root Cause     : N/A
+
+    Solution/Change:
+        [common][phosphor-pid-control]
+            - Add step wise fail reading tolerance
+            - Add update period to common patch of phosphor pid control
+        [transformers][transformers-nuv][x86-power-control]
+            - Remove the stop and restart of related service
+        [transformers][transformers-nuv][acpi-power-state]
+            - Remove the conclict part of acpi power state
+        [transformers][transformers-nuv][phosphor-pid-control]
+            - Implement ms reading sensor fail condition
+            - Add SEL when reading sensor fail
+            - Change fail safe mode trigger condition and fan duty
+    Entry Test     :
+        <check fan speed will be set to 60% at startup>
+            sysadmin@transformers:~# systemctl restart phosphor-pid-control
+            sysadmin@transformers:~# ipmitool sdr list
+            FAN_PWM_1        | 59.98 unspecifi   | ok
+            FAN_PWM_2        | 59.98 unspecifi   | ok
+            FAN_PWM_3        | 59.98 unspecifi   | ok
+            FAN_PWM_4        | 59.98 unspecifi   | ok
+            FAN_PWM_5        | 59.98 unspecifi   | ok
+            FAN_PWM_6        | 59.98 unspecifi   | ok
+            FAN_PWM_7        | 59.98 unspecifi   | ok
+            FAN_PWM_8        | 59.98 unspecifi   | ok
+        <check zone fail safe percent>
+            sysadmin@transformers:~# cat /usr/share/swampd/config.json
+            "zones" : [{
+                    "id": 0,
+                    "failsafePercent": 100.0,
+                    "UpdateTime": 10
+            }]
+        <check zone is startup>
+            sysadmin@transformers:~# journalctl -u phosphor-pid-control
+            May 17 05:02:57 transformers swampd[801]: Zone Id: 0
+            May 17 05:02:57 transformers swampd[801]: PID name: CPU_DIMM
+            May 17 05:02:57 transformers swampd[801]: inputs: DIMM_A1_CPU1,
+            May 17 05:02:57 transformers swampd[801]: PID name: CPU_Temp
+            May 17 05:02:57 transformers swampd[801]: inputs: DTS_CPU1, Die_CPU1,
+            May 17 05:02:57 transformers swampd[801]: PID name: PCH_Temp
+            May 17 05:02:57 transformers swampd[801]: inputs: PCH_Temp,
+            May 17 05:02:57 transformers swampd[801]: PID name: fan-group
+            May 17 05:02:57 transformers swampd[801]: inputs: FAN1_TACH1, FAN2_TACH1, FAN3_TACH1, FAN4_TACH1, FAN5_TACH1, FAN6_TACH1, FAN7_TACH1, FAN8_TACH1,
+            May 17 05:02:57 transformers swampd[801]: pushing zone 0
+            sysadmin@transformers:~# busctl tree xyz.openbmc_project.State.FanCtrl
+            └─/xyz/openbmc_project/settings/fanctrl/zone0
+        <check fan is being control>
+            sysadmin@transformers:~# cat /sys/class/hwmon/*/pwm*
+            81 81 81 81 81 81 81 81
+            sysadmin@transformers:~# echo 255 > /sys/class/hwmon/*/pwm1
+            sysadmin@transformers:~# cat /sys/class/hwmon/*/pwm*
+            97 97 97 97 97 97 97 97
+        <simulate fan is losing speed and check sel>
+            sysadmin@transformers:~# cat fan-disturbing.sh
+            #!/bin/sh
+            while :do
+                echo 1 > /sys/class/hwmon/*/pwm0
+                echo 3 > /sys/class/hwmon/*/pwm2
+                echo 5 > /sys/class/hwmon/*/pwm4
+            done
+            sysadmin@transformers:~# bash fan-disturbing.sh
+            sysadmin@transformers:~# cat /sys/class/hwmon/*/pwm*
+            1 114 3 114 5 114 114 114
+            sysadmin@transformers:~# ipmitool sel elist
+            2e5d | 05/25/22 | 07:02:43 UTC | Unknown Sensors_reading_ |  | Asserted
+            sysadmin@transformers:~# cat  /var/lib/sel_log/ipmi_sel
+            2022-05-25T07:02:43.891101+00:00 11869,2,0500FF,20,/xyz/openbmc_project/sensors/oem_event_71h/oem_e1h/Sensors_reading_status,1
+        <check thermal read fail>
+            sysadmin@transformers:~# ipmitool sdr list
+            DTS_CPU1         | 55 degrees C      | ok
+            Die_CPU1         | 55 degrees C      | ok
+            sysadmin@transformers:~# ipmitool power cycle
+            Chassis Power Control: Cycle
+            sysadmin@transformers:~# ipmitool sdr list
+            DTS_CPU1         | no reading        | ns
+            Die_CPU1         | no reading        | ns
+        <check fail safe mode 100% pwm and sel>
+            (wait for 60 seconds)
+            sysadmin@transformers:~# journalctl -u phosphor-pid-control -n 10
+            May 25 07:13:25 transformers swampd[393]: Entering fail safe mode
+            sysadmin@transformers:~# ipmitool sdr list
+            FAN_PWM_1        | 99.96 unspecifi   | ok
+            FAN_PWM_2        | 99.96 unspecifi   | ok
+            FAN_PWM_3        | 99.96 unspecifi   | ok
+            FAN_PWM_4        | 99.96 unspecifi   | ok
+            FAN_PWM_5        | 99.96 unspecifi   | ok
+            FAN_PWM_6        | 99.96 unspecifi   | ok
+            FAN_PWM_7        | 99.96 unspecifi   | ok
+            FAN_PWM_8        | 99.96 unspecifi   | ok
+            sysadmin@transformers:~# ipmitool sel elist
+            2eb8 | 05/25/22 | 07:13:25 UTC | Unknown Sensors_reading_ |  | Asserted
+            sysadmin@transformers:~# cat /var/lib/sel_log/ipmi_sel
+            2022-05-25T07:13:25.935376+00:00 11960,2,1000FF,20,/xyz/openbmc_project/sensors/oem_event_71h/oem_e1h/Sensors_reading_status,1
+        <check sensors are back and sel>
+            sysadmin@transformers:~# ipmitool sdr list
+            DTS_CPU1         | 51 degrees C      | ok
+            Die_CPU1         | 51 degrees C      | ok
+            sysadmin@transformers:~# journalctl -u phosphor-pid-control -n 20
+            May 25 07:14:47 transformers swampd[393]: Exiting fail safe mode
+            sysadmin@transformers:~# ipmitool sel elist
+            2f2b | 05/25/22 | 07:14:47 UTC | Unknown Sensors_reading_ |  | Asserted
+            sysadmin@transformers:~# cat /var/lib/sel_log/ipmi_sel
+            2022-05-25T07:14:47.269385+00:00 12075,2,1001FF,20,/xyz/openbmc_project/sensors/oem_event_71h/oem_e1h/Sensors_reading_status,1
+            sysadmin@transformers:~#
+        <check acpi control conflict is remove>
+            sysadmin@transformers:~#  cat /sys/class/hwmon/*/pwm*
+            107 107 107 107 107 107 107 107
+            sysadmin@transformers:~# ipmitool power off
+            Chassis Power Control: Down/Off
+            sysadmin@transformers:~#  cat /sys/class/hwmon/*/pwm*
+            110 110 110 110 110 110 110 110
+---
+ dbus/dbuspassive.cpp   |  12 +++++
+ pid/pidloop.cpp        |   2 +
+ pid/zone.cpp           | 105 +++++++++++++++++++++++++++++++++++++++--
+ pid/zone.hpp           |  21 +++++++++
+ pid/zone_interface.hpp |   3 ++
+ 5 files changed, 139 insertions(+), 4 deletions(-)
+
+diff --git a/dbus/dbuspassive.cpp b/dbus/dbuspassive.cpp
+index a567e96..1a4c5b4 100644
+--- a/dbus/dbuspassive.cpp
++++ b/dbus/dbuspassive.cpp
+@@ -260,6 +260,18 @@ void DbusPassive::updateValue(double value, bool force)
+         }
+     }
+ 
++    /*
++     * After the host is powered on, we will restart cpu sensor.
++     * Sometimes pid will receive "true" lower critical alarm before we restart cpu sensor.
++     * Pid will not received "false" lower critical alarm after this, because cpu sensor is restarted and initialized.
++     * Cpu sensor do not know Die_CPU has a "true" lower critical alarm at previous status.
++     * Add a additional threholds alarm check after entering fail safe mode.
++     */
++    if(_failed){
++        std::string service = _helper->getService(sensorintf, path);
++        _failed = _helper->thresholdsAsserted(service, path);
++    }
++
+     setValue(value, unscaled);
+ }
+ 
+diff --git a/pid/pidloop.cpp b/pid/pidloop.cpp
+index 0ccf35c..43f8616 100644
+--- a/pid/pidloop.cpp
++++ b/pid/pidloop.cpp
+@@ -122,6 +122,8 @@ void pidControlLoop(std::shared_ptr<ZoneInterface> zone,
+ 
+         // Get the latest fan speeds.
+         zone->updateFanTelemetry();
++        zone->fanStatusChecking();
++        zone->thermalModeChecking();
+ 
+         uint64_t msPerThermalCycle = zone->getUpdateThermalsCycle();
+ 
+diff --git a/pid/zone.cpp b/pid/zone.cpp
+index e9aaafc..b540363 100644
+--- a/pid/zone.cpp
++++ b/pid/zone.cpp
+@@ -93,7 +93,7 @@ void DbusPidZone::setManualMode(bool mode)
+ bool DbusPidZone::getFailSafeMode(void) const
+ {
+     // If any keys are present at least one sensor is in fail safe mode.
+-    return !_failSafeSensors.empty();
++    return _tempFailSafeMode;
+ }
+ 
+ int64_t DbusPidZone::getZoneID(void) const
+@@ -363,6 +363,8 @@ void DbusPidZone::updateFanTelemetry(void)
+         auto sensor = _mgr.getSensor(f);
+         ReadReturn r = sensor->read();
+         _cachedValuesByName[f] = {r.value, r.unscaled};
++        /*
++         * MS Microsoft spec
+         int64_t timeout = sensor->getTimeout();
+         tstamp then = r.updated;
+ 
+@@ -370,6 +372,7 @@ void DbusPidZone::updateFanTelemetry(void)
+             std::chrono::duration_cast<std::chrono::seconds>(now - then)
+                 .count();
+         auto period = std::chrono::seconds(timeout).count();
++        */
+         /*
+          * TODO(venture): We should check when these were last read.
+          * However, these are the fans, so if I'm not getting updated values
+@@ -388,6 +391,8 @@ void DbusPidZone::updateFanTelemetry(void)
+             std::cerr << f << " fan sensor reading: " << r.value << "\n";
+         }
+ 
++        /*
++         * MS Microsoft spec
+         // check if fan fail.
+         if (sensor->getFailed())
+         {
+@@ -418,6 +423,7 @@ void DbusPidZone::updateFanTelemetry(void)
+                 _failSafeSensors.erase(kt);
+             }
+         }
++        */
+     }
+ 
+     if (loggingEnabled)
+@@ -432,12 +438,52 @@ void DbusPidZone::updateFanTelemetry(void)
+     return;
+ }
+ 
++void DbusPidZone::fanStatusChecking(void){
++    _fanFailCounting += _cycleTime.cycleIntervalTimeMS;
++    //check each 3 seconds
++    if(_fanFailCounting >= _checkPeriod){
++        _fanFailCounting = 0;
++        //sort
++        std::multimap<double, std::string> fanCompare;
++        for (const auto& t : _fanInputs){
++            fanCompare.insert({ _cachedValuesByName[t].scaled, t});
++        }
++        //compute average
++        double averageFan = 0.0;
++        for (auto itr = std::next(fanCompare.begin(), _failFanNum);itr !=fanCompare.end();itr++){
++            averageFan += _cachedValuesByName[itr->second].scaled;
++        }
++        averageFan /= (fanCompare.size() - _failFanNum);
++        //checking problem fan
++        for (auto itr = std::next(fanCompare.begin(), _failFanNum);itr !=fanCompare.end();itr++){
++            if(_cachedValuesByName[itr->second].scaled < averageFan * thresholdCoe){
++                //add sel
++                auto bus = sdbusplus::bus::new_default();
++                std::vector<uint8_t> eventData(selEvtDataMaxSize, 0xFF);
++                /* asseted or deasserted according state */
++                eventData[0] = std::stoul(((itr->second).substr(0, (itr->second).find("_"))).substr((itr->second).find("FAN") + 3));
++                eventData[1] = 0x00;
++
++                sdbusplus::message::message writeMcerrSEL = bus.new_method_call(
++                    ipmiSELService, ipmiSELPath, ipmiSELAddInterface, "IpmiSelAdd");
++                writeMcerrSEL.append(ipmiSELAddMessage, errorSensorPath, eventData, true, genId);
++                try{
++                    bus.call_noreply(writeMcerrSEL);
++                }catch (sdbusplus::exception_t& e){
++                    std::cerr << "Failed to log SEL\n";
++                }
++            }else{
++                break;
++            }
++        }
++    }
++}
++
+ void DbusPidZone::updateSensors(void)
+ {
+     using namespace std::chrono;
+     /* margin and temp are stored as temp */
+     tstamp now = high_resolution_clock::now();
+-
+     for (const auto& t : _thermalInputs)
+     {
+         auto sensor = _mgr.getSensor(t);
+@@ -491,6 +537,57 @@ void DbusPidZone::updateSensors(void)
+     return;
+ }
+ 
++/*
++ * MS Microsoft spec
++ * If find unread temp sensor and not in failSafeMode
++ */
++void DbusPidZone::thermalModeChecking(void){
++    _tempFailCounting += _cycleTime.cycleIntervalTimeMS;
++    if(!_failSafeSensors.empty() && !_tempFailSafeMode){
++        //If over 60 seconds, get in failSafeMode
++        if(_tempFailCounting >= _failTolerant){
++            std::cerr << "Entering fail safe mode\n";
++            _tempFailSafeMode = true;
++            _tempFailCounting = 0;
++            //add sel
++            auto bus = sdbusplus::bus::new_default();
++            std::vector<uint8_t> eventData(selEvtDataMaxSize, 0xFF);
++            eventData[0] = 0x10;
++            eventData[1] = 0x00;
++            sdbusplus::message::message writeMcerrSEL = bus.new_method_call(
++                ipmiSELService, ipmiSELPath, ipmiSELAddInterface, "IpmiSelAdd");
++            writeMcerrSEL.append(ipmiSELAddMessage, errorSensorPath, eventData, true, genId);
++            try{
++                bus.call_noreply(writeMcerrSEL);
++            }catch (sdbusplus::exception_t& e){
++                std::cerr << "Failed to log SEL\n";
++            }
++        }//else keep counting
++    }else if(_failSafeSensors.empty()){
++        //If no unread, reset Mode and counting
++        if(_tempFailSafeMode){
++            std::cerr << "Exiting fail safe mode\n";
++            //add sel
++            auto bus = sdbusplus::bus::new_default();
++            std::vector<uint8_t> eventData(selEvtDataMaxSize, 0xFF);
++            eventData[0] = 0x10;
++            eventData[1] = 0x01;
++            sdbusplus::message::message writeMcerrSEL = bus.new_method_call(
++            ipmiSELService, ipmiSELPath, ipmiSELAddInterface, "IpmiSelAdd");
++            writeMcerrSEL.append(ipmiSELAddMessage, errorSensorPath, eventData, true, genId);
++            try{
++                bus.call_noreply(writeMcerrSEL);
++            }catch (sdbusplus::exception_t& e){
++                std::cerr << "Failed to log SEL\n";
++            }
++        }
++        _tempFailSafeMode = false;
++        _tempFailCounting = 0;
++    }else{//Prevent counting keep adding, like failSafeMode=True
++        _tempFailCounting = 0;
++    }
++}
++
+ void DbusPidZone::initializeCache(void)
+ {
+     for (const auto& f : _fanInputs)
+@@ -499,7 +596,7 @@ void DbusPidZone::initializeCache(void)
+         _cachedFanOutputs[f] = {0, 0};
+ 
+         // Start all fans in fail-safe mode.
+-        _failSafeSensors.insert(f);
++        //_failSafeSensors.insert(f);
+     }
+ 
+     for (const auto& t : _thermalInputs)
+@@ -507,7 +604,7 @@ void DbusPidZone::initializeCache(void)
+         _cachedValuesByName[t] = {0, 0};
+ 
+         // Start all sensors in fail-safe mode.
+-        _failSafeSensors.insert(t);
++        //_failSafeSensors.insert(t);
+     }
+ }
+ 
+diff --git a/pid/zone.hpp b/pid/zone.hpp
+index 0504a6d..d5366e4 100644
+--- a/pid/zone.hpp
++++ b/pid/zone.hpp
+@@ -10,6 +10,7 @@
+ 
+ #include <sdbusplus/bus.hpp>
+ #include <sdbusplus/server.hpp>
++#include <sdbusplus/message.hpp>
+ #include <xyz/openbmc_project/Control/Mode/server.hpp>
+ 
+ #include <fstream>
+@@ -24,6 +25,14 @@ using ServerObject = typename sdbusplus::server::object_t<T...>;
+ using ModeInterface = sdbusplus::xyz::openbmc_project::Control::server::Mode;
+ using ModeObject = ServerObject<ModeInterface>;
+ 
++static constexpr char const* ipmiSELService = "xyz.openbmc_project.Logging.IPMI";
++static constexpr char const* ipmiSELPath = "/xyz/openbmc_project/Logging/IPMI";
++static constexpr char const* ipmiSELAddInterface = "xyz.openbmc_project.Logging.IPMI";
++static const std::string ipmiSELAddMessage = "SEL Entry";
++static constexpr size_t selEvtDataMaxSize = 3;
++const uint16_t genId = 0x20;
++const std::string errorSensorPath = "/xyz/openbmc_project/sensors/oem_event_71h/oem_e1h/Sensors_reading_status";
++
+ namespace pid_control
+ {
+ 
+@@ -98,6 +107,9 @@ class DbusPidZone : public ZoneInterface, public ModeObject
+     /* Method for reading whether in fail-safe mode over dbus */
+     bool failSafe() const override;
+ 
++    void fanStatusChecking(void);
++    void thermalModeChecking(void);
++
+   private:
+     std::ofstream _log;
+ 
+@@ -113,6 +125,15 @@ class DbusPidZone : public ZoneInterface, public ModeObject
+ 
+     std::set<std::string> _failSafeSensors;
+ 
++    bool _tempFailSafeMode = false;
++    uint64_t _tempFailCounting = 0;
++    const uint64_t _failTolerant = 60000;
++
++    uint64_t _fanFailCounting = 0;
++    const uint64_t _checkPeriod = 3000;
++    const int64_t _failFanNum = 2;
++    const double thresholdCoe = 0.75;
++
+     std::vector<double> _SetPoints;
+     std::vector<double> _RPMCeilings;
+     std::vector<std::string> _fanInputs;
+diff --git a/pid/zone_interface.hpp b/pid/zone_interface.hpp
+index 179c856..a8c082d 100644
+--- a/pid/zone_interface.hpp
++++ b/pid/zone_interface.hpp
+@@ -108,6 +108,9 @@ class ZoneInterface
+     virtual void processFans(void) = 0;
+     /** For each thermal pid, do processing. */
+     virtual void processThermals(void) = 0;
++
++    virtual void fanStatusChecking(void) = 0;
++    virtual void thermalModeChecking(void) = 0;
+ };
+ 
+ } // namespace pid_control
+-- 
+2.17.1
+

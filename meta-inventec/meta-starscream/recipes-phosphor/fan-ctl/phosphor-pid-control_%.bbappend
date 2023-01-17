@@ -8,9 +8,6 @@ SRC_URI:append = " file://config.json \
                    file://config_rmc.json \
                    file://fan-default-speed.sh \
                    file://phosphor-pid-control.service \
-                   file://0001-add-etc-adaptive-pid-control-algorithm.patch \
-                   file://0002-allow-sensor-inputs-all-fail-except-CPU-and-DIMM.patch \
-                   file://0003-Add-sensor-value-reading-to-check-sensor-is-really-o.patch \
                  "
 
 inherit obmc-phosphor-systemd

@@ -459,11 +459,12 @@
             "id": 0,
             "minThermalOutput": 0.0,
             "failsafePercent": 100.0,
-            "UpdateTime": 10,
+            "updateThermalsTimeMS": 1000,
             "pids": [
                 {
                     "name": "fan-group",
                     "type": "fan",
+                    "acceptAllSensorsMissing": false,
                     "inputs": [
                         "FAN1_TACH1",
                         "FAN2_TACH1",
@@ -492,27 +493,50 @@
                 {
                     "name": "PCH_Temp",
                     "type": "temp",
+                    "acceptAllSensorsMissing": false,
                     "inputs": ["PCH_Temp"],
                     "setpoint": 82.0,
                     "pid": {
-                    "samplePeriod": 1.0,
-                    "proportionalCoeff": -10.0,
-                    "integralCoeff": -0.1,
-                    "feedFwdOffsetCoeff": 0.0,
-                    "feedFwdGainCoeff": 0.0,
-                    "integralLimit_min": 30.0,
-                    "integralLimit_max": 100.0,
-                    "outLim_min": 30.0,
-                    "outLim_max": 100.0,
-                    "slewNeg": 0.0,
-                    "slewPos": 0.0,
-                    "positiveHysteresis": 1.0,
-                    "negativeHysteresis": 1.0
+                        "samplePeriod": 1.0,
+                        "proportionalCoeff": -10.0,
+                        "integralCoeff": -0.1,
+                        "feedFwdOffsetCoeff": 0.0,
+                        "feedFwdGainCoeff": 0.0,
+                        "integralLimit_min": 30.0,
+                        "integralLimit_max": 100.0,
+                        "outLim_min": 30.0,
+                        "outLim_max": 100.0,
+                        "slewNeg": 0.0,
+                        "slewPos": 0.0,
+                        "positiveHysteresis": 1.0,
+                        "negativeHysteresis": 1.0,
+                        "movingAveragePoint": 2,
+                        "proportionalGains":{
+                            "reading":{
+                                "0": 0.0,
+                                "1": 1.0,
+                                "2": 3.0,
+                                "3": 5.0,
+                                "4": 7.0,
+                                "5": 9.0,
+                                "6": 11.0
+                            },
+                            "output":{
+                                "0": 0.07,
+                                "1": 0.45,
+                                "2": 0.55,
+                                "3": 0.65,
+                                "4": 0.75,
+                                "5": 0.85,
+                                "6": 1.0
+                            }
+                        }
                     }
                 },
                 {
                     "name": "CPU_Temp",
                     "type": "temp",
+                    "acceptAllSensorsMissing": false,
                     "inputs": [
                         "DTS_CPU1",
                         "Die_CPU1",
@@ -521,24 +545,46 @@
                     ],
                     "setpoint": 62.0,
                     "pid": {
-                    "samplePeriod": 1.0,
-                    "proportionalCoeff": -10.0,
-                    "integralCoeff": -0.1,
-                    "feedFwdOffsetCoeff": 0.0,
-                    "feedFwdGainCoeff": 0.0,
-                    "integralLimit_min": 30.0,
-                    "integralLimit_max": 100.0,
-                    "outLim_min": 30.0,
-                    "outLim_max": 100.0,
-                    "slewNeg": 0.0,
-                    "slewPos": 0.0,
-                    "positiveHysteresis": 1.0,
-                    "negativeHysteresis": 1.0
+                        "samplePeriod": 1.0,
+                        "proportionalCoeff": -10.0,
+                        "integralCoeff": -0.1,
+                        "feedFwdOffsetCoeff": 0.0,
+                        "feedFwdGainCoeff": 0.0,
+                        "integralLimit_min": 30.0,
+                        "integralLimit_max": 100.0,
+                        "outLim_min": 30.0,
+                        "outLim_max": 100.0,
+                        "slewNeg": 0.0,
+                        "slewPos": 0.0,
+                        "positiveHysteresis": 1.0,
+                        "negativeHysteresis": 1.0,
+                        "movingAveragePoint": 2,
+                        "proportionalGains":{
+                            "reading":{
+                                "0": 0.0,
+                                "1": 1.0,
+                                "2": 3.0,
+                                "3": 5.0,
+                                "4": 7.0,
+                                "5": 9.0,
+                                "6": 11.0
+                            },
+                            "output":{
+                                "0": 0.07,
+                                "1": 0.45,
+                                "2": 0.55,
+                                "3": 0.65,
+                                "4": 0.75,
+                                "5": 0.85,
+                                "6": 1.0
+                            }
+                        }
                     }
                 },
                 {
                     "name": "CPU_DIMM",
                     "type": "temp",
+                    "acceptAllSensorsMissing": false,
                     "inputs": [
                         "DIMM_A0_CPU1",
                         "DIMM_B0_CPU1",
@@ -575,19 +621,40 @@
                     ],
                     "setpoint": 82.0,
                     "pid": {
-                    "samplePeriod": 1.0,
-                    "proportionalCoeff": -10.0,
-                    "integralCoeff": -0.1,
-                    "feedFwdOffsetCoeff": 0.0,
-                    "feedFwdGainCoeff": 0.0,
-                    "integralLimit_min": 30.0,
-                    "integralLimit_max": 100.0,
-                    "outLim_min": 30.0,
-                    "outLim_max": 100.0,
-                    "slewNeg": 0.0,
-                    "slewPos": 0.0,
-                    "positiveHysteresis": 1.0,
-                    "negativeHysteresis": 1.0
+                        "samplePeriod": 1.0,
+                        "proportionalCoeff": -10.0,
+                        "integralCoeff": -0.1,
+                        "feedFwdOffsetCoeff": 0.0,
+                        "feedFwdGainCoeff": 0.0,
+                        "integralLimit_min": 30.0,
+                        "integralLimit_max": 100.0,
+                        "outLim_min": 30.0,
+                        "outLim_max": 100.0,
+                        "slewNeg": 0.0,
+                        "slewPos": 0.0,
+                        "positiveHysteresis": 1.0,
+                        "negativeHysteresis": 1.0,
+                        "movingAveragePoint": 2,
+                        "proportionalGains":{
+                            "reading":{
+                                "0": 0.0,
+                                "1": 1.0,
+                                "2": 3.0,
+                                "3": 5.0,
+                                "4": 7.0,
+                                "5": 9.0,
+                                "6": 11.0
+                            },
+                            "output":{
+                                "0": 0.07,
+                                "1": 0.45,
+                                "2": 0.55,
+                                "3": 0.65,
+                                "4": 0.75,
+                                "5": 0.85,
+                                "6": 1.0
+                            }
+                        }
                     }
                 }
             ]

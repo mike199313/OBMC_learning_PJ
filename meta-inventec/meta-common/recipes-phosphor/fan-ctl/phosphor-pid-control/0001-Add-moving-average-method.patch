@@ -1,0 +1,355 @@
+From 1b4f9a8a826ddfdf9169e220a1a20eca5826edd1 Mon Sep 17 00:00:00 2001
+From: link <link@inventec.com>
+Date: Wed, 28 Dec 2022 16:02:59 +0800
+Subject: [PATCH] Add moving average method
+
+---
+ dbus/dbusconfiguration.cpp |  8 ++++++++
+ pid/buildjson.cpp          |  9 +++++++++
+ pid/ec/pid.hpp             |  2 ++
+ pid/ec/stepwise.hpp        |  1 +
+ pid/pidcontroller.hpp      |  1 +
+ pid/stepwisecontroller.cpp | 25 ++++++++++++++++++++++++-
+ pid/stepwisecontroller.hpp | 20 ++++++++++++++++++++
+ pid/thermalcontroller.cpp  | 25 ++++++++++++++++++++++++-
+ pid/thermalcontroller.hpp  | 18 ++++++++++++++++++
+ pid/util.cpp               |  2 ++
+ util.cpp                   |  2 ++
+ 11 files changed, 111 insertions(+), 2 deletions(-)
+
+diff --git a/dbus/dbusconfiguration.cpp b/dbus/dbusconfiguration.cpp
+index 66ef7f8..387a9d6 100644
+--- a/dbus/dbusconfiguration.cpp
++++ b/dbus/dbusconfiguration.cpp
+@@ -356,10 +356,12 @@ void populatePidInfo(
+     double negativeHysteresis = 0;
+     double positiveHysteresis = 0;
+     double derivativeCoeff = 0;
++    double movingAveragePoint = 0;
+ 
+     auto findNeg = base.find("NegativeHysteresis");
+     auto findPos = base.find("PositiveHysteresis");
+     auto findDerivative = base.find("DCoefficient");
++    auto findMAvePoint = base.find("MovingAveragePoint");
+ 
+     if (findNeg != base.end())
+     {
+@@ -376,10 +378,16 @@ void populatePidInfo(
+         derivativeCoeff =
+             std::visit(VariantToDoubleVisitor(), findDerivative->second);
+     }
++    if (findMAvePoint != base.end())
++    {
++        movingAveragePoint =
++            std::visit(VariantToDoubleVisitor(), findMAvePoint->second);
++    }
+ 
+     info.pidInfo.negativeHysteresis = negativeHysteresis;
+     info.pidInfo.positiveHysteresis = positiveHysteresis;
+     info.pidInfo.derivativeCoeff = derivativeCoeff;
++    info.pidInfo.movingAveragePoint = movingAveragePoint;
+ }
+ 
+ bool init(sdbusplus::bus_t& bus, boost::asio::steady_timer& timer,
+diff --git a/pid/buildjson.cpp b/pid/buildjson.cpp
+index c37a5f6..059b1c7 100644
+--- a/pid/buildjson.cpp
++++ b/pid/buildjson.cpp
+@@ -46,9 +46,12 @@ void from_json(const json& j, conf::ControllerInfo& c)
+     auto positiveHysteresis = p.find("positiveHysteresis");
+     auto negativeHysteresis = p.find("negativeHysteresis");
+     auto derivativeCoeff = p.find("derivativeCoeff");
++    auto movingAveragePoint = p.find("movingAveragePoint");
++
+     auto positiveHysteresisValue = 0.0;
+     auto negativeHysteresisValue = 0.0;
+     auto derivativeCoeffValue = 0.0;
++    auto movingAveragePointValue = 0.0;
+     if (positiveHysteresis != p.end())
+     {
+         positiveHysteresis->get_to(positiveHysteresisValue);
+@@ -61,6 +64,10 @@ void from_json(const json& j, conf::ControllerInfo& c)
+     {
+         derivativeCoeff->get_to(derivativeCoeffValue);
+     }
++    if (movingAveragePoint != p.end())
++    {
++        movingAveragePoint->get_to(movingAveragePointValue);
++    }
+ 
+     if (c.type != "stepwise")
+     {
+@@ -82,6 +89,7 @@ void from_json(const json& j, conf::ControllerInfo& c)
+         c.pidInfo.positiveHysteresis = positiveHysteresisValue;
+         c.pidInfo.negativeHysteresis = negativeHysteresisValue;
+         c.pidInfo.derivativeCoeff = derivativeCoeffValue;
++        c.pidInfo.movingAveragePoint = movingAveragePointValue;
+     }
+     else
+     {
+@@ -125,6 +133,7 @@ void from_json(const json& j, conf::ControllerInfo& c)
+ 
+         c.stepwiseInfo.positiveHysteresis = positiveHysteresisValue;
+         c.stepwiseInfo.negativeHysteresis = negativeHysteresisValue;
++        c.stepwiseInfo.movingAveragePoint = movingAveragePointValue;
+     }
+ }
+ } // namespace conf
+diff --git a/pid/ec/pid.hpp b/pid/ec/pid.hpp
+index a6b6c4e..3463b4b 100644
+--- a/pid/ec/pid.hpp
++++ b/pid/ec/pid.hpp
+@@ -38,6 +38,7 @@ typedef struct
+     double slewPos;
+     double positiveHysteresis;
+     double negativeHysteresis;
++    double movingAveragePoint;
+ } pid_info_t;
+ 
+ double pid(pid_info_t* pidinfoptr, double input, double setpoint,
+@@ -58,6 +59,7 @@ struct pidinfo
+     double slewPos;
+     double positiveHysteresis;
+     double negativeHysteresis;
++    double movingAveragePoint;
+ };
+ 
+ } // namespace ec
+diff --git a/pid/ec/stepwise.hpp b/pid/ec/stepwise.hpp
+index 88db332..c27f89f 100644
+--- a/pid/ec/stepwise.hpp
++++ b/pid/ec/stepwise.hpp
+@@ -34,6 +34,7 @@ struct StepwiseInfo
+     double positiveHysteresis;
+     double negativeHysteresis;
+     bool isCeiling;
++    double movingAveragePoint;
+ };
+ 
+ double stepwise(const ec::StepwiseInfo& info, double value);
+diff --git a/pid/pidcontroller.hpp b/pid/pidcontroller.hpp
+index fcc021c..71d4600 100644
+--- a/pid/pidcontroller.hpp
++++ b/pid/pidcontroller.hpp
+@@ -39,6 +39,7 @@ class PIDController : public Controller
+         _pid_info.slewPos = static_cast<double>(0.0);
+         _pid_info.negativeHysteresis = static_cast<double>(0.0);
+         _pid_info.positiveHysteresis = static_cast<double>(0.0);
++        _pid_info.movingAveragePoint = static_cast<double>(0.0);
+     }
+ 
+     virtual ~PIDController()
+diff --git a/pid/stepwisecontroller.cpp b/pid/stepwisecontroller.cpp
+index b93c349..9b57c81 100644
+--- a/pid/stepwisecontroller.cpp
++++ b/pid/stepwisecontroller.cpp
+@@ -79,6 +79,7 @@ std::unique_ptr<Controller> StepwiseController::createStepwiseController(
+ 
+     auto thermal = std::make_unique<StepwiseController>(id, inputs, owner);
+     thermal->setStepwiseInfo(initial);
++    thermal->initAvePoint(initial);
+ 
+     return thermal;
+ }
+@@ -88,7 +89,7 @@ double StepwiseController::inputProc(void)
+     double value = std::numeric_limits<double>::lowest();
+     for (const auto& in : _inputs)
+     {
+-        value = std::max(value, _owner->getCachedValue(in));
++        value = std::max(value, movingAverage(in, _owner->getCachedValue(in)));
+     }
+ 
+     if (debugEnabled)
+@@ -117,4 +118,26 @@ void StepwiseController::outputProc(double value)
+     return;
+ }
+ 
++double StepwiseController::movingAverage(const std::string& name, double newVal)
++{
++   double oldVal = 0.0;
++   double newMovAveSum = 0.0;
++
++   if (!mAveData[name].empty()) {
++        oldVal = mAveData[name].front();
++        mAveData[name].pop();
++        mAveData[name].push(newVal);
++        newMovAveSum = mAveSum[name] + newVal - oldVal;
++        /*cache previous moving average sum , then we dont have to sump up all the data each time*/
++        mAveSum[name] = newMovAveSum;
++        if (debugEnabled) {
++            std::cerr << "Name: " << name << " Value: " << newVal << " movingAverage Value: " << newMovAveSum / mAvePoint << "\n";
++        }
++        return newMovAveSum / mAvePoint;
++   } else {
++        std::cerr << "movingAverage queue is empty \n";
++        return newVal;
++   }
++}
++
+ } // namespace pid_control
+diff --git a/pid/stepwisecontroller.hpp b/pid/stepwisecontroller.hpp
+index a3b3965..aa505f4 100644
+--- a/pid/stepwisecontroller.hpp
++++ b/pid/stepwisecontroller.hpp
+@@ -7,6 +7,8 @@
+ #include <limits>
+ #include <memory>
+ #include <vector>
++#include <map>
++#include <queue>
+ 
+ namespace pid_control
+ {
+@@ -49,6 +51,20 @@ class StepwiseController : public Controller
+         _stepwise_info = value;
+     }
+ 
++    double movingAverage(const std::string& name, double newVal);
++
++    void initAvePoint(const ec::StepwiseInfo& value)
++    {
++	mAvePoint = value.movingAveragePoint;
++	for (const auto& in : _inputs)
++	{
++		for (int i = 0; i < mAvePoint; i++) {
++			mAveData[in].push(0.0);
++        }
++        mAveSum[in] = 0;
++      }
++    }
++
+   protected:
+     ZoneInterface* _owner;
+ 
+@@ -59,6 +75,10 @@ class StepwiseController : public Controller
+     std::vector<std::string> _inputs;
+     double lastInput = std::numeric_limits<double>::quiet_NaN();
+     double lastOutput = std::numeric_limits<double>::quiet_NaN();
++    std::map<std::string, std::queue<double>> mAveData = {}; /* moving average data */
++    std::map<std::string, double> mAveSum = {}; /* sum of moving average data */
++    double mAvePoint = 0.0; /* moving average Point count */
++
+ };
+ 
+ } // namespace pid_control
+diff --git a/pid/thermalcontroller.cpp b/pid/thermalcontroller.cpp
+index db4763f..378bec0 100644
+--- a/pid/thermalcontroller.cpp
++++ b/pid/thermalcontroller.cpp
+@@ -65,6 +65,7 @@ std::unique_ptr<PIDController> ThermalController::createThermalPid(
+     }
+ 
+     auto thermal = std::make_unique<ThermalController>(id, inputs, type, owner);
++    thermal->initAvePoint(initial);
+ 
+     ec::pid_info_t* info = thermal->getPIDInfo();
+     thermal->setSetpoint(setpoint);
+@@ -104,7 +105,7 @@ double ThermalController::inputProc(void)
+     bool acceptable = false;
+     for (const auto& in : _inputs)
+     {
+-        double cachedValue = _owner->getCachedValue(in);
++        double cachedValue = movingAverage(in, _owner->getCachedValue(in));
+ 
+         // Less than 0 is perfectly OK for temperature, but must not be NAN
+         if (!(std::isfinite(cachedValue)))
+@@ -171,4 +172,26 @@ void ThermalController::outputProc(double value)
+     return;
+ }
+ 
++double ThermalController::movingAverage(const std::string& name, double newVal)
++{
++   double oldVal = 0.0;
++   double newMovAveSum = 0.0;
++
++   if (!mAveData[name].empty()) {
++        oldVal = mAveData[name].front();
++        mAveData[name].pop();
++        mAveData[name].push(newVal);
++        newMovAveSum = mAveSum[name] + newVal - oldVal;
++        /*cache previous moving average sum , then we dont have to sump up all the data each time*/
++        mAveSum[name] = newMovAveSum;
++        if (debugEnabled) {
++            std::cerr << "Name: " << name << " Value: " << newVal << " movingAverage Value: " << newMovAveSum / mAvePoint << "\n";
++        }
++        return newMovAveSum / mAvePoint;
++   } else {
++        std::cerr << "movingAverage queue is empty \n";
++        return newVal;
++   }
++}
++
+ } // namespace pid_control
+diff --git a/pid/thermalcontroller.hpp b/pid/thermalcontroller.hpp
+index 752c105..7537396 100644
+--- a/pid/thermalcontroller.hpp
++++ b/pid/thermalcontroller.hpp
+@@ -6,6 +6,8 @@
+ #include <memory>
+ #include <string>
+ #include <vector>
++#include <map>
++#include <queue>
+ 
+ namespace pid_control
+ {
+@@ -61,9 +63,25 @@ class ThermalController : public PIDController
+     double setptProc(void) override;
+     void outputProc(double value) override;
+ 
++    double movingAverage(const std::string& name, double newVal);
++
++    void initAvePoint(const ec::pidinfo& value){
++        mAvePoint = value.movingAveragePoint;
++        for (const auto& in : _inputs){
++            for (int i = 0; i < mAvePoint; i++){
++                mAveData[in].push(0.0);
++            }
++            mAveSum[in] = 0;
++        }
++    }
++
++
+   private:
+     std::vector<std::string> _inputs;
+     ThermalType type;
++    std::map<std::string, std::queue<double>> mAveData = {}; /* moving average data */
++    std::map<std::string, double> mAveSum = {}; /* sum of moving average data */
++    double mAvePoint = 0.0; /* moving average Point count */
+ };
+ 
+ } // namespace pid_control
+diff --git a/pid/util.cpp b/pid/util.cpp
+index ac6edb1..a392a38 100644
+--- a/pid/util.cpp
++++ b/pid/util.cpp
+@@ -40,11 +40,13 @@ void initializePIDStruct(ec::pid_info_t* info, const ec::pidinfo& initial)
+     info->slewPos = initial.slewPos;
+     info->negativeHysteresis = initial.negativeHysteresis;
+     info->positiveHysteresis = initial.positiveHysteresis;
++    info->movingAveragePoint = initial.movingAveragePoint;
+ }
+ 
+ void dumpPIDStruct(ec::pid_info_t* info)
+ {
+     std::cerr << " ts: " << info->ts
++              << " movingAveragePoint: " << info->movingAveragePoint
+               << " proportionalCoeff: " << info->proportionalCoeff
+               << " integralCoeff: " << info->integralCoeff
+               << " derivativeCoeff: " << info->derivativeCoeff
+diff --git a/util.cpp b/util.cpp
+index 5a6336e..b1fd1d5 100644
+--- a/util.cpp
++++ b/util.cpp
+@@ -75,6 +75,8 @@ void debugPrint(const std::map<std::string, conf::SensorConfig>& sensorConfig,
+             std::cout << "\t\t\t}\n";
+             std::cout << "\t\t\t" << pidconf.second.setpoint << ",\n";
+             std::cout << "\t\t\t{" << pidconf.second.pidInfo.ts << ",\n";
++            std::cout << "\t\t\t" << pidconf.second.pidInfo.movingAveragePoint
++                      << ",\n";
+             std::cout << "\t\t\t" << pidconf.second.pidInfo.proportionalCoeff
+                       << ",\n";
+             std::cout << "\t\t\t" << pidconf.second.pidInfo.integralCoeff
+-- 
+2.17.1
+

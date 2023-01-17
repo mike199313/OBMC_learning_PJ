@@ -1,0 +1,149 @@
+From 16c73323bdddffcbd2f0a6a15b2f2e46bf58d3bc Mon Sep 17 00:00:00 2001
+From: link <link@inventec.com>
+Date: Tue, 3 Jan 2023 02:30:56 +0000
+Subject: [PATCH] Accept missing flag for dynamic inputs in zone
+
+---
+ conf.hpp                   |  1 +
+ dbus/dbusconfiguration.cpp |  1 +
+ pid/builder.cpp            | 22 ++++++++++++++++++++++
+ pid/builder.hpp            |  1 +
+ pid/buildjson.cpp          |  1 +
+ util.cpp                   |  1 +
+ 6 files changed, 27 insertions(+)
+
+diff --git a/conf.hpp b/conf.hpp
+index d7d34f5..45a02f9 100644
+--- a/conf.hpp
++++ b/conf.hpp
+@@ -38,6 +38,7 @@ struct ControllerInfo
+     std::string type;                // fan or margin or temp?
+     std::vector<std::string> inputs; // one or more sensors.
+     double setpoint;                 // initial setpoint for thermal.
++    bool acceptAllSensorsMissing;    // accept all sensors in input are missing and inputs added to zone
+     ec::pidinfo pidInfo;             // pid details
+     ec::StepwiseInfo stepwiseInfo;
+ };
+diff --git a/dbus/dbusconfiguration.cpp b/dbus/dbusconfiguration.cpp
+index 387a9d6..43c329f 100644
+--- a/dbus/dbusconfiguration.cpp
++++ b/dbus/dbusconfiguration.cpp
+@@ -329,6 +329,7 @@ void populatePidInfo(
+ 
+         info.setpoint += reading;
+     }
++    info.acceptAllSensorsMissing = std::get<bool>(getPIDAttribute(base, "AcceptAllSensorsMissing"));
+ 
+     info.pidInfo.ts = 1.0; // currently unused
+     info.pidInfo.proportionalCoeff = std::visit(
+diff --git a/pid/builder.cpp b/pid/builder.cpp
+index ce1bae1..31db758 100644
+--- a/pid/builder.cpp
++++ b/pid/builder.cpp
+@@ -119,6 +119,7 @@ std::unordered_map<int64_t, std::shared_ptr<ZoneInterface>>
+         for (const auto& [name, info] : pidConfig)
+         {
+             std::vector<std::string> inputs;
++            int64_t sensorFailCount = 0;
+             std::cerr << "PID name: " << name << "\n";
+ 
+             /*
+@@ -131,11 +132,14 @@ std::unordered_map<int64_t, std::shared_ptr<ZoneInterface>>
+                 {
+                     if(!validSensor[i]){
+                         std::cerr << "Missing fan " << i << " is not added to zone\n";
++                        sensorFailCount++;
+                         continue;
+                     }
+                     inputs.push_back(i);
+                     zone->addFanInput(i);
+                 }
++                if(AcceptAllSensorsMissing(info.acceptAllSensorsMissing, sensorFailCount, info.inputs.size(), zone->getZoneID()))
++                    continue;
+ 
+                 auto pid = FanController::createFanPid(zone.get(), name, inputs,
+                                                        info.pidInfo);
+@@ -147,11 +151,14 @@ std::unordered_map<int64_t, std::shared_ptr<ZoneInterface>>
+                 {
+                     if(!validSensor[i]){
+                         std::cerr << "Missing thermal " << i << " is not added to zone\n";
++                        sensorFailCount++;
+                         continue;
+                     }
+                     inputs.push_back(i);
+                     zone->addThermalInput(i);
+                 }
++                if(AcceptAllSensorsMissing(info.acceptAllSensorsMissing, sensorFailCount, info.inputs.size(), zone->getZoneID()))
++                    continue;
+ 
+                 auto pid = ThermalController::createThermalPid(
+                     zone.get(), name, inputs, info.setpoint, info.pidInfo,
+@@ -165,11 +172,14 @@ std::unordered_map<int64_t, std::shared_ptr<ZoneInterface>>
+                 {
+                     if(!validSensor[i]){
+                         std::cerr << "Missing stepwise " << i << " is not added to zone\n";
++                        sensorFailCount++;
+                         continue;
+                     }
+                     inputs.push_back(i);
+                     zone->addThermalInput(i);
+                 }
++                if(AcceptAllSensorsMissing(info.acceptAllSensorsMissing, sensorFailCount, info.inputs.size(), zone->getZoneID()))
++                    continue;
+                 auto stepwise = StepwiseController::createStepwiseController(
+                     zone.get(), name, inputs, info.stepwiseInfo);
+                 zone->addThermalPID(std::move(stepwise));
+@@ -190,4 +200,16 @@ std::unordered_map<int64_t, std::shared_ptr<ZoneInterface>>
+     return zones;
+ }
+ 
++bool AcceptAllSensorsMissing(bool flag, int64_t failCount, int64_t sensorNum, int64_t id){
++    if(!flag && failCount == sensorNum){
++        throw SensorBuildException(
++            "Failed to create zone " + std::to_string(id) +
++            " due to unacceptable missing are missed");
++    }else if(flag && failCount == sensorNum){
++        std::cerr << "sensors missing, but accpeted flag is true\n";
++        return true;
++    }
++    return false;
++}
++
+ } // namespace pid_control
+diff --git a/pid/builder.hpp b/pid/builder.hpp
+index 1669a29..d785f7b 100644
+--- a/pid/builder.hpp
++++ b/pid/builder.hpp
+@@ -17,4 +17,5 @@ std::unordered_map<int64_t, std::shared_ptr<ZoneInterface>>
+                std::map<int64_t, conf::ZoneConfig>& zoneConfigs,
+                SensorManager& mgr, sdbusplus::bus_t& modeControlBus,
+                std::map<std::string, bool>& missingSensor);
++bool AcceptAllSensorsMissing(bool flag, int64_t failCount, int64_t sensorNum, int64_t id);
+ }
+diff --git a/pid/buildjson.cpp b/pid/buildjson.cpp
+index e17c104..6a93c08 100644
+--- a/pid/buildjson.cpp
++++ b/pid/buildjson.cpp
+@@ -36,6 +36,7 @@ void from_json(const json& j, conf::ControllerInfo& c)
+     j.at("type").get_to(c.type);
+     j.at("inputs").get_to(c.inputs);
+     j.at("setpoint").get_to(c.setpoint);
++    j.at("acceptAllSensorsMissing").get_to(c.acceptAllSensorsMissing);
+ 
+     /* TODO: We need to handle parsing other PID controller configurations.
+      * We can do that by checking for different keys and making the decision
+diff --git a/util.cpp b/util.cpp
+index b1fd1d5..0dd1e60 100644
+--- a/util.cpp
++++ b/util.cpp
+@@ -74,6 +74,7 @@ void debugPrint(const std::map<std::string, conf::SensorConfig>& sensorConfig,
+             }
+             std::cout << "\t\t\t}\n";
+             std::cout << "\t\t\t" << pidconf.second.setpoint << ",\n";
++            std::cout << "\t\t\t" << pidconf.second.acceptAllSensorsMissing << ",\n";
+             std::cout << "\t\t\t{" << pidconf.second.pidInfo.ts << ",\n";
+             std::cout << "\t\t\t" << pidconf.second.pidInfo.movingAveragePoint
+                       << ",\n";
+-- 
+2.17.1
+

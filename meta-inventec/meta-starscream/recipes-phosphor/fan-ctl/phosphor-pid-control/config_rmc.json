@@ -8,7 +8,7 @@
             "writePath": "/xyz/openbmc_project/control/fanpwm/FAN0_PWM",
             "min": 0,
             "max": 255,
-            "ignoreDbusMinMax": false
+            "ignoreDbusMinMax": true
         },
 	    {
             "name": "FAN1",
@@ -17,7 +17,7 @@
             "writePath": "/xyz/openbmc_project/control/fanpwm/FAN1_PWM",
             "min": 0,
             "max": 255,
-            "ignoreDbusMinMax": false
+            "ignoreDbusMinMax": true
         },
 	    {
             "name": "FAN2",
@@ -26,7 +26,7 @@
             "writePath": "/xyz/openbmc_project/control/fanpwm/FAN2_PWM",
             "min": 0,
             "max": 255,
-            "ignoreDbusMinMax": false
+            "ignoreDbusMinMax": true
         },
 	    {
             "name": "FAN3",
@@ -35,7 +35,7 @@
             "writePath": "/xyz/openbmc_project/control/fanpwm/FAN3_PWM",
             "min": 0,
             "max": 255,
-            "ignoreDbusMinMax": false
+            "ignoreDbusMinMax": true
         },
 	    {
             "name": "FAN4",
@@ -44,7 +44,7 @@
             "writePath": "/xyz/openbmc_project/control/fanpwm/FAN4_PWM",
             "min": 0,
             "max": 255,
-            "ignoreDbusMinMax": false
+            "ignoreDbusMinMax": true
         },
 	    {
             "name": "FAN5",
@@ -53,7 +53,7 @@
             "writePath": "/xyz/openbmc_project/control/fanpwm/FAN5_PWM",
             "min": 0,
             "max": 255,
-            "ignoreDbusMinMax": false
+            "ignoreDbusMinMax": true
         },
         {
             "name": "PUMP1_PWM",
@@ -62,7 +62,7 @@
             "writePath": "/xyz/openbmc_project/control/fanpwm/PUMP1_PWM",
             "min": 0,
             "max": 255,
-            "ignoreDbusMinMax": false
+            "ignoreDbusMinMax": true
         },
         {
             "name": "PUMP2_PWM",
@@ -71,7 +71,7 @@
             "writePath": "/xyz/openbmc_project/control/fanpwm/PUMP2_PWM",
             "min": 0,
             "max": 255,
-            "ignoreDbusMinMax": false
+            "ignoreDbusMinMax": true
         },
         {
             "name": "CPU1_Temp",
@@ -619,11 +619,13 @@
             "id": 0,
             "minThermalOutput": 0.0,
             "failsafePercent": 60.0,
-            "UpdateTime": 50,
+            "cycleIntervalTimeMS": 100,
+            "updateThermalsTimeMS": 5000,
             "pids": [
                 {
                     "name": "fan-group",
                     "type": "fan",
+                    "acceptAllSensorsMissing": false,
                     "inputs": [
                         "FAN0",
                         "FAN1",
@@ -650,6 +652,7 @@
                 {
                     "name": "Rightear_Temp",
                     "type": "stepwise",
+                    "acceptAllSensorsMissing": true,
                     "inputs": [
                         "Temp_rightear"
                     ],
@@ -674,12 +677,14 @@
                             "5": 50.0
                         },
                         "positiveHysteresis": 0,
-                        "negativeHysteresis": 1
+                        "negativeHysteresis": 1,
+                        "movingAveragePoint": 2
                     }
                 },
                 {
                     "name": "DIMM_Temp",
                     "type": "temp",
+                    "acceptAllSensorsMissing": false,
                     "inputs": [
                         "DIMM_P0_A0_TEMP",
                         "DIMM_P0_B0_TEMP",
@@ -720,12 +725,44 @@
                         "slewNeg": 0.0,
                         "slewPos": 0.0,
                         "positiveHysteresis": 1.0,
-                        "negativeHysteresis": 1.0
+                        "negativeHysteresis": 1.0,
+                        "movingAveragePoint": 2,
+                        "proportionalGains":{
+                            "reading":{
+                                "0": 0.0,
+                                "1": 1.0,
+                                "2": 2.0,
+                                "3": 3.0,
+                                "4": 4.0,
+                                "5": 5.0,
+                                "6": 6.0,
+                                "7": 7.0,
+                                "8": 8.0,
+                                "9": 9.0,
+                                "10": 10.0,
+                                "11": 11.0
+                            },
+                            "output":{
+                                "0": 0.45,
+                                "1": 0.50,
+                                "2": 0.55,
+                                "3": 0.60,
+                                "4": 0.65,
+                                "5": 0.70,
+                                "6": 0.75,
+                                "7": 0.80,
+                                "8": 0.85,
+                                "9": 0.90,
+                                "10": 0.95,
+                                "11": 1.0
+                            }
+                        }
                     }
                 },
                 {
                     "name": "riser",
                     "type": "temp",
+                    "acceptAllSensorsMissing": true,
                     "inputs": ["Riser1_Temp",
                                "Riser2_Temp"
                               ],
@@ -743,12 +780,44 @@
                         "slewNeg": 0.0,
                         "slewPos": 0.0,
                         "positiveHysteresis": 1.0,
-                        "negativeHysteresis": 1.0
+                        "negativeHysteresis": 1.0,
+                        "movingAveragePoint": 2,
+                        "proportionalGains":{
+                            "reading":{
+                                "0": 0.0,
+                                "1": 1.0,
+                                "2": 2.0,
+                                "3": 3.0,
+                                "4": 4.0,
+                                "5": 5.0,
+                                "6": 6.0,
+                                "7": 7.0,
+                                "8": 8.0,
+                                "9": 9.0,
+                                "10": 10.0,
+                                "11": 11.0
+                            },
+                            "output":{
+                                "0": 0.45,
+                                "1": 0.50,
+                                "2": 0.55,
+                                "3": 0.60,
+                                "4": 0.65,
+                                "5": 0.70,
+                                "6": 0.75,
+                                "7": 0.80,
+                                "8": 0.85,
+                                "9": 0.90,
+                                "10": 0.95,
+                                "11": 1.0
+                            }
+                        }
                     }
                 },
                 {
                     "name": "nvme",
                     "type": "temp",
+                    "acceptAllSensorsMissing": true,
                     "inputs": ["BP1_EDSFF_J1", 
                                "BP1_EDSFF_J2",
                                "BP1_EDSFF_J3",
@@ -786,7 +855,38 @@
                         "slewNeg": 0.0,
                         "slewPos": 0.0,
                         "positiveHysteresis": 1.0,
-                        "negativeHysteresis": 1.0
+                        "negativeHysteresis": 1.0,
+                        "movingAveragePoint": 2,
+                        "proportionalGains":{
+                            "reading":{
+                                "0": 0.0,
+                                "1": 1.0,
+                                "2": 2.0,
+                                "3": 3.0,
+                                "4": 4.0,
+                                "5": 5.0,
+                                "6": 6.0,
+                                "7": 7.0,
+                                "8": 8.0,
+                                "9": 9.0,
+                                "10": 10.0,
+                                "11": 11.0
+                            },
+                            "output":{
+                                "0": 0.45,
+                                "1": 0.50,
+                                "2": 0.55,
+                                "3": 0.60,
+                                "4": 0.65,
+                                "5": 0.70,
+                                "6": 0.75,
+                                "7": 0.80,
+                                "8": 0.85,
+                                "9": 0.90,
+                                "10": 0.95,
+                                "11": 1.0
+                            }
+                        }
                     }
                 }
             ]
@@ -795,11 +895,13 @@
             "id": 1,
             "minThermalOutput": 0.0,
             "failsafePercent": 100.0,
-            "UpdateTime": 50,
+            "cycleIntervalTimeMS": 100,
+            "updateThermalsTimeMS": 5000,
             "pids": [
                 {
                     "name": "pump-group",
                     "type": "fan",
+                    "acceptAllSensorsMissing": false,
                     "inputs": [
                         "PUMP1_PWM"
                     ],
@@ -821,6 +923,7 @@
                 {
                     "name": "CPU_Temp",
                     "type": "temp",
+                    "acceptAllSensorsMissing": false,
                     "inputs": [
                         "CPU1_Temp",
                         "CPU2_Temp"
@@ -839,11 +942,41 @@
                         "slewNeg": 0.0,
                         "slewPos": 0.0,
                         "positiveHysteresis": 1.0,
-                        "negativeHysteresis": 1.0
+                        "negativeHysteresis": 1.0,
+                        "movingAveragePoint": 2,
+                        "proportionalGains":{
+                            "reading":{
+                                "0": 0.0,
+                                "1": 1.0,
+                                "2": 2.0,
+                                "3": 3.0,
+                                "4": 4.0,
+                                "5": 5.0,
+                                "6": 6.0,
+                                "7": 7.0,
+                                "8": 8.0,
+                                "9": 9.0,
+                                "10": 10.0,
+                                "11": 11.0
+                            },
+                            "output":{
+                                "0": 0.45,
+                                "1": 0.50,
+                                "2": 0.55,
+                                "3": 0.60,
+                                "4": 0.65,
+                                "5": 0.70,
+                                "6": 0.75,
+                                "7": 0.80,
+                                "8": 0.85,
+                                "9": 0.90,
+                                "10": 0.95,
+                                "11": 1.0
+                            }
+                        }
                     }
                 }
             ]
         }
     ]
 }
-

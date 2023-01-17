@@ -6,8 +6,7 @@ FILES:${PN}:append = " ${bindir}/fan-default-speed.sh"
 SRC_URI:append = " file://config.json \
                    file://fan-default-speed.sh \
                    file://phosphor-pid-control.service \
-                   file://0001-add-etc-adaptive-pid-control-algorithm.patch \
-                   file://0002-ms-spec-of-sensor-reading-fail-condition-and-fail-sa.patch \
+                   file://0001-ms-spec-of-sensor-reading-fail-condition-and-fail-sa.patch \
                  "
 
 inherit obmc-phosphor-systemd

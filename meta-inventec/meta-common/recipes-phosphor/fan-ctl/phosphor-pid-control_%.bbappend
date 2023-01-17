@@ -1,9 +1,11 @@
 FILESEXTRAPATHS:prepend := "${THISDIR}/${PN}:"
+SRCREV = "239aa7d705e69d37383df37f6cbb67c0d9425423"
+
+EXTRA_OECONF:append = " enable_configure_inv_pi_algorithm=true"
 
 SRC_URI:append = " \
-                    file://0001-fix-sensor-reading-logging-problem.patch \
-                    file://0002-Change-service-setting-from-name-to-readpath.patch \
-                    file://0003-Adding-moving-average-method-length-2-for-thermal.patch \
-                    file://0004-Modify-zone-startup-mechanism.patch \
-                    file://0005-Add-upatetime-attribute-to-config-json-for-different.patch \
+                  file://0001-Add-moving-average-method.patch \
+                  file://0002-Modify-zone-startup-mechanism.patch  \
+                  file://0003-Accept-missing-flag-for-dynamic-inputs-in-zone.patch \
+                  file://0004-Add-inventec-maxError-pi-control-algorithm.patch \
                  "

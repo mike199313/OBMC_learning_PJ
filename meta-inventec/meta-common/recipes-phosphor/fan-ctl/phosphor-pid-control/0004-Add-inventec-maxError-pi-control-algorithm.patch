@@ -1,0 +1,427 @@
+From 52f28c7c04eb34e93880aa7695f5c6e50d5ad1e4 Mon Sep 17 00:00:00 2001
+From: link <link@inventec.com>
+Date: Thu, 5 Jan 2023 17:39:00 +0800
+Subject: [PATCH] Add inventec maxError pi control algorithm
+
+---
+ Makefile.am       |   8 ++-
+ conf.hpp          |   9 +++
+ configure.ac      |   9 +++
+ meson.build       |   7 +-
+ meson_options.txt |   1 +
+ pid/buildjson.cpp |  49 +++++++++++++
+ pid/ec/pi.cpp     | 173 ++++++++++++++++++++++++++++++++++++++++++++++
+ pid/ec/pid.hpp    |  11 +++
+ pid/util.cpp      |   1 +
+ 9 files changed, 266 insertions(+), 2 deletions(-)
+ create mode 100644 pid/ec/pi.cpp
+
+diff --git a/Makefile.am b/Makefile.am
+index 351b26b..a9df062 100644
+--- a/Makefile.am
++++ b/Makefile.am
+@@ -98,7 +98,6 @@ libswampd_la_SOURCES = \
+ 	sensors/buildjson.cpp \
+ 	sensors/manager.cpp \
+ 	sensors/build_utils.cpp \
+-	pid/ec/pid.cpp \
+ 	pid/ec/stepwise.cpp \
+ 	pid/ec/logging.cpp \
+ 	pid/fancontroller.cpp \
+@@ -114,6 +113,13 @@ libswampd_la_SOURCES = \
+ 	buildjson/buildjson.cpp \
+ 	experiments/drive.cpp
+ 
++# Use inventec maxError pi algorithm
++if CONFIGURE_INV_PI_ALGORITHM
++libswampd_la_SOURCES += pid/ec/pi.cpp
++else
++libswampd_la_SOURCES += pid/ec/pid.cpp
++endif
++
+ libmanualcmdsdir = ${libdir}/ipmid-providers
+ libmanualcmds_LTLIBRARIES = libmanualcmds.la
+ libmanualcmds_la_SOURCES = \
+diff --git a/conf.hpp b/conf.hpp
+index 45a02f9..2682d01 100644
+--- a/conf.hpp
++++ b/conf.hpp
+@@ -43,6 +43,15 @@ struct ControllerInfo
+     ec::StepwiseInfo stepwiseInfo;
+ };
+ 
++/*
++ * Structure for holding proportionalGainInfo.
++ */
++struct ProportionalGainInfo
++{
++    double reading[ec::maxGainPoints];
++    double output[ec::maxGainPoints];
++};
++
+ struct CycleTime
+ {
+     /* The time interval every cycle. 0.1 seconds by default */
+diff --git a/configure.ac b/configure.ac
+index 622b091..b0c5c3d 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -215,6 +215,15 @@ AS_IF([test "x$enable_strict_failsafe_pwm" = "xyes"], [
+ AC_ARG_VAR(SYSTEMD_TARGET, "Target for starting this service")
+ AS_IF([test "x$SYSTEMD_TARGET" == "x"], [SYSTEMD_TARGET="multi-user.target"])
+ 
++# To define the config by using inventec maxError pi algorithm.
++AC_ARG_ENABLE([enable-configure-inv-pi-algorithm],
++    AS_HELP_STRING([--enable-configure-inv-pi-algorithm], [Enable configuring inv maxError pi algorithm.]))
++AM_CONDITIONAL(CONFIGURE_INV_PI_ALGORITHM, [test "x$enable_configure_inv_pi_algorithm" = "xtrue"])
++AS_IF([test "x$enable_configure_inv_pi_algorithm" = "xtrue"],
++    [AC_DEFINE(CONFIGURE_INV_PI_ALGORITHM, [true], [Enable configuring inv maxError pi algorithm.])],
++    [AC_DEFINE(CONFIGURE_INV_PI_ALGORITHM, [false], [Disable configuring inv maxError pi algorithm.])]
++)
++
+ # Make a fully expanded variable for the service definition
+ if test "x$prefix" = xNONE; then
+   prefix=$ac_default_prefix
+diff --git a/meson.build b/meson.build
+index 8debf27..32b3808 100644
+--- a/meson.build
++++ b/meson.build
+@@ -96,7 +96,6 @@ libswampd_sources = [
+     'sensors/buildjson.cpp',
+     'sensors/manager.cpp',
+     'sensors/build_utils.cpp',
+-    'pid/ec/pid.cpp',
+     'pid/ec/logging.cpp',
+     'pid/ec/stepwise.cpp',
+     'pid/fancontroller.cpp',
+@@ -113,6 +112,12 @@ libswampd_sources = [
+     'experiments/drive.cpp',
+ ]
+ 
++if get_option('inv-pi-algorithm').enabled()
++    libswampd_sources += ['pid/ec/pi.cpp']
++else
++    libswampd_sources += ['pid/ec/pid.cpp']
++endif
++
+ libmanualcmds_sources = [
+     'ipmi/main_ipmi.cpp',
+     'ipmi/manualcmds.cpp',
+diff --git a/meson_options.txt b/meson_options.txt
+index 9655044..062b93a 100644
+--- a/meson_options.txt
++++ b/meson_options.txt
+@@ -2,3 +2,4 @@ option('tests', type: 'feature', value: 'disabled', description: 'Build tests')
+ option('oe-sdk', type: 'feature', value: 'disabled', description: 'Enable OE SDK')
+ option('strict-failsafe-pwm', type: 'boolean', value: false, description: 'Set the fans strictly at the failsafe PWM when in failsafe mode')
+ option('systemd_target', type: 'string', value: 'multi-user.target', description: 'Target for starting this service')
++option('inv-pi-algorithm', type: 'feature', value: 'enabled', description: 'inventec maxError pi algorithm')
+diff --git a/pid/buildjson.cpp b/pid/buildjson.cpp
+index 8c227fc..9287d37 100644
+--- a/pid/buildjson.cpp
++++ b/pid/buildjson.cpp
+@@ -31,6 +31,47 @@ using json = nlohmann::json;
+ 
+ namespace conf
+ {
++
++/*ProportionalGainInfo*/
++void from_json(const json& j, conf::ProportionalGainInfo& info)
++{
++    auto reading = j.find("reading");
++    if (reading != j.end())
++    {
++        auto r = j.at("reading");
++        for (size_t i = 0; i < ec::maxGainPoints; i++)
++        {
++            auto n = r.find(std::to_string(i));
++            if (n != r.end())
++            {
++                r.at(std::to_string(i)).get_to(info.reading[i]);
++            }
++            else
++            {
++                info.reading[i] = 0;
++            }
++        }
++    }
++
++    auto output = j.find("output");
++    if (output != j.end())
++    {
++        auto o = j.at("output");
++        for (size_t i = 0; i < ec::maxGainPoints; i++)
++        {
++            auto n = o.find(std::to_string(i));
++            if (n != o.end())
++            {
++                o.at(std::to_string(i)).get_to(info.output[i]);
++            }
++            else
++            {
++                info.output[i] = 0;
++            }
++        }
++    }
++}
++
+ void from_json(const json& j, conf::ControllerInfo& c)
+ {
+     j.at("type").get_to(c.type);
+@@ -91,6 +132,14 @@ void from_json(const json& j, conf::ControllerInfo& c)
+         c.pidInfo.negativeHysteresis = negativeHysteresisValue;
+         c.pidInfo.derivativeCoeff = derivativeCoeffValue;
+         c.pidInfo.movingAveragePoint = movingAveragePointValue;
++
++        //inventec propotional gains
++        auto gains = p.find("proportionalGains");
++        if (gains != p.end()) {
++            auto gainInfo = p["proportionalGains"];
++            auto item = gainInfo.get<conf::ProportionalGainInfo>();
++            std::memcpy(&c.pidInfo.proportionalGains, &item, sizeof(c.pidInfo.proportionalGains));
++        }
+     }
+     else
+     {
+diff --git a/pid/ec/pi.cpp b/pid/ec/pi.cpp
+new file mode 100644
+index 0000000..6a8cb02
+--- /dev/null
++++ b/pid/ec/pi.cpp
+@@ -0,0 +1,173 @@
++/**
++ * Copyright 2017 Google Inc.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++#include "pid.hpp"
++
++#include <cmath>
++#include "../tuning.hpp"
++#include "logging.hpp"
++
++namespace pid_control
++{
++namespace ec
++{
++
++struct Range {
++    double min;
++    double max;
++};
++
++struct ProportionalFactorTable {
++
++    Range err;
++    double factor;
++};
++
++/********************************
++ *  proportinalGainFind
++ *  Note: it takes to find adptive proportinal Gain
++ */
++double proportionalGainFind(struct ProportionalGainInfo& info, double err)
++{
++    double output = info.output[0]; // if we are below the lowest
++                                   // point, we set the lowest value
++
++    for (size_t ii = 1; ii < maxGainPoints; ii++)
++    {
++        if (info.output[ii] == 0)
++        {
++            output = 1.0;
++            break;
++        }
++        if (err <= info.reading[ii])
++        {
++            break;
++        }
++        output = info.output[ii];
++    }
++
++    return output;
++}
++/********************************
++ *  clamp
++ *
++ */
++static double clamp(double x, double min, double max)
++{
++    if (x < min)
++    {
++        return min;
++    }
++    else if (x > max)
++    {
++        return max;
++    }
++    return x;
++}
++
++/********************************
++ *  pid code
++ *  Note: Codes assumes the ts field is non-zero
++ */
++double pid(pid_info_t* pidinfoptr, double input, double setpoint,
++           const std::string* nameptr)
++{
++    if (nameptr)
++    {
++        if (!(pidinfoptr->initialized))
++        {
++            LogInit(*nameptr, pidinfoptr);
++        }
++    }
++
++    auto logPtr = nameptr ? LogPeek(*nameptr) : nullptr;
++
++    PidCoreContext coreContext;
++    std::chrono::milliseconds msNow;
++
++    if (logPtr)
++    {
++        msNow = LogTimestamp();
++    }
++
++    coreContext.input = input;
++    coreContext.setpoint = setpoint;
++
++    double error = 0.0;
++    double pGain = 1.0;
++
++    double proportionalTerm = 0.0;
++    double integralTerm = 0.0;
++    double feedFwdTerm = 0.0;
++
++    double output = 0.0;
++
++    error = setpoint - input;
++    coreContext.error = error;
++
++    if(error <= ERR_MAX) {
++        pGain = proportionalGainFind(pidinfoptr->proportionalGains, std::fabs(error));
++        //Pid
++        proportionalTerm = pGain * pidinfoptr->proportionalCoeff * error;
++        coreContext.proportionalTerm = proportionalTerm;
++        coreContext.integralTerm1 = 0.0;
++
++        if (0.0 != pidinfoptr->integralCoeff)
++        {
++            //pId
++            integralTerm = pidinfoptr->integral;
++            integralTerm += pGain * error * pidinfoptr->integralCoeff * pidinfoptr->ts;
++            coreContext.integralTerm1 = integralTerm;
++
++            /*clamp to avoid integral winding*/
++            if (proportionalTerm + integralTerm < pidinfoptr->integralLimit.min) {
++                integralTerm = pidinfoptr->integralLimit.min - proportionalTerm;
++            } else if (proportionalTerm + integralTerm > pidinfoptr->integralLimit.max) {
++                integralTerm = pidinfoptr->integralLimit.max - proportionalTerm;
++            }
++        }
++        pidinfoptr->integral = integralTerm;
++        coreContext.integralTerm2 = integralTerm;
++
++        // FF
++        feedFwdTerm = (setpoint + pidinfoptr->feedFwdOffset) * pidinfoptr->feedFwdGain;
++        coreContext.feedFwdTerm = feedFwdTerm;
++
++        output = proportionalTerm + integralTerm + feedFwdTerm;
++        coreContext.output1 = output;
++
++        output = clamp(output, pidinfoptr->outLim.min, pidinfoptr->outLim.max);
++        coreContext.output2 = output;
++    } else {
++        pidinfoptr->integral = 0;
++        output = pidinfoptr->outLim.min;
++    }
++
++    coreContext.minOut = pidinfoptr->outLim.min;
++    coreContext.maxOut = pidinfoptr->outLim.max;
++    coreContext.integralTerm = pidinfoptr->integral;
++    coreContext.output = output;
++
++    if (logPtr)
++    {
++        LogContext(*logPtr, msNow, coreContext);
++    }
++
++    return output;
++}
++
++} // namespace ec
++} // namespace pid_control
+diff --git a/pid/ec/pid.hpp b/pid/ec/pid.hpp
+index 3463b4b..cced564 100644
+--- a/pid/ec/pid.hpp
++++ b/pid/ec/pid.hpp
+@@ -2,11 +2,13 @@
+ 
+ #include <cstdint>
+ #include <string>
++#include <cstddef>
+ 
+ namespace pid_control
+ {
+ namespace ec
+ {
++constexpr double ERR_MAX = 13.0;
+ 
+ typedef struct
+ {
+@@ -14,6 +16,13 @@ typedef struct
+     double max;
+ } limits_t;
+ 
++constexpr size_t maxGainPoints = 20;
++struct ProportionalGainInfo
++{
++    double reading[maxGainPoints]; //input:error range//
++    double output[maxGainPoints]; // output: the gain of corresponding error range
++};
++
+ /* Note: If you update these structs you need to update the copy code in
+  * pid/util.cpp.
+  */
+@@ -39,6 +48,7 @@ typedef struct
+     double positiveHysteresis;
+     double negativeHysteresis;
+     double movingAveragePoint;
++    struct ProportionalGainInfo proportionalGains;
+ } pid_info_t;
+ 
+ double pid(pid_info_t* pidinfoptr, double input, double setpoint,
+@@ -60,6 +70,7 @@ struct pidinfo
+     double positiveHysteresis;
+     double negativeHysteresis;
+     double movingAveragePoint;
++    struct ProportionalGainInfo proportionalGains;
+ };
+ 
+ } // namespace ec
+diff --git a/pid/util.cpp b/pid/util.cpp
+index a392a38..a9b91f8 100644
+--- a/pid/util.cpp
++++ b/pid/util.cpp
+@@ -41,6 +41,7 @@ void initializePIDStruct(ec::pid_info_t* info, const ec::pidinfo& initial)
+     info->negativeHysteresis = initial.negativeHysteresis;
+     info->positiveHysteresis = initial.positiveHysteresis;
+     info->movingAveragePoint = initial.movingAveragePoint;
++    std::memcpy(&(info->proportionalGains), &(initial.proportionalGains), sizeof(ec::ProportionalGainInfo));
+ }
+ 
+ void dumpPIDStruct(ec::pid_info_t* info)
+-- 
+2.17.1
+
