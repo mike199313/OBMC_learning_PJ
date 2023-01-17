@@ -23,7 +23,7 @@
                 {
                     "Label": "DCMI_Power_Off",
                     "SensorModel": "Event",
-                    "SensorNum": "0xB6",
+                    "SensorNum": "0xC0",
                     "EntityId": "0x7",
                     "EntityInstance": "0"
                 }

@@ -125,7 +125,7 @@
                 {
                     "Label": "power1",
                     "SensorModel": "Threshold",
-                    "SensorNum": "0x1",
+                    "SensorNum": "0x05",
                     "EntityId": "0x03",
                     "EntityInstance": "1"
                 }
@@ -137,7 +137,7 @@
             "SensorInfo": [
                 {
                     "Label": "CPU1_Power",
-                    "SensorNum": "0x1",
+                    "SensorNum": "0x05",
                     "EntityId": "0x03",
                     "EntityInstance": "1"
                 }
@@ -3649,7 +3649,7 @@
                 {
                     "Label": "DIMM_P1_L0_TEMP",
                     "SensorModel": "Threshold",
-                    "SensorNum": "0xb1",
+                    "SensorNum": "0xC1",
                     "EntityId": "0x20",
                     "EntityInstance": "23"
                 }
@@ -3706,7 +3706,7 @@
                 {
                     "Label": "PUMP1_RPM",
                     "SensorModel": "Threshold",
-                    "SensorNum": "0xB2",
+                    "SensorNum": "0xC2",
                     "EntityId": "0x1D",
                     "EntityInstance": "24"
                 }
@@ -3719,7 +3719,7 @@
                 {
                     "Label": "PUMP1_PWM",
                     "SensorModel": "Threshold",
-                    "SensorNum": "0xB4",
+                    "SensorNum": "0xC4",
                     "EntityId": "0x1D",
                     "EntityInstance": "26"
                 }
@@ -3776,7 +3776,7 @@
                 {
                     "Label": "PUMP2_RPM",
                     "SensorModel": "Threshold",
-                    "SensorNum": "0xB3",
+                    "SensorNum": "0xC3",
                     "EntityId": "0x1D",
                     "EntityInstance": "25"
                 }
@@ -3789,7 +3789,7 @@
                 {
                     "Label": "PUMP2_PWM",
                     "SensorModel": "Threshold",
-                    "SensorNum": "0xB5",
+                    "SensorNum": "0xC5",
                     "EntityId": "0x1D",
                     "EntityInstance": "27"
                 }
