@@ -1,7 +1,7 @@
-From cd81d404d50372e69ce0be389f91cbfe936ef6af Mon Sep 17 00:00:00 2001
+From 689dbcc5779edc79548b010b3f17c5edc96e141e Mon Sep 17 00:00:00 2001
 From: cynthia <wu.cynthia@inventec.com>
 Date: Mon, 16 May 2022 14:39:48 +0800
-Subject: [PATCH 18/20] New dbus interfaces support for composition service
+Subject: [PATCH] New dbus interfaces support for composition service
 
     Symptom/Reason:
 	composition service commands not support
@@ -21,11 +21,11 @@ Subject: [PATCH 18/20] New dbus interfaces support for composition service
  .../Inventory/Composition/meson.build         | 42 ++++++++++++++++
  .../Inventory/CompositionService/meson.build  | 14 ++++++
  gen/xyz/openbmc_project/Inventory/meson.build | 15 ++++++
- .../Composition/ResourceBlock.interface.yaml  | 48 +++++++++++++++++++
+ .../Composition/ResourceBlock.interface.yaml  | 49 +++++++++++++++++++
  .../Composition/ResourceZone.interface.yaml   |  9 ++++
  .../Composition/System.interface.yaml         |  7 +++
  .../CompositionService.interface.yaml         | 10 ++++
- 10 files changed, 187 insertions(+)
+ 10 files changed, 188 insertions(+)
  create mode 100644 gen/xyz/openbmc_project/Inventory/Composition/ResourceBlock/meson.build
  create mode 100644 gen/xyz/openbmc_project/Inventory/Composition/ResourceZone/meson.build
  create mode 100644 gen/xyz/openbmc_project/Inventory/Composition/System/meson.build
@@ -192,10 +192,10 @@ index 2383524..8bd18b2 100644
 \ No newline at end of file
 diff --git a/yaml/xyz/openbmc_project/Inventory/Composition/ResourceBlock.interface.yaml b/yaml/xyz/openbmc_project/Inventory/Composition/ResourceBlock.interface.yaml
 new file mode 100644
-index 0000000..38e1273
+index 0000000..7ba12c9
 --- /dev/null
 +++ b/yaml/xyz/openbmc_project/Inventory/Composition/ResourceBlock.interface.yaml
-@@ -0,0 +1,48 @@
+@@ -0,0 +1,49 @@
 +properties:
 +    - name: CompositionState
 +      type: enum[self.ComposeState]
@@ -236,6 +236,7 @@ index 0000000..38e1273
 +        - name: Storage
 +        - name: Memory
 +        - name: Processor
++        - name: EthernetInterface
 +    - name: ComposeState
 +      values:
 +        - name: Unused

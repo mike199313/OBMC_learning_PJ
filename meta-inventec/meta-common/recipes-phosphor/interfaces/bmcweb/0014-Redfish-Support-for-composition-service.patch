@@ -1,4 +1,4 @@
-From b81691a1a84db59b8c4ec9f908189824b211c978 Mon Sep 17 00:00:00 2001
+From c203c384325f33fb3fb0e5c1e373dd2aaa472ee7 Mon Sep 17 00:00:00 2001
 From: cynthia <wu.cynthia@inventec.com>
 Date: Mon, 16 May 2022 14:39:13 +0800
 Subject: [PATCH] Redfish Support for composition service
@@ -22,27 +22,29 @@ Remove the change in this patch
 2.Update code in composition service based on official code change
 3.Update the call function of Notify for variable type changed
 ---
- bmcweb.service.in                 |   1 +
+ bmcweb.service.in                 |   2 +
  include/dbus_utility.hpp          |   1 +
- redfish-core/include/redfish.hpp  |  14 +
- redfish-core/lib/composition.hpp  | 757 ++++++++++++++++++++++++++++++
- redfish-core/lib/memory.hpp       |  71 +++
+ redfish-core/include/redfish.hpp  |  16 +
+ redfish-core/lib/composition.hpp  | 830 ++++++++++++++++++++++++++++++
+ redfish-core/lib/ethernet.hpp     |  68 +++
+ redfish-core/lib/memory.hpp       |  69 +++
  redfish-core/lib/processor.hpp    |  65 +++
  redfish-core/lib/service_root.hpp |   1 +
- redfish-core/lib/storage.hpp      |  68 +++
- redfish-core/lib/systems.hpp      | 682 ++++++++++++++++++++++++++-
- 9 files changed, 1659 insertions(+), 1 deletion(-)
+ redfish-core/lib/storage.hpp      |  69 +++
+ redfish-core/lib/systems.hpp      | 713 ++++++++++++++++++++++++-
+ 10 files changed, 1833 insertions(+), 1 deletion(-)
  create mode 100644 redfish-core/lib/composition.hpp
 
 diff --git a/bmcweb.service.in b/bmcweb.service.in
-index a0b6777c..cd73a1fa 100644
+index a0b6777c..607a2f09 100644
 --- a/bmcweb.service.in
 +++ b/bmcweb.service.in
-@@ -3,6 +3,7 @@ Description=Start bmcweb server
+@@ -3,6 +3,8 @@ Description=Start bmcweb server
  
  Wants=network.target
  After=network.target
 +After=smbios-mdrv2.service
++After=xyz.openbmc_project.Network.service
  
  [Service]
  ExecReload=kill -s HUP $MAINPID
@@ -59,7 +61,7 @@ index 4ee7eaf7..624b9445 100644
  using DBusPropertiesMap = std::vector<std::pair<std::string, DbusVariantType>>;
  using DBusInteracesMap = std::vector<std::pair<std::string, DBusPropertiesMap>>;
 diff --git a/redfish-core/include/redfish.hpp b/redfish-core/include/redfish.hpp
-index 90b17668..9c00175c 100644
+index 90b17668..17a345cc 100644
 --- a/redfish-core/include/redfish.hpp
 +++ b/redfish-core/include/redfish.hpp
 @@ -48,6 +48,7 @@
@@ -70,7 +72,15 @@ index 90b17668..9c00175c 100644
  
  namespace redfish
  {
-@@ -96,6 +97,7 @@ class RedfishService
+@@ -73,6 +74,7 @@ class RedfishService
+         requestRoutesNetworkProtocol(app);
+         requestRoutesSession(app);
+         requestEthernetInterfacesRoutes(app);
++        requestRoutesComposedSystemEthernet(app);
+ #ifdef BMCWEB_ALLOW_DEPRECATED_POWER_THERMAL
+         requestRoutesThermal(app);
+         requestRoutesPower(app);
+@@ -96,6 +98,7 @@ class RedfishService
          requestRoutesUpdateService(app);
          requestRoutesStorageCollection(app);
          requestRoutesStorage(app);
@@ -78,7 +88,7 @@ index 90b17668..9c00175c 100644
          requestRoutesDrive(app);
          requestRoutesCable(app);
          requestRoutesCableCollection(app);
-@@ -157,10 +159,12 @@ class RedfishService
+@@ -157,10 +160,12 @@ class RedfishService
  
          requestRoutesProcessorCollection(app);
          requestRoutesProcessor(app);
@@ -91,7 +101,7 @@ index 90b17668..9c00175c 100644
  
          requestRoutesSystemsCollection(app);
          requestRoutesSystemsCollectionCapabilities(app);
-@@ -229,6 +233,16 @@ class RedfishService
+@@ -229,6 +234,17 @@ class RedfishService
          requestRoutesTriggerCollection(app);
          requestRoutesTrigger(app);
  
@@ -104,16 +114,17 @@ index 90b17668..9c00175c 100644
 +        requestRoutesCompositionProcessorSub(app);
 +        requestRoutesCompositionMemorySub(app);
 +        requestRoutesCompositionStorageSub(app);
++        requestRoutesCompositionEthernetSub(app);
 +
          // Note, this must be the last route registered
          requestRoutesRedfish(app);
      }
 diff --git a/redfish-core/lib/composition.hpp b/redfish-core/lib/composition.hpp
 new file mode 100644
-index 00000000..9be48f4a
+index 00000000..90166669
 --- /dev/null
 +++ b/redfish-core/lib/composition.hpp
-@@ -0,0 +1,757 @@
+@@ -0,0 +1,830 @@
 +#pragma once
 +
 +#include <app.hpp>
@@ -124,15 +135,20 @@ index 00000000..9be48f4a
 +#include <dbus_utility.hpp>
 +
 +#include <variant>
++#include <filesystem>
 +
 +#include "processor.hpp"
 +#include "memory.hpp"
 +#include "storage.hpp"
++#include "ethernet.hpp"
++
++namespace fs = std::filesystem;
 +
 +namespace redfish
 +{
 +
 +const std::string INVENTORY_RESOURCEZONE_INTERFACE  = "xyz.openbmc_project.Inventory.Composition.ResourceZone";
++const std::string NETWORK_CONFIG_PATH = "/etc/systemd/network";
 +
 +inline void notifyResourceBlock(std::string name, std::string type, std::vector<std::string> chassis_list){
 +        using interfaces = std::map<std::string, dbus::utility::DBusPropertiesMap>;
@@ -141,12 +157,11 @@ index 00000000..9be48f4a
 +            interfaces interface_list;
 +            obj object_list;    
 +            std::vector<uint16_t> zoneid {0x0};
-+            std::string source_type = "xyz.openbmc_project.Inventory.Composition.ResourceBlock.BlockType."+type;
 +            std::string path = "/xyz/openbmc_project/inventory/CompositionService/ResourceBlocks/"+name;
 +            std::string route = "/CompositionService/ResourceBlocks/"+name;
 +                            
 +            property_list.push_back(std::make_pair("Reserved", true));
-+            property_list.push_back(std::make_pair("Type", source_type));
++            property_list.push_back(std::make_pair("Type", type));
 +            property_list.push_back(std::make_pair("ZoneId", zoneid) );
 +            property_list.push_back(std::make_pair("Chassis", chassis_list) );
 +            interface_list.emplace("xyz.openbmc_project.Inventory.Composition.ResourceBlock", std::move(property_list) );
@@ -170,10 +185,12 @@ index 00000000..9be48f4a
 +                            const std::vector<const char*>& interfaces,
 +                            const std::string type,
 +                            const char* subtree = "/xyz/openbmc_project/inventory"){
++
++
 +    crow::connections::systemBus->async_method_call(
 +    [type](const boost::system::error_code ec,
 +        const std::vector<std::string>& objects ) {
-+       if (ec)
++        if (ec)
 +        {
 +            BMCWEB_LOG_ERROR << ec;
 +            return;
@@ -181,23 +198,23 @@ index 00000000..9be48f4a
 +
 +        for (const auto& item : objects)
 +        {
++            std::vector<std::string> chassis_list;
 +            std::string s= item.substr( item.find_last_of("/")+1, item.length()-1 );
 +            
-+            size_t it = item.find("chassis/")+8;
-+
-+            std::string chassis = item.substr(it);
-+            chassis.erase( chassis.begin()+static_cast<int>(chassis.find("/")), chassis.end() );
-+            std::vector<std::string> chassis_list;
-+            chassis_list.push_back(chassis);
++            if(type!="EthernetInterface"){
++                size_t it = item.find("chassis/")+8;
++                std::string chassis = item.substr(it);
++                chassis.erase( chassis.begin()+static_cast<int>(chassis.find("/")), chassis.end() );
++                chassis_list.push_back(chassis);
++                
++            }
 +            notifyResourceBlock(s, type, chassis_list);
 +        }
-+
 +    },
 +    "xyz.openbmc_project.ObjectMapper",
 +    "/xyz/openbmc_project/object_mapper",
 +    "xyz.openbmc_project.ObjectMapper", "GetSubTreePaths", subtree , 0,
 +    interfaces );
-+
 +}
 +
 +inline void init_composition(){
@@ -208,7 +225,7 @@ index 00000000..9be48f4a
 +    obj object_list;   
 +    std::vector<uint16_t> zone_list = {0x0};
 +
-+    notifyResourceBlock("Storage1", "Storage", {"None"} );
++    notifyResourceBlock("Storage1", BLOCK_TYPE_STORAGE, {"None"} );
 +
 +    property_list.push_back(std::make_pair("Health", true) );
 +    property_list.push_back(std::make_pair("ZoneId", zone_list));
@@ -234,10 +251,23 @@ index 00000000..9be48f4a
 +    "xyz.openbmc_project.Inventory.Item.Cpu",
 +    "xyz.openbmc_project.Inventory.Item.Accelerator"
 +    },
-+    "Processor");
++    BLOCK_TYPE_PROCESSOR);
 +    /*Get memories*/
-+    setResourceBlock( {"xyz.openbmc_project.Inventory.Item.Dimm"}, "Memory" );
++    setResourceBlock( {"xyz.openbmc_project.Inventory.Item.Dimm"}, BLOCK_TYPE_MEMORY );
 +
++    /*Get Ethernet interfaces*/
++    /*Note:
++        It takes time for network dbus service to setup ojects, 
++        get the names of network config files ot parse interface name instead
++    */
++    for (const auto & entry : fs::directory_iterator(NETWORK_CONFIG_PATH)){
++        std::string path = entry.path();
++        std::size_t end = path.find("."); 
++        std::size_t start = path.rfind("-");
++        std::string interface_name = path.substr (start+1, end-start-1); 
++        notifyResourceBlock(interface_name, BLOCK_TYPE_ETHERNETINTERFACE, {"None"} );
++    }
++    
 +}
 +
 +inline void requestRoutesCompositionCollection(App& app)
@@ -543,9 +573,8 @@ index 00000000..9be48f4a
 +                        return;
 +                    }
 +                    std::string s = *(std::get_if<std::string>(&type));
-+                    s = s.substr( s.find_last_of(".")+1, s.length()-1 );
-+
-+                    if((s=="Processor")||(s=="Memory")||(s=="Storage")){
++                    if((s==BLOCK_TYPE_PROCESSOR)||(s==BLOCK_TYPE_MEMORY)||(s==BLOCK_TYPE_STORAGE)||(s==BLOCK_TYPE_ETHERNETINTERFACE)){
++                        s = s.substr( s.find_last_of(".")+1, s.length()-1 );
 +                        asyncResp->res.jsonValue["ResourceBlockType"] += s;
 +                        asyncResp->res.jsonValue[s] += 
 +                            { {"@odata.id", "/redfish/v1/CompositionService/ResourceBlocks/"+compositionid+"/"+s+"/"+compositionid} };
@@ -870,12 +899,161 @@ index 00000000..9be48f4a
 +            getStorageControllers(asyncResp, health);
 +            });
 +}
++
++inline void requestRoutesCompositionEthernetSub(App& app)
++{
++    /**
++     * Functions triggers appropriate requests on DBus
++     */
++
++    BMCWEB_ROUTE(app, "/redfish/v1/CompositionService/ResourceBlocks/<str>/EthernetInterface/<str>/")
++        .privileges(redfish::privileges::getEthernetInterfaceCollection)
++        .methods(boost::beast::http::verb::get)(
++            [&app](const crow::Request& req,
++               const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
++               const std::string& ethernet1,
++               const std::string& ethernet2) {
++                
++                if (!redfish::setUpRedfishRoute(app, req, asyncResp))
++                {
++                    return;
++                }
++
++                asyncResp->res.jsonValue["@odata.type"] =
++                    "#EthernetInterface.v1_4_1.EthernetInterface";
++                asyncResp->res.jsonValue["Name"] = "Manager Ethernet Interface";
++                asyncResp->res.jsonValue["Description"] =
++                        "Management Network Interface";
++
++                asyncResp->res.jsonValue["@odata.id"] =
++                    "/redfish/v1/Systems/system/EthernetInterface/" + ethernet1;
++
++                if(ethernet1!=ethernet2){
++                    BMCWEB_LOG_ERROR << "Wrong uri, dimm ids not match";
++                    messages::internalError(asyncResp->res);
++                }
++
++                getEthernetIfaceData(
++                    ethernet1,
++                    [asyncResp, ethernet1](
++                        const bool& success, const EthernetInterfaceData& ethData,
++                        const boost::container::flat_set<IPv4AddressData>& ipv4Data,
++                        const boost::container::flat_set<IPv6AddressData>& ipv6Data) {
++                    if (!success)
++                    {
++                        // TODO(Pawel)consider distinguish between non
++                        // existing object, and other errors
++                        messages::resourceNotFound(asyncResp->res, "EthernetInterface",
++                                                   ethernet1);
++                        return;
++                    }
++
++                    parseInterfaceData(asyncResp, ethernet1, ethData, ipv4Data, ipv6Data);
++                    });
++
++            });
 +}
++
++}
+diff --git a/redfish-core/lib/ethernet.hpp b/redfish-core/lib/ethernet.hpp
+index 126a68d2..a624f8e0 100644
+--- a/redfish-core/lib/ethernet.hpp
++++ b/redfish-core/lib/ethernet.hpp
+@@ -108,6 +108,9 @@ struct DHCPParameters
+     std::optional<std::string> dhcpv6OperatingMode;
+ };
+ 
++const std::string BLOCK_TYPE_ETHERNETINTERFACE = "xyz.openbmc_project.Inventory.Composition.ResourceBlock.BlockType.EthernetInterface";
++
++
+ // Helper function that changes bits netmask notation (i.e. /24)
+ // into full dot notation
+ inline std::string getNetmask(unsigned int bits)
+@@ -2405,4 +2408,69 @@ inline void requestEthernetInterfacesRoutes(App& app)
+         });
+ }
+ 
++inline void requestRoutesComposedSystemEthernet(App& app)
++{
++    /**
++     * Functions triggers appropriate requests on DBus
++     */
++    BMCWEB_ROUTE(app, "/redfish/v1/Systems/<str>/EthernetInterfaces")
++        .privileges(redfish::privileges::getEthernetInterfaceCollection)
++        .methods(boost::beast::http::verb::get)(
++            [&app](const crow::Request& req,
++               const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
++               const std::string systemid) {
++
++                if (!redfish::setUpRedfishRoute(app, req, asyncResp))
++                {
++                    return;
++                }
++                
++                asyncResp->res.jsonValue["@odata.id"] =
++                    "/redfish/v1/Systems/"+systemid+"/EthernetInterfaces";
++                asyncResp->res.jsonValue["Members"] = nlohmann::json::array();
++                crow::connections::systemBus->async_method_call(
++                    [asyncResp](
++                        const boost::system::error_code ec,
++                        std::variant<std::vector<std::string>>& link) {
++                        if (ec)
++                        {
++                            BMCWEB_LOG_DEBUG << "DBUS response error";
++                            messages::internalError(asyncResp->res);
++
++                            return;
++                        } 
++                        std::vector<std::string>* data =
++                                        std::get_if<std::vector<std::string>>(&link);
++                        for(const std::string& item : *data){
++                            BMCWEB_LOG_DEBUG << item;
++                            std::string s= item.substr( item.find_last_of("/")+1, item.length()-1 );
++                            s = "/xyz/openbmc_project/inventory/CompositionService/ResourceBlocks/"+s;
++                            std::variant<std::string> t;
++                            std::string type;
++                            auto readyMsg = crow::connections::systemBus->new_method_call( 
++                                "xyz.openbmc_project.Inventory.Manager", s.c_str(),
++                                "org.freedesktop.DBus.Properties", "Get" );
++                                readyMsg.append(  "xyz.openbmc_project.Inventory.Composition.ResourceBlock", "Type"  ); 
++                            try
++                            {
++                                auto intMsg = crow::connections::systemBus->call(readyMsg);
++                                intMsg.read(t);
++                                type = std::get<std::string>(t);
++                            }catch (const sdbusplus::exception::SdBusError& e)
++                            {
++                                BMCWEB_LOG_ERROR << "Error: " << e.what();
++                            }  
++                            if(type == BLOCK_TYPE_ETHERNETINTERFACE){
++                                asyncResp->res.jsonValue["Members"] += { {"@odata.id", item} };
++                            }                            
++                        }                                       
++                },
++                "xyz.openbmc_project.Inventory.Manager",
++                "/xyz/openbmc_project/inventory/CompositionService/Systems/"+systemid,
++                "org.freedesktop.DBus.Properties", "Get",
++                "xyz.openbmc_project.Inventory.Composition.System", "Link"
++                );       
++            });
++    }
++
+ } // namespace redfish
 diff --git a/redfish-core/lib/memory.hpp b/redfish-core/lib/memory.hpp
-index 3c10130e..f5c2782d 100644
+index 3c10130e..666146e3 100644
 --- a/redfish-core/lib/memory.hpp
 +++ b/redfish-core/lib/memory.hpp
-@@ -927,4 +927,75 @@ inline void requestRoutesMemory(App& app)
+@@ -29,6 +29,9 @@
+ namespace redfish
+ {
+ 
++const std::string BLOCK_TYPE_MEMORY = "xyz.openbmc_project.Inventory.Composition.ResourceBlock.BlockType.Memory";
++
++
+ inline std::string translateMemoryTypeToRedfish(const std::string& memoryType)
+ {
+     if (memoryType == "xyz.openbmc_project.Inventory.Item.Dimm.DeviceType.DDR")
+@@ -927,4 +930,70 @@ inline void requestRoutesMemory(App& app)
          });
  }
  
@@ -901,7 +1079,6 @@ index 3c10130e..f5c2782d 100644
 +                asyncResp->res.jsonValue["@odata.id"] =
 +                    "/redfish/v1/Systems/"+systemid+"/Memory";
 +                asyncResp->res.jsonValue["Members"] = nlohmann::json::array();
-+                BMCWEB_LOG_ERROR << systemid;
 +                crow::connections::systemBus->async_method_call(
 +                    [asyncResp](
 +                        const boost::system::error_code ec,
@@ -916,10 +1093,8 @@ index 3c10130e..f5c2782d 100644
 +                        std::vector<std::string>* data =
 +                                        std::get_if<std::vector<std::string>>(&link);
 +                        for(const std::string& item : *data){
-+                            BMCWEB_LOG_DEBUG << item;
 +                            std::string s= item.substr( item.find_last_of("/")+1, item.length()-1 );
 +                            s = "/xyz/openbmc_project/inventory/CompositionService/ResourceBlocks/"+s;
-+                            BMCWEB_LOG_DEBUG << s;
 +                            std::variant<std::string> t;
 +                            std::string type;
 +                            auto readyMsg = crow::connections::systemBus->new_method_call( 
@@ -930,14 +1105,12 @@ index 3c10130e..f5c2782d 100644
 +                            {
 +                                auto intMsg = crow::connections::systemBus->call(readyMsg);
 +                                intMsg.read(t);
-+                                BMCWEB_LOG_ERROR << "test";
 +                                type = std::get<std::string>(t);
 +                            }catch (const sdbusplus::exception::SdBusError& e)
 +                            {
 +                                BMCWEB_LOG_ERROR << "Error: " << e.what();
 +                            }  
-+                            BMCWEB_LOG_ERROR << type;
-+                            if(type == "xyz.openbmc_project.Inventory.Composition.ResourceBlock.BlockType.Memory"){
++                            if(type == BLOCK_TYPE_MEMORY){
 +                                asyncResp->res.jsonValue["Members"] += { {"@odata.id", item} };
 +                            }                            
 +                        }                                       
@@ -952,10 +1125,18 @@ index 3c10130e..f5c2782d 100644
 +
  } // namespace redfish
 diff --git a/redfish-core/lib/processor.hpp b/redfish-core/lib/processor.hpp
-index becb7949..97612a16 100644
+index becb7949..49e9d444 100644
 --- a/redfish-core/lib/processor.hpp
 +++ b/redfish-core/lib/processor.hpp
-@@ -1258,4 +1258,69 @@ inline void requestRoutesProcessor(App& app)
+@@ -32,6 +32,7 @@
+ 
+ namespace redfish
+ {
++const std::string BLOCK_TYPE_PROCESSOR = "xyz.openbmc_project.Inventory.Composition.ResourceBlock.BlockType.Processor";
+ 
+ // Interfaces which imply a D-Bus object represents a Processor
+ constexpr std::array<const char*, 2> processorInterfaces = {
+@@ -1258,4 +1259,68 @@ inline void requestRoutesProcessor(App& app)
          });
  }
  
@@ -1010,8 +1191,7 @@ index becb7949..97612a16 100644
 +                            {
 +                                BMCWEB_LOG_ERROR << "Error: " << e.what();
 +                            }  
-+                            BMCWEB_LOG_ERROR << type;
-+                            if(type == "xyz.openbmc_project.Inventory.Composition.ResourceBlock.BlockType.Processor"){
++                            if(type == BLOCK_TYPE_PROCESSOR){
 +                                asyncResp->res.jsonValue["Members"] += { {"@odata.id", item} };
 +                            }                            
 +                        }                                       
@@ -1038,10 +1218,19 @@ index 4afd6507..de3f6ceb 100644
          "/redfish/v1/JsonSchemas";
      asyncResp->res.jsonValue["Managers"]["@odata.id"] = "/redfish/v1/Managers";
 diff --git a/redfish-core/lib/storage.hpp b/redfish-core/lib/storage.hpp
-index cab23a23..5bf56a37 100644
+index cab23a23..ee175825 100644
 --- a/redfish-core/lib/storage.hpp
 +++ b/redfish-core/lib/storage.hpp
-@@ -258,6 +258,74 @@ inline void requestRoutesStorage(App& app)
+@@ -26,6 +26,8 @@
+ 
+ namespace redfish
+ {
++const std::string BLOCK_TYPE_STORAGE = "xyz.openbmc_project.Inventory.Composition.ResourceBlock.BlockType.Storage";
++
+ inline void requestRoutesStorageCollection(App& app)
+ {
+     BMCWEB_ROUTE(app, "/redfish/v1/Systems/system/Storage/")
+@@ -258,6 +260,73 @@ inline void requestRoutesStorage(App& app)
          });
  }
  
@@ -1097,8 +1286,7 @@ index cab23a23..5bf56a37 100644
 +                            {
 +                                BMCWEB_LOG_ERROR << "Error: " << e.what();
 +                            }  
-+                            BMCWEB_LOG_ERROR << type;
-+                            if(type == "xyz.openbmc_project.Inventory.Composition.ResourceBlock.BlockType.Storage"){
++                            if(type == BLOCK_TYPE_STORAGE){
 +                                asyncResp->res.jsonValue["Members"] += { {"@odata.id", item} };
 +                            }                            
 +                        }                                       
@@ -1117,7 +1305,7 @@ index cab23a23..5bf56a37 100644
                            const std::string& connectionName,
                            const std::string& path)
 diff --git a/redfish-core/lib/systems.hpp b/redfish-core/lib/systems.hpp
-index 34a130ce..f7d633e9 100644
+index 1d648328..c363e5ec 100644
 --- a/redfish-core/lib/systems.hpp
 +++ b/redfish-core/lib/systems.hpp
 @@ -31,9 +31,15 @@
@@ -1136,7 +1324,7 @@ index 34a130ce..f7d633e9 100644
  
  /**
   * @brief Updates the Functional State of DIMMs
-@@ -2625,6 +2631,85 @@ inline void setIdlePowerSaver(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
+@@ -2638,6 +2644,87 @@ inline void setIdlePowerSaver(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
      BMCWEB_LOG_DEBUG << "EXIT: Set idle power saver parameters";
  }
  
@@ -1155,6 +1343,8 @@ index 34a130ce..f7d633e9 100644
 +    if(i!=std::string::npos){
 +        uuid.erase(i);
 +    }
++
++    pclose(pipe);
 +
 +    return uuid;
 +}
@@ -1222,7 +1412,7 @@ index 34a130ce..f7d633e9 100644
  /**
   * SystemsCollection derived class for delivering ComputerSystems Collection
   * Schema
-@@ -2671,7 +2756,260 @@ inline void requestRoutesSystemsCollection(App& app)
+@@ -2684,7 +2771,289 @@ inline void requestRoutesSystemsCollection(App& app)
                  count = ifaceArray.size();
              }
              });
@@ -1283,6 +1473,7 @@ index 34a130ce..f7d633e9 100644
 +                nlohmann::json links;
 +                std::vector<nlohmann::json> blocks;
 +                std::optional<nlohmann::json> bootProps;
++                std::vector<std::string> subtreepaths, resourcelist;
 +
 +                int systemid=0;
 +
@@ -1338,9 +1529,38 @@ index 34a130ce..f7d633e9 100644
 +                    return;
 +                }
 +
++                /*check if the items in list really exist in resourceblocks*/
++                auto readyMsg = crow::connections::systemBus->new_method_call( 
++                "xyz.openbmc_project.ObjectMapper",
++                "/xyz/openbmc_project/object_mapper",
++                "xyz.openbmc_project.ObjectMapper", "GetSubTreePaths");
++                readyMsg.append("/xyz/openbmc_project/inventory/CompositionService/ResourceBlocks/",0,
++                    std::vector<const char*>({"xyz.openbmc_project.Inventory.Composition.ResourceBlock"}) );
++                try
++                {
++                    auto intMsg = crow::connections::systemBus->call(readyMsg);
++                    intMsg.read(subtreepaths);
++                }catch (const sdbusplus::exception::SdBusError& e)
++                {
++                    BMCWEB_LOG_ERROR << "Error: " << e.what();
++                    return;
++                }               
++
++                for(unsigned int i=0;i<link_list.size(); i++){
++                    std::string s = link_list[i].substr(link_list[i].find_last_of("/")+1,link_list[i].length()-1);
++                    std::string path = "/xyz/openbmc_project/inventory/CompositionService/ResourceBlocks/"+s;
++                    if(std::find(subtreepaths.begin(), subtreepaths.end(), path) == subtreepaths.end()){
++                        BMCWEB_LOG_ERROR <<"Item requested '" << path << "' not found";
++                        messages::internalError(asyncResp->res);
++                        return;
++                    }else{
++                        resourcelist.push_back(path);
++                    }
++                }
++
 +                std::variant<uint16_t> num;
 +                uint16_t system_num=0;
-+                auto readyMsg = crow::connections::systemBus->new_method_call( 
++                readyMsg = crow::connections::systemBus->new_method_call( 
 +                "xyz.openbmc_project.Inventory.Manager", 
 +                "/xyz/openbmc_project/inventory/CompositionService/ResourceBlocks",
 +                "org.freedesktop.DBus.Properties", "Get");
@@ -1431,9 +1651,8 @@ index 34a130ce..f7d633e9 100644
 +                    BMCWEB_LOG_ERROR << "Error: " << e.what();
 +                }          
 +
-+                for(unsigned int i=0;i<link_list.size(); i++){
-+                    std::string s = link_list[i].substr(link_list[i].find_last_of("/")+1,link_list[i].length()-1);
-+                    std::string path = "/xyz/openbmc_project/inventory/CompositionService/ResourceBlocks/"+s;
++                for(unsigned int i=0;i<resourcelist.size(); i++){
++                    std::string path = resourcelist[i];
 +                    std::variant<std::vector<std::string>> sys;
 +                    std::vector<std::string> system_list;
 +                    std::string system_redfish = "/redfish/v1/Systems/NewSystem";
@@ -1484,7 +1703,7 @@ index 34a130ce..f7d633e9 100644
  }
  
  /**
-@@ -3111,6 +3449,348 @@ inline void requestRoutesSystems(App& app)
+@@ -3124,6 +3493,348 @@ inline void requestRoutesSystems(App& app)
                                ipsExitUtil, ipsExitTime);
          }
          });
