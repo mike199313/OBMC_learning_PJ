@@ -12,10 +12,10 @@ diff --git a/yaml/xyz/openbmc_project/Software/Version.interface.yaml b/yaml/xyz
 index 6176010..f469c66 100644
 --- a/yaml/xyz/openbmc_project/Software/Version.interface.yaml
 +++ b/yaml/xyz/openbmc_project/Software/Version.interface.yaml
-@@ -41,3 +41,6 @@ enumerations:
-           - name: PSU
+@@ -44,3 +44,6 @@ enumerations:
+           - name: PLDM
              description: >
-                 The version is a version for a PSU.
+                 The version is a version for a PLDM.
 +          - name: MCU
 +            description: >
 +                The version is a version for a MCU.
