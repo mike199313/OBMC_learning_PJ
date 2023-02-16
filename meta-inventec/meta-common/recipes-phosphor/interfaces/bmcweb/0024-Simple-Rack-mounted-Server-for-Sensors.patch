@@ -1,0 +1,86 @@
+From 76d7ab2752d0489efded61a68353fee2e86f6d41 Mon Sep 17 00:00:00 2001
+From: Tommy Lin <lin.tommysc@inventec.com>
+Date: Thu, 16 Feb 2023 05:29:30 +0000
+Subject: [PATCH] Simple Rack-mounted Server for Sensors
+
+Symptom/Reason:
+- N/A
+
+Root Cause:
+- Simple Rack-mounted Server for Sensors
+
+Solution/Change:
+- [bmcweb]
+  - Add PhysicalContext in Sensors
+- [os-release]
+  - Add BOOT_VERSION
+
+Entry Test:
+- Get sensor info
+  - curl -u root:0penBmc -X GET https://${bmc}/redfish/v1/Chassis/${chassis_id}/Sensors/${sensor_id}
+- Get bootloader version
+  - curl -u root:0penBmc -X GET https://${bmc}/redfish/v1/Managers/bmc
+---
+ redfish-core/lib/sensors.hpp | 39 ++++++++++++++++++++++++++++++++++++
+ 1 file changed, 39 insertions(+)
+
+diff --git a/redfish-core/lib/sensors.hpp b/redfish-core/lib/sensors.hpp
+index cb1f5dac..121af692 100644
+--- a/redfish-core/lib/sensors.hpp
++++ b/redfish-core/lib/sensors.hpp
+@@ -176,6 +176,34 @@ inline const char* toReadingUnits(const std::string& sensorType)
+     }
+     return "";
+ }
++
++inline const char* toPhysicalContext(const std::string& sensorName)
++{
++    std::string sensorNameLower =
++        boost::algorithm::to_lower_copy(sensorName);
++
++    if (sensorNameLower.find("dimm") != std::string::npos)
++    {
++        return "Memory";
++    }
++    if (sensorNameLower.find("psu") != std::string::npos)
++    {
++        return "PowerSupply";
++    }
++    if (sensorNameLower.find("fan") != std::string::npos)
++    {
++        return "Fan";
++    }
++    if (sensorNameLower.find("brd") != std::string::npos)
++    {
++        return "Board";
++    }
++    if (sensorNameLower.find("cpu") != std::string::npos)
++    {
++        return "CPU";
++    }
++    return "Chassis";
++}
+ } // namespace sensors
+ 
+ /**
+@@ -900,6 +928,17 @@ inline void objectInterfacesToJson(
+         {
+             sensorJson["ReadingUnits"] = readingUnits;
+         }
++
++        const std::string& physicalContext = sensors::toPhysicalContext(sensorName);
++        if (physicalContext.empty())
++        {
++            BMCWEB_LOG_ERROR << "Redfish cannot map physical context for "
++                             << sensorName;
++        }
++        else
++        {
++            sensorJson["PhysicalContext"] = physicalContext;
++        }
+     }
+     else if (sensorType == "temperature")
+     {
+-- 
+2.17.1
+
