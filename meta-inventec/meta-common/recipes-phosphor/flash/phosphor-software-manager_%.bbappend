@@ -1,4 +1,12 @@
 FILESEXTRAPATHS:prepend := "${THISDIR}/${PN}:"
+
+DEPENDS += " \
+        nlohmann-json \
+        i2c-tools \
+"
+
+
+
 SRC_URI += " \
             file://0001-add-bios-image-upload-flow.patch \
             file://0002-Fix-BIOS-version-is-null-issue.patch \
@@ -8,6 +16,7 @@ SRC_URI += " \
             file://0006-MS-spec-BIOS-securely-transfer.patch \
             file://0007-PLDM-BMC-software-updater-integration.patch \
             file://0008-PLDM-firmware-update-with-specified-PID-and-interface.patch \
+            file://0009-fetch-delta-dps2400-psu-firmare-version-by-redfish.patch \
            "
 
 #add cpld service
@@ -17,6 +26,7 @@ SYSTEMD_SERVICE:${PN}-updater += " \
 
 PACKAGECONFIG[cpld_mb] = "-Dcpld-mb-upgrade=enabled, -Dcpld-mb-upgrade=disabled"
 PACKAGECONFIG[cpld_scm] = "-Dcpld-scm-upgrade=enabled, -Dcpld-scm-upgrade=disabled"
+
 
 #enable host-bios-update cpld_mb cpld_scm feature
 PACKAGECONFIG:append =" \
