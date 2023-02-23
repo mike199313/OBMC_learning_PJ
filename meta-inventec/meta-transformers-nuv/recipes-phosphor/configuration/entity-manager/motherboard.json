@@ -2153,6 +2153,13 @@
         "SubModel": "",
         "SparePartNumber": ""
     },
+    "xyz.openbmc_project.Inventory.Decorator.AssetTag": {
+        "AssetTag": "$PRODUCT_ASSET_TAG"
+    },
+    "xyz.openbmc_project.Inventory.Item": {
+        "SKU": "TORPEDO-NUV"
+    },
+    "xyz.openbmc_project.Inventory.Item.Board.Motherboard": {},
     "xyz.openbmc_project.Inventory.Decorator.FruDevice":{
         "Bus":3,
         "Address":80

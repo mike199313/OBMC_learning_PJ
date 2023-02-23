@@ -1067,6 +1067,13 @@
         "SubModel": "",
         "SparePartNumber": ""
     },
+    "xyz.openbmc_project.Inventory.Decorator.AssetTag": {
+        "AssetTag": "$PRODUCT_ASSET_TAG"
+    },
+    "xyz.openbmc_project.Inventory.Item": {
+        "SKU": "HAMMERHEAD-TRANS"
+    },
+    "xyz.openbmc_project.Inventory.Item.Board.Motherboard": {},
     "xyz.openbmc_project.Inventory.Decorator.FruDevice":{
         "Bus":8,
         "Address":83

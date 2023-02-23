@@ -1,0 +1,478 @@
+From 7fbb309279735ccfd8632f310768dd13e007aa8d Mon Sep 17 00:00:00 2001
+From: Jason Lin <lin.jasonyy@inventec.com>
+Date: Tue, 21 Feb 2023 06:11:59 +0000
+Subject: [PATCH] Redfish Chassis, Manager schema enhancements
+
+Symptom/Reason:
+Schema enhancements for 2023 Q1
+
+Root Cause:
+Lacking features for Chassis, Manager schemas
+
+Solution/Change:
+
+- Chassis features
+  - AssetTag
+  - SKU
+  - IndicatorLED
+  - ThermalSubsystem
+  - EnvironmentMetrics
+  - PowerSubsystem
+- Manager features
+  - AdditionalFirmwareVersions
+    - Bootloader
+    - Kernel
+  - CommandShell
+    - ServiceEnabled
+    - MaxConcurrentSessions
+    - ConnectTypesSupported
+
+Entry Test:
+
+- curl -x "" -k -u root:0penBmc -X GET <https://${bmc}/redfish/v1/Chassis/${chassis_id>}
+- curl -x "" -k -u root:0penBmc -X GET <https://${bmc}/redfish/v1/Managers/bmc>
+- curl -basic -u root:0penBmc -X PATCH <https://${bmc}/redfish/v1/Chassis/${chassis_id>} -d '{"AssetTag": "{AssetTag_value}"}' -k -i
+- curl -basic -u root:0penBmc -X PATCH <https://${bmc}/redfish/v1/Chassis/${chassis_id>} -d '{"IndicatorLED": "{Lit/Blinking/Off}"}' -k -i
+- curl -basic -u root:0penBmc -X PATCH <https://${bmc}/redfish/v1/Managers/bmc> -d '{"CommandShell":{"ServiceEnabled":"true/false"}}' -k -i
+
+%% original patch: 0025-Redfish-Chassis-schema-enhancement.patch
+---
+ redfish-core/lib/chassis.hpp  |  51 ++++++-
+ redfish-core/lib/managers.hpp | 276 +++++++++++++++++++++++++++++++++-
+ 2 files changed, 319 insertions(+), 8 deletions(-)
+
+diff --git a/redfish-core/lib/chassis.hpp b/redfish-core/lib/chassis.hpp
+index eb2d8f0d..856aeaae 100644
+--- a/redfish-core/lib/chassis.hpp
++++ b/redfish-core/lib/chassis.hpp
+@@ -472,6 +472,27 @@ inline void
+                     });
+             }
+ 
++            const std::string SKUInterface =
++                "xyz.openbmc_project.Inventory.Item";
++            if (std::find(interfaces2.begin(), interfaces2.end(),
++                          SKUInterface) != interfaces2.end())
++            {
++                sdbusplus::asio::getProperty<std::string>(
++                    *crow::connections::systemBus, connectionName, path,
++                    SKUInterface, "SKU",
++                    [asyncResp, chassisId(std::string(chassisId))](
++                        const boost::system::error_code ec2,
++                        const std::string& property) {
++                    if (ec2)
++                    {
++                        BMCWEB_LOG_DEBUG << "DBus response error for SKU";
++                        messages::internalError(asyncResp->res);
++                        return;
++                    }
++                    asyncResp->res.jsonValue["SKU"] = property;
++                    });
++            }
++
+             for (const char* interface : hasIndicatorLed)
+             {
+                 if (std::find(interfaces2.begin(), interfaces2.end(),
+@@ -536,6 +557,13 @@ inline void
+                 asyncResp->res.jsonValue["ThermalSubsystem"]["@odata.id"] =
+                     crow::utility::urlFromPieces("redfish", "v1", "Chassis",
+                                                  chassisId, "ThermalSubsystem");
++                asyncResp->res.jsonValue["PowerSubsystem"]["@odata.id"] =
++                    crow::utility::urlFromPieces("redfish", "v1", "Chassis",
++                                                 chassisId, "PowerSubsystem");
++                asyncResp->res.jsonValue["EnvironmentMetrics"]["@odata.id"] =
++                    crow::utility::urlFromPieces("redfish", "v1", "Chassis",
++                                                 chassisId,
++                                                 "EnvironmentMetrics");
+ #endif
+                 // SensorCollection
+                 asyncResp->res.jsonValue["Sensors"]["@odata.id"] =
+@@ -555,6 +583,9 @@ inline void
+                 managedBy.push_back(std::move(manager));
+                 asyncResp->res.jsonValue["Links"]["ManagedBy"] =
+                     std::move(managedBy);
++                asyncResp->res
++                    .jsonValue["Links"]["ManagersInChassis"]["@odata.id"] =
++                    "/redfish/v1/Managers/bmc";
+                 getChassisState(asyncResp);
+                 },
+                 connectionName, path, "org.freedesktop.DBus.Properties",
+@@ -659,21 +690,23 @@ inline void
+     }
+     std::optional<bool> locationIndicatorActive;
+     std::optional<std::string> indicatorLed;
++    std::optional<std::string> assetTag;
+ 
+     if (param.empty())
+     {
+         return;
+     }
+ 
+-    if (!json_util::readJsonPatch(
+-            req, asyncResp->res, "LocationIndicatorActive",
+-            locationIndicatorActive, "IndicatorLED", indicatorLed))
++    if (!json_util::readJsonPatch(req, asyncResp->res,
++                                  "LocationIndicatorActive",
++                                  locationIndicatorActive, "IndicatorLED",
++                                  indicatorLed, "AssetTag", assetTag))
+     {
+         return;
+     }
+ 
+     // TODO (Gunnar): Remove IndicatorLED after enough time has passed
+-    if (!locationIndicatorActive && !indicatorLed)
++    if (!locationIndicatorActive && !indicatorLed && !assetTag)
+     {
+         return; // delete this when we support more patch properties
+     }
+@@ -691,9 +724,9 @@ inline void
+     const std::string& chassisId = param;
+ 
+     crow::connections::systemBus->async_method_call(
+-        [asyncResp, chassisId, locationIndicatorActive,
+-         indicatorLed](const boost::system::error_code ec,
+-                       const dbus::utility::MapperGetSubTreeResponse& subtree) {
++        [asyncResp, chassisId, locationIndicatorActive, indicatorLed,
++         assetTag](const boost::system::error_code ec,
++                   const dbus::utility::MapperGetSubTreeResponse& subtree) {
+         if (ec)
+         {
+             messages::internalError(asyncResp->res);
+@@ -762,6 +795,10 @@ inline void
+                     messages::propertyUnknown(asyncResp->res, "IndicatorLED");
+                 }
+             }
++            if (assetTag)
++            {
++                handleFruPatch(path, *assetTag, "PRODUCT_ASSET_TAG", asyncResp);
++            }
+             return;
+         }
+ 
+diff --git a/redfish-core/lib/managers.hpp b/redfish-core/lib/managers.hpp
+index 645b8e8c..50d753fa 100644
+--- a/redfish-core/lib/managers.hpp
++++ b/redfish-core/lib/managers.hpp
+@@ -35,6 +35,14 @@
+ namespace redfish
+ {
+ 
++constexpr char const* systemdObject = "org.freedesktop.systemd1";
++constexpr char const* systemdPath = "/org/freedesktop/systemd1";
++constexpr char const* dropbearSocketPath =
++    "/org/freedesktop/systemd1/unit/dropbear_2esocket";
++constexpr char const* systemdUnitInterface = "org.freedesktop.systemd1.Unit";
++constexpr char const* systemdManagerInterface =
++    "org.freedesktop.systemd1.Manager";
++
+ /**
+  * Function reboots the BMC.
+  *
+@@ -1943,6 +1951,233 @@ inline void setDateTime(std::shared_ptr<bmcweb::AsyncResp> aResp,
+     }
+ }
+ 
++inline void getKernelVersion(const std::shared_ptr<bmcweb::AsyncResp>& aResp)
++{
++    std::string version;
++    std::array<char, 50> buffer;
++    FILE* pipe = popen("uname -rm", "r");
++
++    if (!pipe)
++    {
++        BMCWEB_LOG_DEBUG << "fail to get kernel version";
++        return;
++    }
++
++    while (fgets(buffer.data(), buffer.size(), pipe) != nullptr)
++    {
++        version.append(buffer.data());
++    }
++
++    pclose(pipe);
++
++    std::string::size_type i = version.find('\n');
++
++    if (i != std::string::npos)
++    {
++        version.erase(i);
++    }
++
++    aResp->res.jsonValue["AdditionalFirmwareVersions"]["Kernel"] =
++        std::move(version);
++}
++
++inline void getBootVersion(const std::shared_ptr<bmcweb::AsyncResp>& aResp)
++{
++    std::string version = "0.0";
++    std::ifstream infile("/etc/os-release");
++    if (infile.is_open())
++    {
++        std::string line;
++        size_t location;
++        while (std::getline(infile, line))
++        {
++            location = line.find("BOOT_VERSION=");
++            if (location != std::string::npos)
++            {
++                location = line.find_first_of('"');
++                if (location != std::string::npos)
++                {
++                    version = line.substr(location + 1);
++                    location = version.find_first_of('"');
++                    if (location != std::string::npos)
++                    {
++                        version = version.substr(0, location);
++                    }
++                }
++                break;
++            }
++        }
++        infile.close();
++    }
++
++    aResp->res.jsonValue["AdditionalFirmwareVersions"]["Bootloader"] =
++        std::move(version);
++}
++
++inline void getCommandShellMaxConcurrentSessions(
++    const std::shared_ptr<bmcweb::AsyncResp>& aResp)
++{
++    std::string maxConcurrentSessions;
++    char buffer[512];
++    FILE* pipe = popen("systemctl show dropbear.socket -p MaxConnections", "r");
++
++    if (!pipe)
++    {
++        BMCWEB_LOG_DEBUG << "fail to get CommandShell MaxConcurrentSessions";
++        return;
++    }
++
++    while (fgets(buffer, sizeof(buffer), pipe) != nullptr)
++    {
++        maxConcurrentSessions.append(buffer);
++    }
++
++    pclose(pipe);
++
++    size_t location = maxConcurrentSessions.find("MaxConnections=");
++    std::string caption("MaxConnections=");
++    size_t captionSize = caption.size();
++
++    if (location != std::string::npos)
++    {
++        maxConcurrentSessions.erase(location, captionSize);
++    }
++
++    size_t i = maxConcurrentSessions.find('\n');
++
++    if (i != std::string::npos)
++    {
++        maxConcurrentSessions.erase(i);
++    }
++
++    aResp->res.jsonValue["CommandShell"]["MaxConcurrentSessions"] =
++        std::move(maxConcurrentSessions);
++}
++
++inline void getCommandShellServiceEnabledStatus(
++    const std::shared_ptr<bmcweb::AsyncResp>& aResp)
++{
++    sdbusplus::asio::getProperty<std::string>(
++        *crow::connections::systemBus, systemdObject, dropbearSocketPath,
++        systemdUnitInterface, "ActiveState",
++        [aResp](const boost::system::error_code ec,
++                const std::string& ActiveState) {
++        if (ec)
++        {
++            BMCWEB_LOG_DEBUG << "DBUS response error for "
++                                "dropbear socket ActiveState";
++            messages::internalError(aResp->res);
++            return;
++        }
++        std::string serviceEnabled;
++        if (ActiveState == "active")
++        {
++            serviceEnabled = "true";
++        }
++        else
++        {
++            serviceEnabled = "false";
++        }
++        aResp->res.jsonValue["CommandShell"]["ServiceEnabled"] = serviceEnabled;
++        });
++}
++
++inline void
++    setCommandShellServiceEnabled(std::shared_ptr<bmcweb::AsyncResp> aResp,
++                                  bool enable)
++{
++    sdbusplus::asio::getProperty<std::string>(
++        *crow::connections::systemBus, systemdObject, dropbearSocketPath,
++        systemdUnitInterface, "ActiveState",
++        [aResp, enable](const boost::system::error_code ec,
++                        const std::string& ActiveState) {
++        if (ec)
++        {
++            BMCWEB_LOG_DEBUG << "DBUS response error for getting"
++                                "dropbear socket ActiveState";
++            messages::internalError(aResp->res);
++            return;
++        }
++
++        bool status;
++        if (ActiveState == "active")
++        {
++            status = true;
++        }
++        else
++        {
++            status = false;
++        }
++
++        std::string method;
++        std::string mode;
++        std::string respValue;
++        if (enable && !status)
++        {
++            method = "Start";
++            mode = "replace";
++            respValue = "true";
++
++            // enable dropbear.socket
++            crow::connections::systemBus->async_method_call(
++                [aResp](const boost::system::error_code ec2) {
++                if (ec2)
++                {
++                    BMCWEB_LOG_ERROR << "Failed to enable dropbear socket: "
++                                     << ec2;
++                    messages::internalError(aResp->res);
++                    return;
++                }
++                },
++                systemdObject, systemdPath, systemdManagerInterface,
++                "EnableUnitFiles",
++                std::array<const char*, 1>{"dropbear.socket"}, bool(false),
++                bool(false));
++        }
++        else if (!enable && status)
++        {
++            method = "Stop";
++            mode = "ignore-dependencies";
++            respValue = "false";
++
++            // disable dropbear.socket
++            crow::connections::systemBus->async_method_call(
++                [aResp](const boost::system::error_code ec2) {
++                if (ec2)
++                {
++                    BMCWEB_LOG_ERROR << "Failed to disable dropbear socket: "
++                                     << ec2;
++                    messages::internalError(aResp->res);
++                    return;
++                }
++                },
++                systemdObject, systemdPath, systemdManagerInterface,
++                "DisableUnitFiles",
++                std::array<const char*, 1>{"dropbear.socket"}, bool(false));
++        }
++        else
++        {
++            return;
++        }
++
++        // start/stop dropbear.socket
++        crow::connections::systemBus->async_method_call(
++            [aResp, method, mode,
++             respValue](const boost::system::error_code ec1) {
++            if (ec1)
++            {
++                BMCWEB_LOG_ERROR << "Failed to" << method
++                                 << "dropbear socket: " << ec1;
++                messages::internalError(aResp->res);
++                return;
++            }
++            messages::success(aResp->res);
++            },
++            systemdObject, dropbearSocketPath, systemdUnitInterface, method,
++            mode);
++        });
++}
++
+ inline void requestRoutesManager(App& app)
+ {
+     std::string uuid = persistent_data::getConfig().systemUuid;
+@@ -2032,6 +2267,12 @@ inline void requestRoutesManager(App& app)
+         asyncResp->res.jsonValue["SerialConsole"]["MaxConcurrentSessions"] = 15;
+         asyncResp->res.jsonValue["SerialConsole"]["ConnectTypesSupported"] = {
+             "IPMI", "SSH"};
++
++        asyncResp->res.jsonValue["CommandShell"]["ConnectTypesSupported"] = {
++            "IPMI", "SSH"};
++        getCommandShellServiceEnabledStatus(asyncResp);
++        getCommandShellMaxConcurrentSessions(asyncResp);
++
+ #ifdef BMCWEB_ENABLE_KVM
+         // Fill in GraphicalConsole info
+         asyncResp->res.jsonValue["GraphicalConsole"]["ServiceEnabled"] = true;
+@@ -2066,6 +2307,9 @@ inline void requestRoutesManager(App& app)
+         managerDiagnosticData["@odata.id"] =
+             "/redfish/v1/Managers/bmc/ManagerDiagnosticData";
+ 
++        getKernelVersion(asyncResp);
++        getBootVersion(asyncResp);
++
+         auto pids = std::make_shared<GetPIDValues>(asyncResp);
+         pids->run();
+ 
+@@ -2209,9 +2453,11 @@ inline void requestRoutesManager(App& app)
+         std::optional<nlohmann::json> oem;
+         std::optional<nlohmann::json> links;
+         std::optional<std::string> datetime;
++        std::optional<nlohmann::json> commandShell;
+ 
+         if (!json_util::readJsonPatch(req, asyncResp->res, "Oem", oem,
+-                                      "DateTime", datetime, "Links", links))
++                                      "DateTime", datetime, "Links", links,
++                                      "CommandShell", commandShell))
+         {
+             return;
+         }
+@@ -2276,6 +2522,34 @@ inline void requestRoutesManager(App& app)
+         {
+             setDateTime(asyncResp, std::move(*datetime));
+         }
++        if (commandShell)
++        {
++            std::optional<std::string> serviceEnabled;
++            if (!redfish::json_util::readJson(*commandShell, asyncResp->res,
++                                              "ServiceEnabled", serviceEnabled))
++            {
++                return;
++            }
++            if (serviceEnabled)
++            {
++                bool serviceEnabledSetting;
++                if (*serviceEnabled == "true")
++                {
++                    serviceEnabledSetting = true;
++                }
++                else if (*serviceEnabled == "false")
++                {
++                    serviceEnabledSetting = false;
++                }
++                else
++                {
++                    messages::propertyValueNotInList(
++                        asyncResp->res, *serviceEnabled, "ServiceEnabled");
++                    return;
++                }
++                setCommandShellServiceEnabled(asyncResp, serviceEnabledSetting);
++            }
++        }
+         });
+ }
+ 
+-- 
+2.33.0
+

@@ -53,4 +53,5 @@ SRC_URI:append = " \
     file://0022-Bug-1075-Transformers-OpenBMC-WebUI-network-Unable-t.patch \
     file://0023-Bug-1506-Transformers-OpenBMC-Redfish-Modify-IPv4-ad.patch \
     file://0024-Simple-Rack-mounted-Server-for-Sensors.patch \
+    file://0025-Redfish-Chassis-schema-enhancement.patch \
 "
