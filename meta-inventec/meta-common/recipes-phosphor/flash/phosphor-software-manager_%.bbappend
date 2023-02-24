@@ -19,10 +19,12 @@ SRC_URI += " \
             file://0009-fetch-delta-dps2400-psu-firmare-version-by-redfish.patch \
            "
 
-#add cpld service
+#add cpld and psu service
 SYSTEMD_SERVICE:${PN}-updater += " \
    obmc-cpld-update@.service \
+   obmc-psu-update@.service \
 "
+
 
 PACKAGECONFIG[cpld_mb] = "-Dcpld-mb-upgrade=enabled, -Dcpld-mb-upgrade=disabled"
 PACKAGECONFIG[cpld_scm] = "-Dcpld-scm-upgrade=enabled, -Dcpld-scm-upgrade=disabled"
