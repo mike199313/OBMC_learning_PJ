@@ -28,7 +28,7 @@ PACKAGECONFIG[query] = "-Dinsecure-enable-redfish-query=enabled,-Dinsecure-enabl
 PACKAGECONFIG[power-thermal] = "-Dredfish-allow-deprecated-power-thermal=enabled,-Dredfish-allow-deprecated-power-thermal=disabled,"
 PACKAGECONFIG[power-thermal-subsystem] = "-Dredfish-new-powersubsystem-thermalsubsystem=enabled,-Dredfish-new-powersubsystem-thermalsubsystem=disabled,"
 
-PACKAGECONFIG:append = " journal dump tftp etag inv-psu query power-thermal-subsystem"
+PACKAGECONFIG:append = " journal dump tftp etag inv-psu query power-thermal power-thermal-subsystem"
 
 SRC_URI:append = " \
     file://0001-Empty-base-dn-error.patch \
