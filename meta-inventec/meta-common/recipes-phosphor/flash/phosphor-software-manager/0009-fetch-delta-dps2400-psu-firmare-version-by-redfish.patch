@@ -1,4 +1,4 @@
-From f738606be0e6fbdfa83e013f1f85f8df91f855ba Mon Sep 17 00:00:00 2001
+From 1bd7b503a3aaf5d4ce51f462e2573ca3b885918d Mon Sep 17 00:00:00 2001
 From: "sun.cwsun" <sun.cwsun@inventec.com>
 Date: Thu, 23 Feb 2023 14:22:56 +0800
 Subject: [PATCH] support 75% Delta DPS2400 EB psu firmware upload. Because
@@ -423,7 +423,7 @@ index 0000000..5efb5cf
 +}
 +#endif
 diff --git a/item_updater.cpp b/item_updater.cpp
-index abf77cb..79b23bd 100644
+index abf77cb..dfbb045 100644
 --- a/item_updater.cpp
 +++ b/item_updater.cpp
 @@ -19,6 +19,30 @@
@@ -509,7 +509,7 @@ index abf77cb..79b23bd 100644
 +}
 +
 +
-+void static load_psu_config(std::vector<PSU>& PSUs)
++[[maybe_unused]]void static load_psu_config(std::vector<PSU>& PSUs)
 +{
 +    const std::string psuConfigFileName = "/usr/share/ipmi-providers/psu_config.json";
 +   
@@ -529,7 +529,7 @@ index abf77cb..79b23bd 100644
 +    }
 +}
 +
-+static int init_PSU_I2C(PSU &p)
++[[maybe_unused]]static int init_PSU_I2C(PSU &p)
 +{
 +    char filename[32];
 +    p.fh = open_i2c_dev(p.bus, filename, sizeof(filename), 0);
@@ -583,9 +583,9 @@ index abf77cb..79b23bd 100644
 +
 +}
 +#else
-+static std::string get_psu_firmware_version(int index)
++static std::string get_psu_firmware_version(int index[[maybe_unused]])
 +    {
-+        return "not support fetching psu firmware version feature"
++        return "not support fetching psu firmware version feature";
 +    }
 +#endif
 +
@@ -838,21 +838,21 @@ index 28028aa..70cc3d4 100644
  if get_option('sync-bmc-files').enabled()
      executable(
 diff --git a/meson_options.txt b/meson_options.txt
-index f3d3a95..82931f1 100644
+index f3d3a95..d0e8b6e 100644
 --- a/meson_options.txt
 +++ b/meson_options.txt
 @@ -138,12 +138,36 @@ option(
      description: 'The dir for alt-rwfs partition.',
  )
  
-+option('dps2400eb', type: 'feature', value: 'enabled', 
++option('dps2400eb', type: 'feature', value: 'disabled', 
 +    description: 'Support PSU MODEL Delta DPS2400 EB')
 +
-+option('psu1-upgrade', type: 'feature', value: 'enabled',
++option('psu1-upgrade', type: 'feature', value: 'disabled',
 +    description: 'Enable psu1 upgrade support.')
 +
 +
-+option('psu2-upgrade', type: 'feature', value: 'enabled',
++option('psu2-upgrade', type: 'feature', value: 'disabled',
 +    description: 'Enable psu2 upgrade support.')
 +
 +
