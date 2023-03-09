@@ -1,0 +1,60 @@
+From c25a37fa4d163c86d9160bc467f3f12be7437144 Mon Sep 17 00:00:00 2001
+From: Matt Cheng <cheng.matt@inventec.com>
+Date: Thu, 9 Mar 2023 13:35:08 +0800
+Subject: [PATCH] Interface readiness
+
+Symptom/Reason:
+	BMC boot up for SSH connections over the LAN+ interface should within 40 seconds.
+	BMC boot up for Redfish API requests within 60 seconds.
+
+Root Cause:
+	N/A
+
+Solution/Change:
+	1. Disable the image checksum verify.
+	2. Disable the bootdelay.
+	3. Save the default environment to the flash.
+
+Entry Test:
+	1. SSH to the BMC after BMC boot up in 40 seconds.
+	2. Use the below command after BMC boot up in 60 seconds.
+		ipmitool -I lanplus -C 17 -N 3 -p 623 -U root -P 0penBmc -H 10.6.141.89 mc info
+---
+ env/common.c                    | 1 +
+ include/configs/aspeed-common.h | 2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+ mode change 100644 => 100755 env/common.c
+ mode change 100644 => 100755 include/configs/aspeed-common.h
+
+diff --git a/env/common.c b/env/common.c
+old mode 100644
+new mode 100755
+index 324502ed82..1342407a71
+--- a/env/common.c
++++ b/env/common.c
+@@ -82,6 +82,7 @@ void set_default_env(const char *s, int flags)
+ 		pr_err("## Error: Environment import failed: errno = %d\n",
+ 		       errno);
+ 
++	env_save();
+ 	gd->flags |= GD_FLG_ENV_READY;
+ 	gd->flags |= GD_FLG_ENV_DEFAULT;
+ }
+diff --git a/include/configs/aspeed-common.h b/include/configs/aspeed-common.h
+old mode 100644
+new mode 100755
+index d697b4bf42..90d6260c69
+--- a/include/configs/aspeed-common.h
++++ b/include/configs/aspeed-common.h
+@@ -54,7 +54,7 @@
+ #define CONFIG_SYS_BOOTM_LEN 		(0x800000 * 2)
+ 
+ #define CONFIG_EXTRA_ENV_SETTINGS \
+-	"verify=yes\0"	\
++	"verify=no\0"	\
+ 	""
+ 
+ /* Environment */
+-- 
+2.25.1
+

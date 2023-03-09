@@ -9,6 +9,7 @@ SRC_URI:append = " file://starscream-ast2600.cfg \
                    file://0003-Read-MAC0-address-from-EEPROM.patch \
                    file://0004-Support-max31790-device-driver.patch \
                    file://0005-Initial-starscream-machine.patch \
+                   file://0006-Interface-readiness.patch \
                  "
 
 do_copyfile () {
