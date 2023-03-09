@@ -62,4 +62,5 @@ SRC_URI:append  = " file://0001-Removed-Get-Device-ID-command.patch \
                     file://0026-Bug-1360-AddDeleteSDR-setSensorReadingAndEventStatus.patch \
                     file://0027-Fix-sel-list-can-not-update-after-clear.patch \
                     file://0028-Bug-1453-Set-sensor-reading-and-event-status.patch \
+                    file://0029-Bug-1566-Starscream-ast-OpenBMC-IPMI-fru-0-show-Devi.patch \
                   "

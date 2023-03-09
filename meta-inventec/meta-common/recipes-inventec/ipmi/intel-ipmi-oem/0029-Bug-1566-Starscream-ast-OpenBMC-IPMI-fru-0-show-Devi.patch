@@ -1,0 +1,250 @@
+From 8027541e139259f9705f9b78e74fcacfbbe06b26 Mon Sep 17 00:00:00 2001
+From: Wein <kuo.wein@inventec.com>
+Date: Thu, 9 Mar 2023 09:41:04 +0800
+Subject: [PATCH] Bug 1566 - [Starscream-ast][OpenBMC][IPMI]fru 0 show Device
+ not present
+
+Symptom/Reason :
+- Fru device 0 does not appear in the list of ipmitool fru print.
+
+Root Cause:
+- The flag of the baseboard fru presence has no effect.
+- The chassis type of the motherboard is not a rack mount chassis.
+
+Solution/Change:
+- intel-ipmi-oem.
+
+Entry Test:
+```
+sysadmin@starscream:/tmp# ipmitool fru print
+FRU Device Description : Builtin FRU Device (ID 0)
+ Chassis Type          : Rack Mount Chassis
+ Chassis Part Number   : TestPlatform
+ Chassis Serial        : CSerial06810681
+ Chassis Extra         : Auto-typed text custom field
+ Chassis Extra         : 1234
+ Board Mfg Date        : Fri Dec 31 17:00:00 2021 UTC
+ Board Mfg             : Inventec
+ Board Product         : motherboard
+ Board Serial          : BSerial06810681
+ Board Part Number     : Test-1234
+ Board Extra           : 0123deadbabe
+ Board Extra           : This is a text custom field
+ Board Extra           : This is test2
+ Product Manufacturer  : Inventec
+ Product Name          : motherboard
+ Product Serial        : PSerial06810681
+ Product Asset Tag     : Accounting Dept.
+ Product Extra         : Product Custom 1
+ Product Extra         : PRDCSTM
+ Product Extra         : PRDCSTM2
+ Product Extra         : c001beef
+
+FRU Device Description : SCM (ID 1)
+ Chassis Type          : Notebook
+ Chassis Part Number   : TestPlatform
+ Chassis Serial        : CSerial12811281
+ Chassis Extra         : Auto-typed text custom field
+ Chassis Extra         : 1234
+ Board Mfg Date        : Fri Dec 31 17:00:00 2021 UTC
+ Board Mfg             : Inventec
+ Board Product         : SCM
+ Board Serial          : BSerial12811281
+ Board Part Number     : Test-1234
+ Board Extra           : 0123deadbabe
+ Board Extra           : This is a text custom field
+ Board Extra           : This is test2
+ Product Manufacturer  : Inventec
+ Product Name          : SCM
+ Product Serial        : PSerial12811281
+ Product Asset Tag     : Accounting Dept.
+ Product Extra         : Product Custom 1
+ Product Extra         : PRDCSTM
+ Product Extra         : PRDCSTM2
+ Product Extra         : c001beef
+
+FRU Device Description : BP1 (ID 2)
+ Chassis Type          : Notebook
+ Chassis Part Number   : TestPlatform
+ Chassis Serial        : CSerial24802480
+ Chassis Extra         : Auto-typed text custom field
+ Chassis Extra         : 1234
+ Board Mfg Date        : Fri Dec 31 17:00:00 2021 UTC
+ Board Mfg             : Inventec
+ Board Product         : BP1
+ Board Serial          : BSerial24802480
+ Board Part Number     : Test-1234
+ Board Extra           : 0123deadbabe
+ Board Extra           : This is a text custom field
+ Board Extra           : This is test2
+ Product Manufacturer  : Inventec
+ Product Name          : BP1
+ Product Serial        : PSerial24802480
+ Product Asset Tag     : Accounting Dept.
+ Product Extra         : Product Custom 1
+ Product Extra         : PRDCSTM
+ Product Extra         : PRDCSTM2
+ Product Extra         : c001beef
+
+FRU Device Description : BP2 (ID 3)
+ Chassis Type          : Notebook
+ Chassis Part Number   : TestPlatform
+ Chassis Serial        : CSerial25802580
+ Chassis Extra         : Auto-typed text custom field
+ Chassis Extra         : 1234
+ Board Mfg Date        : Fri Dec 31 17:00:00 2021 UTC
+ Board Mfg             : Inventec
+ Board Product         : BP2
+ Board Serial          : BSerial25802580
+ Board Part Number     : Test-1234
+ Board Extra           : 0123deadbabe
+ Board Extra           : This is a text custom field
+ Board Extra           : This is test2
+ Product Manufacturer  : Inventec
+ Product Name          : BP2
+ Product Serial        : PSerial25802580
+ Product Asset Tag     : Accounting Dept.
+ Product Extra         : Product Custom 1
+ Product Extra         : PRDCSTM
+ Product Extra         : PRDCSTM2
+ Product Extra         : c001beef
+
+FRU Device Description : Riser2 (ID 4)
+ Chassis Type          : Notebook
+ Chassis Part Number   : ABC
+ Chassis Serial        : CSerial34803480
+ Board Mfg Date        : Fri Sep 30 19:00:00 2016 UTC
+ Board Mfg             : Inventec
+ Board Product         : Riser2
+ Board Serial          : RSerial34803480
+ Board Part Number     : BBN
+ Board Extra           : BBB
+ Product Manufacturer  : Inventec
+ Product Name          : Riser2
+ Product Part Number   : PPN
+ Product Version       : v11
+ Product Serial        : PSerial34803480
+ Product Asset Tag     : Accounting Dept.
+ Product Extra         : PPP
+ Product Extra         : PRDCSTM
+ Product Extra         : PRDCSTM2
+ Product Extra         : c001beef
+
+FRU Device Description : Riser2 (ID 5)
+ Chassis Type          : Notebook
+ Chassis Part Number   : TestPlatform
+ Chassis Serial        : 45678
+ Chassis Extra         : Auto-typed text custom field
+ Chassis Extra         : 1234
+ Board Mfg Date        : Fri Dec 31 17:00:00 2021 UTC
+ Board Mfg             : Inventec
+ Board Product         : Riser2
+ Board Serial          : 123456
+ Board Part Number     : Test-1234
+ Board Extra           : 0123deadbabe
+ Board Extra           : This is a text custom field
+ Board Extra           : This is test2
+ Product Manufacturer  : Inventec
+ Product Name          : Riser2
+ Product Serial        : OEM12345
+ Product Asset Tag     : Accounting Dept.
+ Product Extra         : Product Custom 1
+ Product Extra         : PRDCSTM
+ Product Extra         : PRDCSTM2
+ Product Extra         : c001beef
+
+FRU Device Description : RunBmc (ID 6)
+ Chassis Type          : Notebook
+ Chassis Part Number   : TestPlatform
+ Chassis Serial        : CSerial08810881
+ Chassis Extra         : Auto-typed text custom field
+ Chassis Extra         : 1234
+ Board Mfg Date        : Fri Dec 31 17:00:00 2021 UTC
+ Board Mfg             : Inventec
+ Board Product         : RunBmc
+ Board Serial          : BSerial08810881
+ Board Part Number     : Test-1234
+ Board Extra           : 0123deadbabe
+ Board Extra           : This is a text custom field
+ Board Extra           : This is test2
+ Product Manufacturer  : Inventec
+ Product Name          : RunBmc
+ Product Serial        : PSerial08810881
+ Product Asset Tag     : Accounting Dept.
+ Product Extra         : Product Custom 1
+ Product Extra         : PRDCSTM
+ Product Extra         : PRDCSTM2
+ Product Extra         : c001beef
+```
+---
+ src/storagecommands.cpp | 46 +++++++++++++++++++++++++++++++++++++---------
+ 1 file changed, 37 insertions(+), 9 deletions(-)
+
+diff --git a/src/storagecommands.cpp b/src/storagecommands.cpp
+index 49ac3fd..86fa825 100644
+--- a/src/storagecommands.cpp
++++ b/src/storagecommands.cpp
+@@ -233,7 +233,21 @@ void createTimers()
+ void recalculateHashes()
+ {
+     bool base_fru_found = false;
+-
++    if (fru_id_map.size())
++    {
++        // Check if the first baseboard fru already exists in the map, 
++        // and we don't want to use a global variable to hold this value 
++        // to avoid any side effects.
++        for (const auto& fru : fru_id_map)
++        {
++            if (fru.second == 0)
++            {
++                base_fru_found = true;
++                break;
++            }
++        }
++    }
++
+     deviceHashes.clear();
+     devicePath.clear();
+     // hash the object paths to create unique device id's. increment on
+@@ -270,15 +284,29 @@ void recalculateHashes()
+         }
+ 
+         uint8_t fru_id = 0;
+-        std::string fru_addr_string = std::to_string(fruBus)+std::to_string(fruAddr);
+-
+-        if( fru_id_map.find(fru_addr_string)== fru_id_map.end() ){
+-            if(base_fru_found==true){   // baseboard fru already exists
++        std::string fru_addr_string = std::to_string(fruBus) + std::to_string(fruAddr);
++        if (fru_id_map.find(fru_addr_string) == fru_id_map.end())
++        {
++            if (base_fru_found == false) 
++            {
++                if (chassisType.compare(chassisTypeRackMount) == 0)
++                {
++                    // The fru id 0 is only reserved for the first baseboard fru.
++                    fru_id = 0;
++                    base_fru_found = true;
++                }
++                else
++                {
++                    // If the first fru is not a baseboard fru, 
++                    // we should reserve id 0 for the first baseboard fru,
++                    // and the others will be offset by 1.
++                    fru_id = fru_id_map.size() + 1;
++                }
++            }
++            else 
++            {
++                // In the case of not the first base fru or other types of fru.
+                 fru_id = fru_id_map.size();
+-            }else if (chassisType.compare(chassisTypeRackMount) != 0 ){
+-                fru_id = fru_id_map.size()+1;
+-            }else{
+-                base_fru_found = true;  //fru id 0 is reserved for baseboard fru
+             }
+             fru_id_map[fru_addr_string] = fru_id;
+         }
+-- 
+2.7.4
+
