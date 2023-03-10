@@ -5,11 +5,13 @@ SRC_URI:append:transformers = " file://channel_access.json"
 SRC_URI:append:transformers = " file://channel_config.json"
 SRC_URI:append:transformers = " file://gpiomap.json"
 SRC_URI:append:transformers = " file://psu_config.json"
+SRC_URI:append:transformers = " file://fru_config.json"
 
 
 FILES:${PN} += " \
                 ${datadir}/ipmi-providers/gpiomap.json \
                 ${datadir}/ipmi-providers/psu_config.json \
+                ${datadir}/ipmi-providers/fru_config.json \
                "
 
 do_install:append:transformers() {
@@ -23,4 +25,6 @@ do_install:append:transformers() {
         ${D}/usr/share/ipmi-providers/gpiomap.json
     install -m 0644 -D ${WORKDIR}/psu_config.json \
         ${D}/usr/share/ipmi-providers/psu_config.json
+    install -m 0644 -D ${WORKDIR}/fru_config.json \
+        ${D}/usr/share/ipmi-providers/fru_config.json
 }

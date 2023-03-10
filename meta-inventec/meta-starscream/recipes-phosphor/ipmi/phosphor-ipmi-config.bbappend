@@ -6,6 +6,7 @@ SRC_URI += " \
             file://channel_access.json \
             file://gpiomap.json \
             file://psu_config.json \
+            file://fru_config.json \
            "
 
 FILES:${PN} += " \
@@ -13,7 +14,8 @@ FILES:${PN} += " \
                 ${datadir}/ipmi-providers/channel_config.json \
                 ${datadir}/ipmi-providers/channel_access.json \
                 ${datadir}/ipmi-providers/gpiomap.json \ 
-                ${datadir}/ipmi-providers/psu_config.json \ 
+                ${datadir}/ipmi-providers/psu_config.json \
+                ${datadir}/ipmi-providers/fru_config.json \ 
                 "
 
 do_install:append() {
@@ -27,4 +29,6 @@ do_install:append() {
         ${D}/usr/share/ipmi-providers/gpiomap.json
     install -m 0644 -D ${WORKDIR}/psu_config.json \
         ${D}/usr/share/ipmi-providers/psu_config.json
+    install -m 0644 -D ${WORKDIR}/fru_config.json \
+        ${D}/usr/share/ipmi-providers/fru_config.json
 }

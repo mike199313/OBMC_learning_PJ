@@ -1,8 +1,8 @@
-From e32ed43f2cdc3a09c3520346e8d0798bf3dc2452 Mon Sep 17 00:00:00 2001
+From 7e564a81e14ed6715021a6020537c16363302be6 Mon Sep 17 00:00:00 2001
 From: "pj.chen" <chen.pj@inventec.com>
 Date: Mon, 7 Mar 2022 08:07:29 +0000
-Subject: [PATCH 14/25] Bug 629 - [SW][Transformers][OpenBMC] Support mc
- selftest on transformers
+Subject: [PATCH] Bug 629 - [SW][Transformers][OpenBMC] Support mc selftest on
+ transformers
 
 Solution/Change:
     [inv-ipmi-oem]
@@ -45,16 +45,16 @@ Entry Test:
     SDR repository empty
     Internal Use Area corrupted
 ---
- include/appcommands.hpp      |  13 ++++
+ include/appcommands.hpp      |  13 +++
  include/bridgingcommands.hpp |   2 +
- include/sdrutils.hpp         |  13 +++-
+ include/sdrutils.hpp         |  13 ++-
  include/sensorcommands.hpp   |   2 +-
  include/storagecommands.hpp  |  16 +++-
- src/appcommands.cpp          | 145 +++++++++++++++++++++++++++++++++++
+ src/appcommands.cpp          | 145 +++++++++++++++++++++++++++++++
  src/bridgingcommands.cpp     |  16 ++++
- src/sensorcommands.cpp       |  42 +++++++---
- src/storagecommands.cpp      | 144 ++++++++++++++++++++++++++++++++++
- 9 files changed, 377 insertions(+), 16 deletions(-)
+ src/sensorcommands.cpp       |  42 +++++++--
+ src/storagecommands.cpp      | 164 +++++++++++++++++++++++++++++++++++
+ 9 files changed, 397 insertions(+), 16 deletions(-)
 
 diff --git a/include/appcommands.hpp b/include/appcommands.hpp
 index f4cd0d6..541936b 100644
@@ -143,10 +143,10 @@ index cb8b70d..e6ca8fb 100644
 +uint8_t sdrSelfTest(ipmi::Context::ptr ctx);
  } // namespace ipmi
 diff --git a/include/storagecommands.hpp b/include/storagecommands.hpp
-index 5bf3970..6434da0 100644
+index dfbe98a..e1c7db4 100644
 --- a/include/storagecommands.hpp
 +++ b/include/storagecommands.hpp
-@@ -168,13 +168,25 @@ namespace ipmi
+@@ -169,13 +169,25 @@ namespace ipmi
  namespace storage
  {
  
@@ -387,7 +387,7 @@ index 916ba15..09098c6 100644
  static void register_bridging_functions()
  {
 diff --git a/src/sensorcommands.cpp b/src/sensorcommands.cpp
-index 4d87108..d091402 100644
+index 1a3e671..b5f45e4 100644
 --- a/src/sensorcommands.cpp
 +++ b/src/sensorcommands.cpp
 @@ -15,6 +15,7 @@
@@ -434,7 +434,7 @@ index 4d87108..d091402 100644
              {
                  phosphor::logging::log<phosphor::logging::level::ERR>(
                      "getSensorDataRecord: type12Index error");
-@@ -1689,8 +1690,8 @@ ipmi::RspType<uint8_t,  // sdr version
+@@ -1696,8 +1697,8 @@ ipmi::RspType<uint8_t,  // sdr version
      }
  
      uint16_t recordCount = getNumberOfSensors() + fruCount +
@@ -445,7 +445,7 @@ index 4d87108..d091402 100644
  
      uint8_t operationSupport = static_cast<uint8_t>(
          SdrRepositoryInfoOps::overflow); // write not supported
-@@ -1788,8 +1789,8 @@ ipmi::RspType<uint16_t,            // next record ID
+@@ -1795,8 +1796,8 @@ ipmi::RspType<uint16_t,            // next record ID
  
      /* Inventec - Fix set sensor threshold command fail issue */
      size_t lastRecord = sensorTree.size() + fruCount +
@@ -456,7 +456,7 @@ index 4d87108..d091402 100644
      uint16_t nextRecordId = lastRecord > recordID ? recordID + 1 : 0XFFFF;
  
      std::vector<uint8_t> record;
-@@ -1828,6 +1829,29 @@ ipmi::RspType<uint16_t,            // next record ID
+@@ -1835,6 +1836,29 @@ ipmi::RspType<uint16_t,            // next record ID
  }
  /* end storage commands */
  
@@ -487,7 +487,7 @@ index 4d87108..d091402 100644
  {
      // <Platform Event>
 diff --git a/src/storagecommands.cpp b/src/storagecommands.cpp
-index 0af38f9..c5830b6 100644
+index c9a332f..7f746d7 100644
 --- a/src/storagecommands.cpp
 +++ b/src/storagecommands.cpp
 @@ -15,6 +15,7 @@
@@ -498,7 +498,7 @@ index 0af38f9..c5830b6 100644
  
  #include "commandutils.hpp"
  #include "ipmi_to_redfish_hooks.hpp"
-@@ -727,6 +728,149 @@ void checkTimer()
+@@ -726,6 +727,169 @@ void checkTimer()
      }
  }
  
@@ -523,112 +523,132 @@ index 0af38f9..c5830b6 100644
 +    return 0;
 +}
 +
-+inline unsigned char calculateCRC(std::vector<char>data, size_t len)
-+{
-+    char crc = 0;
-+    size_t byte = 0;
-+
-+    for (byte = 0; byte < len; byte++)
-+    {
-+        crc += (unsigned char)data[byte];
-+    }
-+
-+    return (-crc);
-+}
-+
-+
-+bool CheckFru(ipmi::Context::ptr ctx){
-+    std::shared_ptr<sdbusplus::asio::connection> dbus = ctx->bus;
-+
-+    sdbusplus::message::message writeFru = dbus->new_method_call(
-+        fruDeviceServiceName, "/xyz/openbmc_project/FruDevice",
-+        "xyz.openbmc_project.FruDeviceManager", "ReScan");
-+    try
-+    {
-+        sdbusplus::message::message writeFruResp = dbus->call(writeFru);
-+    }
-+    catch (sdbusplus::exception_t&)
-+    {
-+        phosphor::logging::log<phosphor::logging::level::ERR>(
-+            "error update fru\n");
-+        return false;
-+    }
-+
-+    return true;
-+}
 +
 +uint8_t fruSelfTest(ipmi::Context::ptr ctx)
 +{
-+    std::shared_ptr<sdbusplus::asio::connection> bus = ctx->bus;
++    const char* filename = "/usr/share/ipmi-providers/fru_config.json";
 +    uint8_t result = 0x00;
-+    if (!CheckFru(ctx))
++
++    std::ifstream fruConfigFile(filename);
++
++    struct FruConfig
 +    {
-+       result |= IPMI_SELFTEST_FRU_ERROR;
++        uint8_t bus;
++        uint8_t address;
++        std::string name;
++    };
++
++    std::vector<struct FruConfig> fruConfigs;
++
++    struct FruConfig* tempConfig;
++
++    /* Get essential FRU list from config file. */
++    if (fruConfigFile.is_open())
++    {
++        auto jsonData = nlohmann::json::parse(fruConfigFile, nullptr, false);
++        if (!jsonData.is_discarded())
++        {
++            auto frus = jsonData["fru"];
++            for (nlohmann::json& fru : frus)
++            {
++                tempConfig = new(struct FruConfig);
++
++                if (!fru.contains("Name"))
++                {
++                    std::cerr << "Fru json name parsing fail\n";
++                    return result;
++                }
++                tempConfig->name = fru["Name"];
++
++                if (!fru.contains("Bus"))
++                {
++                    std::cerr << "Fru json bus parsing fail\n";
++                    return result;
++                }
++                tempConfig->bus = fru.value("Bus", 0);
++                if (!fru.contains("Address"))
++                {
++                    std::cerr << "Fru json address parsing fail\n";
++                    return result;
++                }
++                tempConfig->address = fru.value("Address", 0);
++                fruConfigs.push_back(*tempConfig);
++            }
++        }
++        else
++        {
++            phosphor::logging::log<phosphor::logging::level::ERR>(
++                "FRU config JSON parser failure");
++            return result;
++        }
 +    }
-+
-+    using pathsOfServiceAndObject = std::pair<std::string, std::string>;
-+    std::vector<pathsOfServiceAndObject> serviceAndObjectList;
-+    
-+    GetSubTreeType resp;
-+    //If no FRU dbus object is found it is empty/invalid error
-+    std::map<std::string, std::vector<std::string>> interfacesResponse;
-+    std::vector<std::string> interfaces = {"xyz.openbmc_project.FruDevice"};
-+    auto method = bus->new_method_call(
-+        "xyz.openbmc_project.ObjectMapper",
-+        "/xyz/openbmc_project/object_mapper",
-+        "xyz.openbmc_project.ObjectMapper", "GetSubTree");
-+
-+    method.append("/", 0, interfaces);
-+    try{
-+        auto reply = bus->call(method);
-+        reply.read(resp);
-+    }catch(const sdbusplus::exception_t& e){
-+        fprintf(stderr, "%s:%d exception:%s \n", __func__, __LINE__, e.what());
-+        result |= IPMI_SELFTEST_FRU_ERROR;
++    else
++    {
++        phosphor::logging::log<phosphor::logging::level::ERR>(
++            "FRU config JSON file not found");
 +        return result;
 +    }
 +
-+    for(auto p1 : resp)
++    std::vector<std::tuple<uint8_t, uint8_t>>foundList;
++
++    /* Get bus and address of FRU in FRU cache. */
++    for (const auto& fru : frus)
 +    {
-+        auto objPath = p1.first;
-+        auto vect1 = p1.second;
-+        for(auto p2 : vect1)
++        auto fruIface = fru.second.find("xyz.openbmc_project.FruDevice");
++        if (fruIface == fru.second.end())
 +        {
-+            auto service = p2.first;
-+            pathsOfServiceAndObject val = {service, objPath};
-+            serviceAndObjectList.push_back(val);
++            continue;
++        }
++
++        auto busFind = fruIface->second.find("BUS");
++        auto addrFind = fruIface->second.find("ADDRESS");
++        if (busFind == fruIface->second.end() ||
++            addrFind == fruIface->second.end())
++        {
++            continue;
++        }
++
++        uint8_t fruBus = std::get<uint32_t>(busFind->second);
++        uint8_t fruAddr = std::get<uint32_t>(addrFind->second);
++
++        foundList.emplace_back(fruBus,fruAddr);
++    }
++
++    /* Check the essential FRUs is in FRU cache or not. */
++    for (auto &fruConfig : fruConfigs)
++    {
++        std::tuple<uint8_t, uint8_t> target = std::make_tuple(
++            fruConfig.bus,fruConfig.address);
++
++        if ( std::find(foundList.begin(), foundList.end(), target) == foundList.end())
++        {
++            /* Target FRU not detected, need to check device can access or not. */
++            phosphor::logging::log<phosphor::logging::level::INFO>(
++                "fru missing Bus, Address",
++                phosphor::logging::entry("FRU=%s", fruConfig.name.c_str()));
++
++
++            /* I2C write 1 read 1 to check i2c device can access or not. */
++            std::vector<uint8_t> writeData;
++            std::vector<uint8_t> readBuf(1);
++            std::string i2cBus =
++                "/dev/i2c-" + std::to_string(static_cast<uint8_t>(fruConfig.bus));
++
++            writeData.emplace_back(0);
++
++            if(ipmi::i2cWriteRead(i2cBus, static_cast<uint8_t>(fruConfig.address),
++                writeData, readBuf) != ipmi::ccSuccess)
++            {
++                /* i2c device access fail */
++                result |= IPMI_SELFTEST_FRU_ERROR;
++            }
++            else
++            {
++                result |= IPMI_SELFTEST_FRU_CORRUPTED;
++            }
 +        }
 +    }
 +
-+    for(auto p : serviceAndObjectList)
-+    {
-+        //Check if the bus/address of the FRU is working by trying opening the mapped file in /sys/bus/i2c/devices
-+        auto busProperty = getDbusProperty(*bus, p.first, p.second, "xyz.openbmc_project.FruDevice", "BUS");
-+        auto addressProperty = getDbusProperty(*bus, p.first, p.second, "xyz.openbmc_project.FruDevice", "ADDRESS");
-+	    std::stringstream output;
-+	    output << "/sys/bus/i2c/devices/" << std::get<uint32_t>(busProperty) << "-" << std::right
-+		   << std::setfill('0') << std::setw(4) << std::hex << std::get<uint32_t>(addressProperty)
-+		   << "/eeprom";
-+        std::cerr << "open fru" << output.str() << std::endl;
-+        std::ifstream eeprom(output.str(), std::ios::binary);
-+        if (eeprom.is_open())
-+        {
-+            std::vector<char> buffer(8);
-+            eeprom.read(buffer.data(), 8);
-+            #define IPMI_FRU_HDR_BYTE_ZERO 1
-+            if (buffer[0] != IPMI_FRU_HDR_BYTE_ZERO) {
-+                result |= IPMI_SELFTEST_FRU_CORRUPTED;
-+                std::cerr << "IPMI_FRU_HDR_BYTE_ZERO" << output.str() << std::endl;
-+                break;
-+            }
-+
-+            if(calculateCRC(buffer, 7) != buffer[7]) {
-+                result |= IPMI_SELFTEST_FRU_CORRUPTED;
-+                std::cerr << "FRU CRC error" << output.str() << std::endl;
-+                break;
-+            }
-+        }
-+    }
 +    return result;
 +}
 +
@@ -649,5 +669,5 @@ index 0af38f9..c5830b6 100644
                        get_sdr::SensorDataFruRecord& resp)
  {
 -- 
-2.33.0
+2.17.1
 

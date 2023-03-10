@@ -1,0 +1,19 @@
+{
+    "fru": [
+        {
+            "Name":"Motherboard",
+            "Bus":3,
+            "Address":80
+        },
+        {
+            "Name":"RunBMC",
+            "Bus":8,
+            "Address":81
+        },
+        {
+            "Name":"SCM",
+            "Bus":8,
+            "Address":83
+        }
+    ]
+}

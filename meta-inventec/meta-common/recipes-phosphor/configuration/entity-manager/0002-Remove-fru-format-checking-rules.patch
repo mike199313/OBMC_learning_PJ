@@ -1,7 +1,7 @@
-From 641078e2f0931449603185809130964a11d3feb3 Mon Sep 17 00:00:00 2001
+From 02b83ea804ee2d3e577128eb7bf879281902833b Mon Sep 17 00:00:00 2001
 From: Tommy Lin <lin.tommysc@inventec.com>
 Date: Thu, 3 Mar 2022 01:29:41 +0000
-Subject: [PATCH 2/3] Remove fru format checking rules
+Subject: [PATCH] Remove fru format checking rules
 
 Symptom/Reason:
     1. According to ipmi spec, we don't check fru format when
@@ -50,31 +50,10 @@ xyz.openbmc_project.FruDevice       interface -         -                       
 .PRODUCT_PRODUCT_NAME               property  s         "TRANSFORMERS        "             emits-change
 .PRODUCT_SERIAL_NUMBER              property  s         "                        "         emits-change
 .PRODUCT_VERSION                    property  s         "        "                         emits-change
-
-Create Fru Device even though the EEPROM is empty
-
-Symptom/Reason:
-        Fru Device not be created if the EEPROM of Fru Device is empty
-or has garbage contents.
-
-Root Cause:
-        N/A
-
-Solution/Change:
-        [Entity Manager]
-                1. Create the Fru Device even though the EEPROM of the Fru Device is empty or has garbage contents.
-
-Entry Test:
-        cat empty_fru  > /sys/bus/i2c/devices/3-0050/eeprom
-        cat empty_fru  > /sys/bus/i2c/devices/8-0051/eeprom
-        cat empty_fru  > /sys/bus/i2c/devices/8-0053/eeprom
-        ipmitool fru print
-        ipmitool mc selftest
-        ipmitool raw 0x06 0x04
 ---
- src/FruDevice.cpp |  3 ++-
- src/FruUtils.cpp  | 11 +++++++++--
- 2 files changed, 11 insertions(+), 3 deletions(-)
+ src/FruDevice.cpp | 3 ++-
+ src/FruUtils.cpp  | 4 ++++
+ 2 files changed, 6 insertions(+), 1 deletion(-)
  mode change 100644 => 100755 src/FruUtils.cpp
 
 diff --git a/src/FruDevice.cpp b/src/FruDevice.cpp
@@ -94,20 +73,9 @@ index ec42eca..fe1461b 100644
 diff --git a/src/FruUtils.cpp b/src/FruUtils.cpp
 old mode 100644
 new mode 100755
-index 70f461c..bb7a9af
+index 70f461c..19b65f1
 --- a/src/FruUtils.cpp
 +++ b/src/FruUtils.cpp
-@@ -263,8 +263,8 @@ resCodes
-     resCodes ret = resCodes::resOK;
-     if (fruBytes.size() <= fruBlockSize)
-     {
--        std::cerr << "Error: trying to parse empty FRU \n";
--        return resCodes::resErr;
-+        //Modified by Matt, even though the FRU is empty, still create the FRU object.
-+        return resCodes::resOK;
-     }
-     result["Common_Format_Version"] =
-         std::to_string(static_cast<int>(*fruBytes.begin()));
 @@ -310,6 +310,9 @@ resCodes
              fruBytes.begin() + offset + fruAreaSize - 1;
          ++fruBytesIter;
@@ -126,16 +94,6 @@ index 70f461c..bb7a9af
  
          /* Set default language flag to true as Chassis Fru area are always
           * encoded in English defined in Section 10 of Fru specification
-@@ -599,6 +603,9 @@ bool findFRUHeader(int flag, int file, uint16_t address,
-         return false;
-     }
- 
-+    //Don't care about the FRU data header. Create the FRU device anyway.
-+    return true;
-+
-     // check the header checksum
-     if (validateHeader(blockData))
-     {
 -- 
-2.33.0
+2.17.1
 

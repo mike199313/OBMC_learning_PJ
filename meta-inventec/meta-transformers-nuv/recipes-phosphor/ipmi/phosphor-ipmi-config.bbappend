@@ -5,12 +5,14 @@ SRC_URI:append:transformers-nuv = " file://channel_access.json"
 SRC_URI:append:transformers-nuv = " file://channel_config.json"
 SRC_URI:append:transformers-nuv = " file://gpiomap.json"
 SRC_URI:append:transformers-nuv = " file://psu_config.json"
+SRC_URI:append:transformers-nuv = " file://fru_config.json"
 
 
 
 FILES:${PN} += " \
                 ${datadir}/ipmi-providers/gpiomap.json \
                 ${datadir}/ipmi-providers/psu_config.json \
+                ${datadir}/ipmi-providers/fru_config.json \
                "
 
 do_install:append:transformers-nuv() {
