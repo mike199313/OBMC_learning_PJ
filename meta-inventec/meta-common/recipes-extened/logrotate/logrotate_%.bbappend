@@ -7,4 +7,8 @@ do_install:append(){
     sed -ri \
         -e 's|( ).*$|\1${LOGROTATE_CONF}|g' \
         ${D}${systemd_system_unitdir}/logrotate.service
+
+    sed -ri \
+        -e '/Persistent=/a\' -e 'OnBootSec=3m'\
+        ${D}${systemd_system_unitdir}/logrotate.timer
 }
