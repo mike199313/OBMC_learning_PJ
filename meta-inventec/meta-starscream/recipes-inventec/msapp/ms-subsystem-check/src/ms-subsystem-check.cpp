@@ -93,14 +93,14 @@ static const std::string DBUS_OBJPATH_SUBYSTEM_HEALTH_CHECK =
     "/xyz/openbmc_project/sensors/discrete_6fh/management_subsystem_health/"
     "Subsystem_health";
 
-static const std::string DBUS_OBJPATH_PSU_STATE_CHECK =
-    "/xyz/openbmc_project/sensors/discrete_6fh/power_supply/PSUStateCheck";
-
 static const std::string DBUS_OBJPATH_BMC_HEALTH_CHECK =
     "/xyz/openbmc_project/sensors/oem_event_70h/oem_e0h/BMC_health";
 
 static const std::string DBUS_OBJPATH_SYSTEM_RECONFIGURE =
     "/xyz/openbmc_project/sensors/discrete_6fh/system_event/SystemReconfigure";
+
+static std::string DBUS_OBJPATH_PSU_STATE_CHECK =
+    "/xyz/openbmc_project/sensors/discrete_6fh/power_supply/PSUStateCheck";
 
 
 const int I2C_READ_MAX_RETRY=5;
@@ -430,7 +430,6 @@ void static check_PSU_status(
         dbg("load PSU config file failed, skipping checking PSU\n");
         return;
     }
-
     for(auto& p : root["psu"]){
         PSU psu;
         psu.bus = p["bus"].get<int>();
@@ -438,9 +437,11 @@ void static check_PSU_status(
         PSUs.emplace_back(psu);
     }
 
-
+    unsigned char PSU_index=1; // index for PSU
     //query the PSU status_word (0x79) status
     for(auto& p : PSUs){
+        DBUS_OBJPATH_PSU_STATE_CHECK.append(std::to_string(PSU_index)); // insert PSU index into dbus path
+        PSU_index++;
         p.fh = open_i2c_dev(p.bus, filename, sizeof(filename), 0);
         if(p.fh <0){
             log<level::ERR>("open I2C bus failed",
@@ -482,7 +483,6 @@ void static check_PSU_status(
             do_SystemEventRecordSEL(bus, DBUS_OBJPATH_PSU_STATE_CHECK,
                                     eventData, std::string("PSU STATUS_WORD error"),
                                     true, static_cast<uint8_t>(0x20));
-
             for(int i=0; i<MAX_SHIFT_COUNT; i++){
                 int value = resp_status_word & (1<<i);                
                 if(value){
@@ -525,7 +525,7 @@ void static check_PSU_status(
                 }
             }
         }
-
+        DBUS_OBJPATH_PSU_STATE_CHECK.pop_back(); // remove psu index for dbus path
         close(p.fh);
     }
 

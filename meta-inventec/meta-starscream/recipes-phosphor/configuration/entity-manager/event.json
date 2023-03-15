@@ -151,14 +151,29 @@
             "Type": "EventSensor"
         },
         {
-            "Name": "PSUStateCheck",
+            "Name": "PSUStateCheck1",
             "ReadingType": "discrete_6fh",
             "SensorType": "power_supply",
             "SensorInfo": [
                 {
-                    "Label": "PSUStateCheck",
+                    "Label": "PSUStateCheck1",
                     "SensorModel": "Event",
                     "SensorNum": "0xB5",
+                    "EntityId": "0x7",
+                    "EntityInstance": "0"
+                }
+            ],
+            "Type": "EventSensor"
+        },
+        {
+            "Name": "PSUStateCheck2",
+            "ReadingType": "discrete_6fh",
+            "SensorType": "power_supply",
+            "SensorInfo": [
+                {
+                    "Label": "PSUStateCheck2",
+                    "SensorModel": "Event",
+                    "SensorNum": "0xD2",
                     "EntityId": "0x7",
                     "EntityInstance": "0"
                 }
