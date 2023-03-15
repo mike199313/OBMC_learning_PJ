@@ -1,4 +1,4 @@
-From 1b4f9a8a826ddfdf9169e220a1a20eca5826edd1 Mon Sep 17 00:00:00 2001
+From bf76fcdead32c4ddd7a9dabae083eadc76ac0dac Mon Sep 17 00:00:00 2001
 From: link <link@inventec.com>
 Date: Wed, 28 Dec 2022 16:02:59 +0800
 Subject: [PATCH] Add moving average method
@@ -11,11 +11,11 @@ Subject: [PATCH] Add moving average method
  pid/pidcontroller.hpp      |  1 +
  pid/stepwisecontroller.cpp | 25 ++++++++++++++++++++++++-
  pid/stepwisecontroller.hpp | 20 ++++++++++++++++++++
- pid/thermalcontroller.cpp  | 25 ++++++++++++++++++++++++-
+ pid/thermalcontroller.cpp  | 31 +++++++++++++++++++++++++++++++
  pid/thermalcontroller.hpp  | 18 ++++++++++++++++++
  pid/util.cpp               |  2 ++
  util.cpp                   |  2 ++
- 11 files changed, 111 insertions(+), 2 deletions(-)
+ 11 files changed, 118 insertions(+), 1 deletion(-)
 
 diff --git a/dbus/dbusconfiguration.cpp b/dbus/dbusconfiguration.cpp
 index 66ef7f8..387a9d6 100644
@@ -233,7 +233,7 @@ index a3b3965..aa505f4 100644
  
  } // namespace pid_control
 diff --git a/pid/thermalcontroller.cpp b/pid/thermalcontroller.cpp
-index db4763f..378bec0 100644
+index db4763f..0b28abe 100644
 --- a/pid/thermalcontroller.cpp
 +++ b/pid/thermalcontroller.cpp
 @@ -65,6 +65,7 @@ std::unique_ptr<PIDController> ThermalController::createThermalPid(
@@ -244,16 +244,24 @@ index db4763f..378bec0 100644
  
      ec::pid_info_t* info = thermal->getPIDInfo();
      thermal->setSetpoint(setpoint);
-@@ -104,7 +105,7 @@ double ThermalController::inputProc(void)
-     bool acceptable = false;
-     for (const auto& in : _inputs)
-     {
--        double cachedValue = _owner->getCachedValue(in);
-+        double cachedValue = movingAverage(in, _owner->getCachedValue(in));
- 
+@@ -109,8 +110,16 @@ double ThermalController::inputProc(void)
          // Less than 0 is perfectly OK for temperature, but must not be NAN
          if (!(std::isfinite(cachedValue)))
-@@ -171,4 +172,26 @@ void ThermalController::outputProc(double value)
+         {
++            /*
++             * When sensor reading is NAN, feed setpoint to moving average buffer 
++             * Then when the sensor reading come back normal, 
++             * the pid algorithm will be able to drive fan to run at high speed immediately as init stage
++             * After the moving average buffer has been updated with normal reading data, the pid algoritm will run back normally again
++             */
++            cachedValue = movingAverage(in, getSetpoint());
+             continue;
+         }
++        cachedValue = movingAverage(in, cachedValue);
+ 
+         if (doSummation)
+         {
+@@ -171,4 +180,26 @@ void ThermalController::outputProc(double value)
      return;
  }
  
