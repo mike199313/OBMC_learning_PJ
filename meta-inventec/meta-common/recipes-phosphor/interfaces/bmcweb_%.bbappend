@@ -57,4 +57,5 @@ SRC_URI:append = " \
     file://0024-Simple-Rack-mounted-Server-for-Sensors.patch \
     file://0025-Redfish-Chassis-schema-enhancement.patch \
     file://0026-Bug-1488-Starscream-ast-OpenBMC-Redfish-Should-conta.patch \
+    file://0027-Bug-1615-Transformers-OpenBMC-Redfish-Clear-action-i.patch \
 "
