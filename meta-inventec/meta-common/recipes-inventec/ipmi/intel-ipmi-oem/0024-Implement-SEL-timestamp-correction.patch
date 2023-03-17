@@ -80,7 +80,7 @@ index c5830b6..d5184f2 100644
 +    std::tuple<uint16_t, uint16_t, uint32_t, uint32_t> section = {};
 +    found = false;
 +
-+    while (std::getline(logStream, targetEntry))
++    do
 +    {
 +        // The format of the ipmi_sel message is "<Timestamp>
 +        // <ID>,<Type>,<EventData>,[<Generator ID>,<Path>,<Direction>]".
@@ -138,7 +138,7 @@ index c5830b6..d5184f2 100644
 +                timestamp_prev = timestamp_tmp;
 +            }
 +        }
-+    }
++    } while (std::getline(logStream, targetEntry));
 +
 +    bool updated = false;
 +
