@@ -1,44 +1,33 @@
-From 6c93c2dcb9a5a855266ce3201cbdae04dabf727c Mon Sep 17 00:00:00 2001
+From 180f058aa2b98f3076c6b7eced605834eea5cff3 Mon Sep 17 00:00:00 2001
 From: bonnie <Liu.Bonnie@inventec.com>
-Date: Tue, 21 Mar 2023 17:44:34 +0800
-Subject: [PATCH] =?UTF-8?q?Bug=201515=20-=20[Transformers][OpenBMC][IPMI]?=
- =?UTF-8?q?=20Add/Del=20SDR=202=20times,=20the=20External=20Sensor=20state?=
- =?UTF-8?q?=20in=20busctl=20tree=20does=20not=20show=20correctly=20Symptom?=
- =?UTF-8?q?/Reason=EF=BC=9A=20=09Add/Del=20SDR=202=20times,=20the=20Extern?=
- =?UTF-8?q?al=20Sensor=20state=20in=20busctl=20tree=20does=20not=20show=20?=
- =?UTF-8?q?correctly.=20Root=20Cause=EF=BC=9A=20=20=20=20=20=20=20=20=20Wh?=
- =?UTF-8?q?en=20the=20external=20sensor=20only=20got=20one=20sensor=20to?=
- =?UTF-8?q?=20delete,=20didn't=20delete=20whole=20externalsensor.json.=20S?=
- =?UTF-8?q?olution/Change=EF=BC=9A=20=20=20=20=20=20=20=20=201.Got=20the?=
- =?UTF-8?q?=20sensor=20count=20by=20reading=20"exposes"=20in=20json=20file?=
- =?UTF-8?q?.=20=092.If=20sensor=20size=20is=20zero,=20means=20no=20sensor?=
- =?UTF-8?q?=20left,=20delete=20whole=20json=20file.=20Entry=20Test?=
- =?UTF-8?q?=EF=BC=9A=20=09sysadmin@transformers:~#=20ipmitool=20raw=200x0a?=
- =?UTF-8?q?=200x24=200x40=200x00=200x51=200x01=200x3b=200x20=200x00=200x81?=
- =?UTF-8?q?=20=09/=200x06=200x00=200x80=200x68=200x01=200x01=200x85=200x32?=
- =?UTF-8?q?=200x85=200x32=200x1b=200x1b=200x80=200x01=200x00=200x00=200x01?=
- =?UTF-8?q?=20=09/=200x00=200x00=200x00=200x00=200x00=200x00=200x00=200x00?=
- =?UTF-8?q?=200x00=200x00=200x00=200x00=200x24=200x23=200x00=200x05=200x0a?=
- =?UTF-8?q?=20=09/=200x00=200x00=200x00=200x00=200x00=200x83=200x29=200xdc?=
- =?UTF-8?q?=200xa6?=
+Date: Tue, 21 Mar 2023 18:02:16 +0800
+Subject: [PATCH] =?UTF-8?q?Bug=201548=20-=20[Transformers][OpenBMC][SDR]?=
+ =?UTF-8?q?=20The=20Record=20Count=20value=20will=20increase=202=20after?=
+ =?UTF-8?q?=20Add=20one=20SDR=20Symptom/Reason=EF=BC=9A=20=09Record=20Coun?=
+ =?UTF-8?q?t=20value=20will=20increase=202=20after=20only=20add=20one=20SD?=
+ =?UTF-8?q?R.=20Root=20Cause=EF=BC=9A=20=20=20=20=20=20=20=20=20When=20ent?=
+ =?UTF-8?q?ity=20manager=20add=20sensor=20to=20sensor=20map,=20dynamic=20s?=
+ =?UTF-8?q?ensor=20has=20become=20static=20sensor.=20=09Record=20count=20i?=
+ =?UTF-8?q?s=20the=20sum=20of=20static=20and=20dynamic=20sensor,=20and=20w?=
+ =?UTF-8?q?ill=20be=20double-counted.=20Solution/Change=EF=BC=9A=20=20=20?=
+ =?UTF-8?q?=20=20=20=20=20=20Don't=20include=20the=20dynamic=20sensor=20co?=
+ =?UTF-8?q?unt=20when=20record=20counting.=20Entry=20Test=EF=BC=9A?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
-	60 00
-
-	sysadmin@transformers:~# busctl tree xyz.openbmc_project.ExternalSensor
-	`-/xyz
-  	 `-/xyz/openbmc_project
-    	  `-/xyz/openbmc_project/sensors
-      	   `-/xyz/openbmc_project/sensors/temperature
-            |-/xyz/openbmc_project/sensors/temperature/IPMI
-	sysadmin@transformers:~# ipmitool raw 0x0a 0x22
-	01 00
-	sysadmin@transformers:~# ipmitool raw 0x0a 0x26 0x01 0x00 0x63 0x00
-	60 00
-	sysadmin@transformers:~# busctl tree xyz.openbmc_project.ExternalSensor
-	Only root object discovered.
+	admin@transformers:~# ipmitool sdr info
+	SDR Version                         : 0x51
+	Record Count                        : 94
+	Free Space                          : > 64Kb - 2 bytes
+	Most recent Addition                : NA
+	Most recent Erase                   : Unspecified
+	SDR overflow                        : yes
+	SDR Repository Update Support       : non-modal
+	Delete SDR supported                : yes
+	Partial Add SDR supported           : no
+	Reserve SDR repository supported    : yes
+	SDR Repository Alloc info supported : yes
 
 	sysadmin@transformers:~# ipmitool raw 0x0a 0x24 0x40 0x00 0x51 0x01 0x3b 0x20 0x00 0x81
 	/ 0x06 0x00 0x80 0x68 0x01 0x01 0x85 0x32 0x85 0x32 0x1b 0x1b 0x80 0x01 0x00 0x00 0x01
@@ -47,16 +36,22 @@ Content-Transfer-Encoding: 8bit
 
 	60 00
 
-	sysadmin@transformers:~# busctl tree xyz.openbmc_project.ExternalSensor
-	`-/xyz
-  	 `-/xyz/openbmc_project
-    	  `-/xyz/openbmc_project/sensors
-      	   `-/xyz/openbmc_project/sensors/temperature
-            |-/xyz/openbmc_project/sensors/temperature/IPMI
+	admin@transformers:~# ipmitool sdr info
+	SDR Version                         : 0x51
+	Record Count                        : 95
+	Free Space                          : > 64Kb - 2 bytes
+	Most recent Addition                : NA
+	Most recent Erase                   : Unspecified
+	SDR overflow                        : yes
+	SDR Repository Update Support       : non-modal
+	Delete SDR supported                : yes
+	Partial Add SDR supported           : no
+	Reserve SDR repository supported    : yes
+	SDR Repository Alloc info supported : yes
 ---
  include/sensorcommands.hpp |   7 +
- src/sensorcommands.cpp     | 666 ++++++++++++++++++++++++-------------
- 2 files changed, 442 insertions(+), 231 deletions(-)
+ src/sensorcommands.cpp     | 669 ++++++++++++++++++++++++-------------
+ 2 files changed, 443 insertions(+), 233 deletions(-)
 
 diff --git a/include/sensorcommands.hpp b/include/sensorcommands.hpp
 index 4b0f513..b12d48f 100644
@@ -77,7 +72,7 @@ index 4b0f513..b12d48f 100644
  {
  extern SensorSubTree sensorTree;
 diff --git a/src/sensorcommands.cpp b/src/sensorcommands.cpp
-index 965b8a4..7d2d8a8 100644
+index 965b8a4..8af57f9 100644
 --- a/src/sensorcommands.cpp
 +++ b/src/sensorcommands.cpp
 @@ -46,7 +46,9 @@
@@ -696,7 +691,17 @@ index 965b8a4..7d2d8a8 100644
  }
  static inline uint16_t getNumberOfSensors(void)
  {
-@@ -2335,20 +2364,163 @@ ipmi::RspType<uint16_t,            // next record ID
+@@ -2159,8 +2188,7 @@ ipmi::RspType<uint8_t,  // sdr version
+ 
+     uint16_t recordCount = getNumberOfSensors() + fruCount +
+                            ipmi::storage::getType12Count(fruCount) +
+-                           ipmi::storage::getNmDiscoverySDRCount(fruCount) - 1 +
+-                           dynamicSdr.Count();
++                           ipmi::storage::getNmDiscoverySDRCount(fruCount) - 1;
+ 
+     sdrLastAdd = dynamicSdr.GetRecentAddTimestamp();
+     sdrLastRemove = dynamicSdr.GetRecentEraseTimestamp();
+@@ -2335,20 +2363,163 @@ ipmi::RspType<uint16_t,            // next record ID
  
  bool writeJsonFile(std::vector<uint8_t> sensorDataRecords)
  {
@@ -869,7 +874,7 @@ index 965b8a4..7d2d8a8 100644
      sensorVal["Type"] = "ExternalSensor";
      sensorVal["SensorInfo"] = Json::array({sensorInfo});
  
-@@ -2356,22 +2528,22 @@ bool writeJsonFile(std::vector<uint8_t> sensorDataRecords)
+@@ -2356,22 +2527,22 @@ bool writeJsonFile(std::vector<uint8_t> sensorDataRecords)
      threshold["Direction"] = "greater than";
      threshold["Name"] = "upper critical";
      threshold["Severity"] = 1;
@@ -896,7 +901,7 @@ index 965b8a4..7d2d8a8 100644
      sensorVal["Thresholds"].push_back(threshold);
      
      Json entityVal;
-@@ -2422,11 +2594,18 @@ void eraseJsonFile(std::string search_str)
+@@ -2422,11 +2593,18 @@ void eraseJsonFile(std::string search_str)
          if(sensorNum == search_str) //find the field
          {
              external["Exposes"].erase(i);
@@ -918,7 +923,7 @@ index 965b8a4..7d2d8a8 100644
  }
  /** @brief implements the Add SDR command
   *   Privilege Level: Operator
-@@ -2533,6 +2712,18 @@ ipmi::RspType<uint16_t>
+@@ -2533,6 +2711,18 @@ ipmi::RspType<uint16_t>
          return ipmi::responseResponseError();
      }
  
@@ -937,7 +942,7 @@ index 965b8a4..7d2d8a8 100644
      return ipmi::responseSuccess(newRecordId);
  }
  
-@@ -2559,6 +2750,19 @@ ipmi::RspType<uint16_t> ipmiStorageDeleteSDR(ipmi::Context::ptr ctx,
+@@ -2559,6 +2749,19 @@ ipmi::RspType<uint16_t> ipmiStorageDeleteSDR(ipmi::Context::ptr ctx,
          return ipmi::responseResponseError();
      }
  
