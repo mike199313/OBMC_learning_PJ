@@ -1,26 +1,31 @@
-From 3aac80ef6c9530289441d88df0952a5666c525e3 Mon Sep 17 00:00:00 2001
+From 6c93c2dcb9a5a855266ce3201cbdae04dabf727c Mon Sep 17 00:00:00 2001
 From: bonnie <Liu.Bonnie@inventec.com>
-Date: Fri, 16 Dec 2022 15:12:30 +0800
-Subject: [PATCH] Bug 1453 - [SW][Common]Set sensor reading and event status
+Date: Tue, 21 Mar 2023 17:44:34 +0800
+Subject: [PATCH] =?UTF-8?q?Bug=201515=20-=20[Transformers][OpenBMC][IPMI]?=
+ =?UTF-8?q?=20Add/Del=20SDR=202=20times,=20the=20External=20Sensor=20state?=
+ =?UTF-8?q?=20in=20busctl=20tree=20does=20not=20show=20correctly=20Symptom?=
+ =?UTF-8?q?/Reason=EF=BC=9A=20=09Add/Del=20SDR=202=20times,=20the=20Extern?=
+ =?UTF-8?q?al=20Sensor=20state=20in=20busctl=20tree=20does=20not=20show=20?=
+ =?UTF-8?q?correctly.=20Root=20Cause=EF=BC=9A=20=20=20=20=20=20=20=20=20Wh?=
+ =?UTF-8?q?en=20the=20external=20sensor=20only=20got=20one=20sensor=20to?=
+ =?UTF-8?q?=20delete,=20didn't=20delete=20whole=20externalsensor.json.=20S?=
+ =?UTF-8?q?olution/Change=EF=BC=9A=20=20=20=20=20=20=20=20=201.Got=20the?=
+ =?UTF-8?q?=20sensor=20count=20by=20reading=20"exposes"=20in=20json=20file?=
+ =?UTF-8?q?.=20=092.If=20sensor=20size=20is=20zero,=20means=20no=20sensor?=
+ =?UTF-8?q?=20left,=20delete=20whole=20json=20file.=20Entry=20Test?=
+ =?UTF-8?q?=EF=BC=9A=20=09sysadmin@transformers:~#=20ipmitool=20raw=200x0a?=
+ =?UTF-8?q?=200x24=200x40=200x00=200x51=200x01=200x3b=200x20=200x00=200x81?=
+ =?UTF-8?q?=20=09/=200x06=200x00=200x80=200x68=200x01=200x01=200x85=200x32?=
+ =?UTF-8?q?=200x85=200x32=200x1b=200x1b=200x80=200x01=200x00=200x00=200x01?=
+ =?UTF-8?q?=20=09/=200x00=200x00=200x00=200x00=200x00=200x00=200x00=200x00?=
+ =?UTF-8?q?=200x00=200x00=200x00=200x00=200x24=200x23=200x00=200x05=200x0a?=
+ =?UTF-8?q?=20=09/=200x00=200x00=200x00=200x00=200x00=200x83=200x29=200xdc?=
+ =?UTF-8?q?=200xa6?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
-Symptom/Reason：
-        Sensor can not get by ipmitool.SEL log show error event.
-Root Cause：
-        Sensor in sdr is not add to sensor map.Automatic scanning is not banned.
-Solution/Change：
-        1.Add ipmi interfaces to add sensor to sensor map, and can get sensor by ipmitool.
-	2.Set the sensor event enable property to 0, then will not trigger event automatically.
-
-Entry Test：
-	sysadmin@transformers:~# ipmitool raw 0x0a 0x24 0x40 0x00 0x51 0x01 0x3b 0x20 0x00 0x81
-	/ 0x06 0x00 0xa0 0x68 0x01 0x01 0x85 0x32 0x85 0x32 0x1b 0x1b 0x80 0x01 0x00 0x00 0x01
-	/ 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x24 0x23 0x00 0x05 0x0a
-	/ 0x00 0x00 0x00 0x00 0x00 0x83 0x29 0xdc 0xa6
-
-	63 00
+	60 00
 
 	sysadmin@transformers:~# busctl tree xyz.openbmc_project.ExternalSensor
 	`-/xyz
@@ -28,39 +33,30 @@ Entry Test：
     	  `-/xyz/openbmc_project/sensors
       	   `-/xyz/openbmc_project/sensors/temperature
             |-/xyz/openbmc_project/sensors/temperature/IPMI
-	    `-/xyz/openbmc_project/sensors/temperature/Test
+	sysadmin@transformers:~# ipmitool raw 0x0a 0x22
+	01 00
+	sysadmin@transformers:~# ipmitool raw 0x0a 0x26 0x01 0x00 0x63 0x00
+	60 00
+	sysadmin@transformers:~# busctl tree xyz.openbmc_project.ExternalSensor
+	Only root object discovered.
 
-	sysadmin@transformers:~# ipmitool raw 0x04 0x30 0x81 0x20 0x13 0xff 0x06 0x08 0x01 0xff 0xff 0xff
+	sysadmin@transformers:~# ipmitool raw 0x0a 0x24 0x40 0x00 0x51 0x01 0x3b 0x20 0x00 0x81
+	/ 0x06 0x00 0x80 0x68 0x01 0x01 0x85 0x32 0x85 0x32 0x1b 0x1b 0x80 0x01 0x00 0x00 0x01
+	/ 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x24 0x23 0x00 0x05 0x0a
+	/ 0x00 0x00 0x00 0x00 0x00 0x83 0x29 0xdc 0xa6
 
-	sysadmin@transformers:~# ipmitool sensor get IPMI
-	Locating sensor record...
-	Sensor ID              : IPMI (0x82)
-	Entity ID             : 6.0
-	Sensor Type (Threshold)  : Temperature
-	Sensor Reading        : 102 (+/- 0) degrees C
-	Status                : Upper Critical
-	Lower Non-Recoverable : na
-	Lower Critical        : 5.000
-	Lower Non-Critical    : 10.000
-	Upper Non-Critical    : 35.000
-	Upper Critical        : 36.000
-	Upper Non-Recoverable : na
-	Positive Hysteresis   : Unspecified
-	Negative Hysteresis   : Unspecified
-	Assertion Events      : unc+ ucr+
-	Assertions Enabled    : lnc- lnc+ lcr- lcr+ lnr- lnr+ unc- unc+ ucr- ucr+ unr- unr+
-	Deassertions Enabled  : ucr-
+	60 00
 
-	sysadmin@transformers:~# ipmitool sel elist
-	   1 | 12/16/22 | 06:41:41 UTC | Temperature #0x82 |  | Asserted
-	   2 | 12/16/22 | 06:41:41 UTC | Temperature #0x82 |  | Asserted
-	   3 | 12/16/22 | 06:41:41 UTC | Temperature #0x82 |  | Asserted
-  	   4 | 12/16/22 | 06:41:41 UTC | Temperature #0x82 |  | Deasserted
-
+	sysadmin@transformers:~# busctl tree xyz.openbmc_project.ExternalSensor
+	`-/xyz
+  	 `-/xyz/openbmc_project
+    	  `-/xyz/openbmc_project/sensors
+      	   `-/xyz/openbmc_project/sensors/temperature
+            |-/xyz/openbmc_project/sensors/temperature/IPMI
 ---
  include/sensorcommands.hpp |   7 +
- src/sensorcommands.cpp     | 653 ++++++++++++++++++++++++-------------
- 2 files changed, 432 insertions(+), 228 deletions(-)
+ src/sensorcommands.cpp     | 666 ++++++++++++++++++++++++-------------
+ 2 files changed, 442 insertions(+), 231 deletions(-)
 
 diff --git a/include/sensorcommands.hpp b/include/sensorcommands.hpp
 index 4b0f513..b12d48f 100644
@@ -81,7 +77,7 @@ index 4b0f513..b12d48f 100644
  {
  extern SensorSubTree sensorTree;
 diff --git a/src/sensorcommands.cpp b/src/sensorcommands.cpp
-index 965b8a4..7c9a3e6 100644
+index 965b8a4..7d2d8a8 100644
 --- a/src/sensorcommands.cpp
 +++ b/src/sensorcommands.cpp
 @@ -46,7 +46,9 @@
@@ -579,16 +575,16 @@ index 965b8a4..7c9a3e6 100644
 +    {
 +        return ipmi::responseSuccess();
 +    }
- 
--        //assert SEL event
--        if ((newAssert &static_cast<uint16_t>(IPMISetSensorEventStatus::upperCriticalGoingHigh)) ||
--            (newAssert &static_cast<uint16_t>(IPMISetSensorEventStatus::upperCriticalGoingLow)))
++
 +    int eventOP = (operation & 0xc0) >> 6;// [7:6]bit
 +    if (eventOP == 0 || eventOP == 3) //00:don't use event data, 03:reseved
 +    {
 +        return ipmi::responseSuccess();
 +    }
-+
+ 
+-        //assert SEL event
+-        if ((newAssert &static_cast<uint16_t>(IPMISetSensorEventStatus::upperCriticalGoingHigh)) ||
+-            (newAssert &static_cast<uint16_t>(IPMISetSensorEventStatus::upperCriticalGoingLow)))
 +    bool isAssertion = true;
 +    for (int i = 0 ; i < 2 ; i++)
 +    {
@@ -900,7 +896,29 @@ index 965b8a4..7c9a3e6 100644
      sensorVal["Thresholds"].push_back(threshold);
      
      Json entityVal;
-@@ -2533,6 +2705,18 @@ ipmi::RspType<uint16_t>
+@@ -2422,11 +2594,18 @@ void eraseJsonFile(std::string search_str)
+         if(sensorNum == search_str) //find the field
+         {
+             external["Exposes"].erase(i);
+-            std::fstream fs(json_path, std::fstream::out);
+-            fs << std::setw(4) << external << "\n";
+-            fs.close();
+         }
+     }
++    if (external["Exposes"].size() == 0)//delete external.json if no sensor left
++    {
++        std::remove(json_path);
++    }
++    else //write back to config
++    {
++        std::fstream fs(json_path, std::fstream::out);
++        fs << std::setw(4) << external << "\n";
++        fs.close();
++    }
+ }
+ /** @brief implements the Add SDR command
+  *   Privilege Level: Operator
+@@ -2533,6 +2712,18 @@ ipmi::RspType<uint16_t>
          return ipmi::responseResponseError();
      }
  
@@ -919,7 +937,7 @@ index 965b8a4..7c9a3e6 100644
      return ipmi::responseSuccess(newRecordId);
  }
  
-@@ -2559,6 +2743,19 @@ ipmi::RspType<uint16_t> ipmiStorageDeleteSDR(ipmi::Context::ptr ctx,
+@@ -2559,6 +2750,19 @@ ipmi::RspType<uint16_t> ipmiStorageDeleteSDR(ipmi::Context::ptr ctx,
          return ipmi::responseResponseError();
      }
  
