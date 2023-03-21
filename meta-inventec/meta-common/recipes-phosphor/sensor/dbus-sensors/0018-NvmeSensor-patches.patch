@@ -1,7 +1,7 @@
-From bb405db6b09880664b8bc26951e34887b3adc5e1 Mon Sep 17 00:00:00 2001
+From 657518e6ffc0a81851f38fe498f1d21647167468 Mon Sep 17 00:00:00 2001
 From: "pj.chen" <chen.pj@inventec.com>
 Date: Thu, 17 Mar 2022 08:34:51 +0000
-Subject: [PATCH 18/27] NvmeSensor - patches
+Subject: [PATCH] NvmeSensor - patches
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -84,9 +84,9 @@ BP2_EDSFF_J9     | 50.80 degrees C   | ok
  include/NVMeSensor.hpp   |  2 ++
  src/NVMeBasicContext.cpp | 16 ++++++++++++----
  src/NVMeSensor.cpp       | 24 ++++++++++++++++++++++++
- src/NVMeSensorMain.cpp   | 10 ++++++++--
+ src/NVMeSensorMain.cpp   | 13 ++++++++++---
  src/meson.build          |  1 +
- 5 files changed, 47 insertions(+), 6 deletions(-)
+ 5 files changed, 49 insertions(+), 7 deletions(-)
 
 diff --git a/include/NVMeSensor.hpp b/include/NVMeSensor.hpp
 index a0dce78..77094fa 100644
@@ -192,10 +192,10 @@ index 213e320..e03da70 100644
  }
  
 diff --git a/src/NVMeSensorMain.cpp b/src/NVMeSensorMain.cpp
-index d5e3026..f23f0d2 100644
+index d5e3026..92314ec 100644
 --- a/src/NVMeSensorMain.cpp
 +++ b/src/NVMeSensorMain.cpp
-@@ -146,6 +146,13 @@ static void handleSensorConfigurations(
+@@ -146,20 +146,27 @@ static void handleSensorConfigurations(
                  std::cerr << "error populating thresholds for " << *sensorName
                            << "\n";
              }
@@ -209,7 +209,14 @@ index d5e3026..f23f0d2 100644
  
              try
              {
-@@ -158,8 +165,7 @@ static void handleSensorConfigurations(
+                 // May throw for an invalid rootBus
++                /* Bug 827 - [SW][Common][dbus-sensors] - nvmesensor rootbus conflix cause sensor cannot update */
+                 std::shared_ptr<NVMeContext> context =
+-                    provideRootBusContext(io, nvmeDeviceMap, *rootBus);
++                    provideRootBusContext(io, nvmeDeviceMap, *busNumber);
+ 
+                 // Construct the sensor after grabbing the context so we don't
+                 // glitch D-Bus May throw for an invalid busNumber
                  std::shared_ptr<NVMeSensor> sensorPtr =
                      std::make_shared<NVMeSensor>(
                          objectServer, io, dbusConnection, *sensorName,
@@ -232,5 +239,5 @@ index 9f9ffc2..c25889f 100644
          dependencies: nvme_deps,
          implicit_include_directories: false,
 -- 
-2.33.0
+2.17.1
 
