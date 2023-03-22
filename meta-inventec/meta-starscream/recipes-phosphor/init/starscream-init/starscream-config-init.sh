@@ -25,15 +25,25 @@ RISER1_MUX_I2C_CH1=$(($CURRENT_I2C+2))
 RISER1_MUX_I2C_CH2=$(($CURRENT_I2C+3))
 RISER1_MUX_I2C_CH3=$(($CURRENT_I2C+4))
 
-# Wait for TCA9545 ready
-ret=`i2cget -y -f $RISER1_MUX_I2C 0x71 0`
-echo $ret
+MAX_RETRY_NUM=7
+RETRY_INTERVAL=0.5
 
-if [ -z $ret ]; then
-    echo "device not ready or not exist, wait more second"
-    # Give more second
-    sleep 1
-fi
+# Wait for TCA9545 ready
+i=0
+while [ "$i" -le "$MAX_RETRY_NUM" ]; do
+    ret=`i2cget -y -f $RISER1_MUX_I2C 0x71 0`
+    echo $ret
+    if [ -z $ret ]; then
+        echo "device not ready or not exist, retry num $i"
+        # Give more second
+        sleep $RETRY_INTERVAL
+    else
+        break
+    fi
+    i=$(($i+1))
+done
+
+
 
 echo pca9545 0x71 > /sys/bus/i2c/devices/i2c-$RISER1_MUX_I2C/new_device
 
@@ -92,14 +102,20 @@ RISER2_MUX_I2C_CH2=$(($CURRENT_I2C+3))
 RISER2_MUX_I2C_CH3=$(($CURRENT_I2C+4))
 
 # Wait for TCA9545 ready
-ret=`i2cget -y -f $RISER2_MUX_I2C 0x71 0`
-echo $ret
-
-if [ -z $ret ]; then
-    echo "device not ready or not exist, wait more second"
-    # Give more second
-    sleep 1
-fi
+# Wait for TCA9545 ready
+i=0
+while [ "$i" -le "$MAX_RETRY_NUM" ]; do
+    ret=`i2cget -y -f $RISER2_MUX_I2C 0x71 0`
+    echo $ret
+    if [ -z $ret ]; then
+        echo "device not ready or not exist, retry num $i"
+        # Give more second
+        sleep $RETRY_INTERVAL
+    else
+        break
+    fi
+    i=$(($i+1))
+done
 
 echo pca9545 0x71 > /sys/bus/i2c/devices/i2c-$RISER2_MUX_I2C/new_device
 if [ -d "/sys/bus/i2c/devices/i2c-$RISER2_MUX_I2C_CH0" ]
