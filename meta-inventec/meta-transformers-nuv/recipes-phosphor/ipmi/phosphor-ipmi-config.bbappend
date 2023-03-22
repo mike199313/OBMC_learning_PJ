@@ -26,6 +26,8 @@ do_install:append:transformers-nuv() {
         ${D}/usr/share/ipmi-providers/gpiomap.json
     install -m 0644 -D ${WORKDIR}/psu_config.json \
         ${D}/usr/share/ipmi-providers/psu_config.json
+    install -m 0644 -D ${WORKDIR}/fru_config.json \
+        ${D}/usr/share/ipmi-providers/fru_config.json
 
 
 }
