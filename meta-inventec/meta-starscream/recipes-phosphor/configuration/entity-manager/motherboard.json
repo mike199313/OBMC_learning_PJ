@@ -325,6 +325,7 @@
                     "Label": "vout1",
                     "Name": "upper non critical",
                     "Severity": 0,
+                    "Hysteresis":1,
                     "Value": 14
                 },
                 {
@@ -332,6 +333,7 @@
                     "Label": "vout1",
                     "Name": "lower non critical",
                     "Severity": 0,
+                    "Hysteresis":1,
                     "Value": 10
                 },
                 {
@@ -819,6 +821,7 @@
                     "Label": "vout1",
                     "Name": "upper non critical",
                     "Severity": 0,
+                    "Hysteresis":1,
                     "Value": 14
                 },
                 {
@@ -826,6 +829,7 @@
                     "Label": "vout1",
                     "Name": "lower non critical",
                     "Severity": 0,
+                    "Hysteresis":1,
                     "Value": 10
                 },
                 {
@@ -1733,6 +1737,7 @@
                     "Label": "in1",
                     "Name": "upper critical",
                     "Severity": 1,
+                    "Hysteresis":0.3,
                     "Value": 13.2
                 },
                 {
@@ -1740,6 +1745,7 @@
                     "Label": "in1",
                     "Name": "upper non critical",
                     "Severity": 0,
+                    "Hysteresis":0.3,
                     "Value": 12.6
                 },   
                 {
@@ -1747,6 +1753,7 @@
                     "Label": "in1",
                     "Name": "lower non critical",
                     "Severity": 0,
+                    "Hysteresis":0.3,
                     "Value": 11.4
                 },
                 {
@@ -1754,6 +1761,7 @@
                     "Label": "in1",
                     "Name": "lower critical",
                     "Severity": 1,
+                    "Hysteresis":0.3,
                     "Value": 10.8
                 },
                 {
@@ -1761,6 +1769,7 @@
                     "Label": "in2",
                     "Name": "upper critical",
                     "Severity": 1,
+                    "Hysteresis":0.3,
                     "Value": 13.2
                 },
                 {
@@ -1768,6 +1777,7 @@
                     "Label": "in2",
                     "Name": "upper non critical",
                     "Severity": 0,
+                    "Hysteresis":0.3,
                     "Value": 12.6
                 },   
                 {
@@ -1775,6 +1785,7 @@
                     "Label": "in2",
                     "Name": "lower non critical",
                     "Severity": 0,
+                    "Hysteresis":0.3,
                     "Value": 11.4
                 },
                 {
@@ -1782,6 +1793,7 @@
                     "Label": "in2",
                     "Name": "lower critical",
                     "Severity": 1,
+                    "Hysteresis":0.3,
                     "Value": 10.8
                 },
                 {
@@ -1789,6 +1801,7 @@
                     "Label": "in3",
                     "Name": "upper critical",
                     "Severity": 1,
+                    "Hysteresis":0.3,
                     "Value": 13.2
                 },
                 {
@@ -1796,6 +1809,7 @@
                     "Label": "in3",
                     "Name": "upper non critical",
                     "Severity": 0,
+                    "Hysteresis":0.3,
                     "Value": 12.6
                 },   
                 {
@@ -1803,6 +1817,7 @@
                     "Label": "in3",
                     "Name": "lower non critical",
                     "Severity": 0,
+                    "Hysteresis":0.3,
                     "Value": 11.4
                 },
                 {
@@ -1810,6 +1825,7 @@
                     "Label": "in3",
                     "Name": "lower critical",
                     "Severity": 1,
+                    "Hysteresis":0.3,
                     "Value": 10.8
                 },
                 {
@@ -1817,6 +1833,7 @@
                     "Label": "in4",
                     "Name": "upper critical",
                     "Severity": 1,
+                    "Hysteresis":0.3,
                     "Value": 13.2
                 },
                 {
@@ -1824,6 +1841,7 @@
                     "Label": "in4",
                     "Name": "upper non critical",
                     "Severity": 0,
+                    "Hysteresis":0.3,
                     "Value": 12.6
                 },   
                 {
@@ -1831,6 +1849,7 @@
                     "Label": "in4",
                     "Name": "lower non critical",
                     "Severity": 0,
+                    "Hysteresis":0.3,
                     "Value": 11.4
                 },
                 {
@@ -1838,6 +1857,7 @@
                     "Label": "in4",
                     "Name": "lower critical",
                     "Severity": 1,
+                    "Hysteresis":0.3,
                     "Value": 10.8
                 }
             ],
@@ -2005,6 +2025,7 @@
                     "Label": "in1",
                     "Name": "upper critical",
                     "Severity": 1,
+                    "Hysteresis":0.3,
                     "Value": 13.2
                 },
                 {
@@ -2012,6 +2033,7 @@
                     "Label": "in1",
                     "Name": "upper non critical",
                     "Severity": 0,
+                    "Hysteresis":0.3,
                     "Value": 12.6
                 },   
                 {
@@ -2019,6 +2041,7 @@
                     "Label": "in1",
                     "Name": "lower non critical",
                     "Severity": 0,
+                    "Hysteresis":0.3,
                     "Value": 11.4
                 },
                 {
@@ -2026,6 +2049,7 @@
                     "Label": "in1",
                     "Name": "lower critical",
                     "Severity": 1,
+                    "Hysteresis":0.3,
                     "Value": 10.8
                 },
                 {
@@ -2033,6 +2057,7 @@
                     "Label": "in2",
                     "Name": "upper critical",
                     "Severity": 1,
+                    "Hysteresis":0.3,
                     "Value": 13.2
                 },
                 {
@@ -2040,6 +2065,7 @@
                     "Label": "in2",
                     "Name": "upper non critical",
                     "Severity": 0,
+                    "Hysteresis":0.3,
                     "Value": 12.6
                 },   
                 {
@@ -2047,6 +2073,7 @@
                     "Label": "in2",
                     "Name": "lower non critical",
                     "Severity": 0,
+                    "Hysteresis":0.3,
                     "Value": 11.4
                 },
                 {
@@ -2054,6 +2081,7 @@
                     "Label": "in2",
                     "Name": "lower critical",
                     "Severity": 1,
+                    "Hysteresis":0.3,
                     "Value": 10.8
                 }
             ],

@@ -55,6 +55,7 @@ cat <<EOF >$ENTITY_MANAGER_RISER1A_JSON
                     "Label": "in1",
                     "Name": "upper critical",
                     "Severity": 1,
+                    "Hysteresis":0.3,
                     "Value": 13.2
                 },
                 {
@@ -62,6 +63,7 @@ cat <<EOF >$ENTITY_MANAGER_RISER1A_JSON
                     "Label": "in1",
                     "Name": "upper non critical",
                     "Severity": 0,
+                    "Hysteresis":0.3,
                     "Value": 12.6
                 },
                 {
@@ -69,6 +71,7 @@ cat <<EOF >$ENTITY_MANAGER_RISER1A_JSON
                     "Label": "in1",
                     "Name": "lower non critical",
                     "Severity": 0,
+                    "Hysteresis":0.3,
                     "Value": 11.4
                 },
                 {
@@ -76,6 +79,7 @@ cat <<EOF >$ENTITY_MANAGER_RISER1A_JSON
                     "Label": "in1",
                     "Name": "lower critical",
                     "Severity": 1,
+                    "Hysteresis":0.3,
                     "Value": 10.8
                 },
                 {
@@ -111,6 +115,7 @@ cat <<EOF >$ENTITY_MANAGER_RISER1A_JSON
                     "Label": "in3",
                     "Name": "upper critical",
                     "Severity": 1,
+                    "Hysteresis":0.3,
                     "Value": 13.2
                 },
                 {
@@ -118,6 +123,7 @@ cat <<EOF >$ENTITY_MANAGER_RISER1A_JSON
                     "Label": "in3",
                     "Name": "upper non critical",
                     "Severity": 0,
+                    "Hysteresis":0.3,
                     "Value": 12.6
                 },
                 {
@@ -125,6 +131,7 @@ cat <<EOF >$ENTITY_MANAGER_RISER1A_JSON
                     "Label": "in3",
                     "Name": "lower non critical",
                     "Severity": 0,
+                    "Hysteresis":0.3,
                     "Value": 11.4
                 },
                 {
@@ -132,6 +139,7 @@ cat <<EOF >$ENTITY_MANAGER_RISER1A_JSON
                     "Label": "in3",
                     "Name": "lower critical",
                     "Severity": 1,
+                    "Hysteresis":0.3,
                     "Value": 10.8
                 },
                 {
@@ -331,6 +339,7 @@ cat <<EOF >$ENTITY_MANAGER_RISER1B_JSON
                     "Label": "in1",
                     "Name": "upper critical",
                     "Severity": 1,
+                    "Hysteresis":0.3,
                     "Value": 13.2
                 },
                 {
@@ -338,6 +347,7 @@ cat <<EOF >$ENTITY_MANAGER_RISER1B_JSON
                     "Label": "in1",
                     "Name": "upper non critical",
                     "Severity": 0,
+                    "Hysteresis":0.3,
                     "Value": 12.6
                 },
                 {
@@ -345,6 +355,7 @@ cat <<EOF >$ENTITY_MANAGER_RISER1B_JSON
                     "Label": "in1",
                     "Name": "lower non critical",
                     "Severity": 0,
+                    "Hysteresis":0.3,
                     "Value": 11.4
                 },
                 {
@@ -352,6 +363,7 @@ cat <<EOF >$ENTITY_MANAGER_RISER1B_JSON
                     "Label": "in1",
                     "Name": "lower critical",
                     "Severity": 1,
+                    "Hysteresis":0.3,
                     "Value": 10.8
                 },
                 {
@@ -520,6 +532,7 @@ cat <<EOF >$ENTITY_MANAGER_RISER2_JSON
                     "Label": "in1",
                     "Name": "upper critical",
                     "Severity": 1,
+                    "Hysteresis":0.3,
                     "Value": 13.2
                 },
                 {
@@ -527,6 +540,7 @@ cat <<EOF >$ENTITY_MANAGER_RISER2_JSON
                     "Label": "in1",
                     "Name": "upper non critical",
                     "Severity": 0,
+                    "Hysteresis":0.3,
                     "Value": 12.6
                 },
                 {
@@ -534,6 +548,7 @@ cat <<EOF >$ENTITY_MANAGER_RISER2_JSON
                     "Label": "in1",
                     "Name": "lower non critical",
                     "Severity": 0,
+                    "Hysteresis":0.3,
                     "Value": 11.4
                 },
                 {
@@ -541,6 +556,7 @@ cat <<EOF >$ENTITY_MANAGER_RISER2_JSON
                     "Label": "in1",
                     "Name": "lower critical",
                     "Severity": 1,
+                    "Hysteresis":0.3,
                     "Value": 10.8
                 },
                 {
@@ -576,6 +592,7 @@ cat <<EOF >$ENTITY_MANAGER_RISER2_JSON
                     "Label": "in3",
                     "Name": "upper critical",
                     "Severity": 1,
+                    "Hysteresis":0.3,
                     "Value": 13.2
                 },
                 {
@@ -583,6 +600,7 @@ cat <<EOF >$ENTITY_MANAGER_RISER2_JSON
                     "Label": "in3",
                     "Name": "upper non critical",
                     "Severity": 0,
+                    "Hysteresis":0.3,
                     "Value": 12.6
                 },
                 {
@@ -590,6 +608,7 @@ cat <<EOF >$ENTITY_MANAGER_RISER2_JSON
                     "Label": "in3",
                     "Name": "lower non critical",
                     "Severity": 0,
+                    "Hysteresis":0.3,
                     "Value": 11.4
                 },
                 {
@@ -597,6 +616,7 @@ cat <<EOF >$ENTITY_MANAGER_RISER2_JSON
                     "Label": "in3",
                     "Name": "lower critical",
                     "Severity": 1,
+                    "Hysteresis":0.3,
                     "Value": 10.8
                 },
                 {
@@ -796,6 +816,7 @@ cat <<EOF >$ENTITY_MANAGER_BP1_JSON
                     "Label": "in1",
                     "Name": "upper critical",
                     "Severity": 1,
+                    "Hysteresis":0.3,
                     "Value": 13.2
                 },
                 {
@@ -803,6 +824,7 @@ cat <<EOF >$ENTITY_MANAGER_BP1_JSON
                     "Label": "in1",
                     "Name": "upper non critical",
                     "Severity": 0,
+                    "Hysteresis":0.3,
                     "Value": 12.6
                 },
                 {
@@ -810,6 +832,7 @@ cat <<EOF >$ENTITY_MANAGER_BP1_JSON
                     "Label": "in1",
                     "Name": "lower non critical",
                     "Severity": 0,
+                    "Hysteresis":0.3,
                     "Value": 11.4
                 },
                 {
@@ -817,6 +840,7 @@ cat <<EOF >$ENTITY_MANAGER_BP1_JSON
                     "Label": "in1",
                     "Name": "lower critical",
                     "Severity": 1,
+                    "Hysteresis":0.3,
                     "Value": 10.8
                 },
                 {
@@ -1379,6 +1403,7 @@ cat <<EOF >$ENTITY_MANAGER_BP2_JSON
                     "Label": "in1",
                     "Name": "upper critical",
                     "Severity": 1,
+                    "Hysteresis":0.3,
                     "Value": 13.2
                 },
                 {
@@ -1386,6 +1411,7 @@ cat <<EOF >$ENTITY_MANAGER_BP2_JSON
                     "Label": "in1",
                     "Name": "upper non critical",
                     "Severity": 0,
+                    "Hysteresis":0.3,
                     "Value": 12.6
                 },
                 {
@@ -1393,6 +1419,7 @@ cat <<EOF >$ENTITY_MANAGER_BP2_JSON
                     "Label": "in1",
                     "Name": "lower non critical",
                     "Severity": 0,
+                    "Hysteresis":0.3,
                     "Value": 11.4
                 },
                 {
@@ -1400,6 +1427,7 @@ cat <<EOF >$ENTITY_MANAGER_BP2_JSON
                     "Label": "in1",
                     "Name": "lower critical",
                     "Severity": 1,
+                    "Hysteresis":0.3,
                     "Value": 10.8
                 },
                 {
