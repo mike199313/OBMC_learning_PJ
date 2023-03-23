@@ -1,0 +1,44 @@
+From 113f936cfa99f43be47bc5e4a6e47e2d924160ea Mon Sep 17 00:00:00 2001
+From: Matt Cheng <cheng.matt@inventec.com>
+Date: Thu, 23 Mar 2023 10:16:31 +0800
+Subject: [PATCH] Bug 1513 - [Transformers-nuv][OpenBMC] BMC boot up for
+ Redfish API requests should within 60 seconds.
+
+Root Cause:
+        N/A
+
+Solution/Change:
+        [u-boot-aspeed]
+                1. Disable the image checksum verify.
+                2. Disable the bootdelay.
+
+Entry Test:
+        curl -basic -u root:0penBmc -X GET https://10.6.141.169/redfish/v1/Managers/bmc -ks
+---
+ include/configs/poleg.h | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/include/configs/poleg.h b/include/configs/poleg.h
+index 1dfcbe3f17..d778f64e5a 100644
+--- a/include/configs/poleg.h
++++ b/include/configs/poleg.h
+@@ -73,13 +73,15 @@
+                 "eth1addr=00:00:F7:A0:00:FD\0"   \
+                 "eth2addr=00:00:F7:A0:00:FE\0"    \
+                 "eth3addr=00:00:F7:A0:00:FF\0"    \
+-		"common_bootargs=setenv bootargs earlycon=${earlycon} root=/dev/ram console=${console} mem=${mem} ramdisk_size=48000 basemac=${ethaddr} oops=panic panic=20\0"   \
++		"common_bootargs=setenv bootargs earlycon=${earlycon} root=/dev/ram console=${console} mem=${mem} ramdisk_size=48000 basemac=${ethaddr} oops=panic panic=20 quiet\0"   \
+ 		"ftp_prog=setenv ethact eth${eth_num}; dhcp; tftp 10000000 image-bmc; cp.b 10000000 80000000 ${filesize}\0"   \
+ 		"ftp_run=setenv ethact eth${eth_num}; dhcp; tftp 10000000 image-bmc; bootm 10200000\0"   \
+ 		"sd_prog=fatload mmc 0 10000000 image-bmc; cp.b 10000000 80000000 ${filesize}\0"  \
+ 		"sd_run=fatload mmc 0 10000000 image-bmc; bootm 10200000\0"   \
+ 		"usb_prog=usb start; fatload usb 0 10000000 image-bmc; cp.b 10000000 80000000 ${filesize}\0"    \
+ 		"usb_run=usb start; fatload usb 0 10000000 image-bmc; bootm 10200000\0"   \
++		"bootdelay=0\0"   \
++		"verify=no\0"   \
+ 		"\0"
+ 
+ #endif
+-- 
+2.25.1
+
