@@ -16,6 +16,7 @@ SRC_URI:append = " file://starscream.cfg \
                    file://0011-Subject-Patch-kernel-RTC-Set-a-default-timestamp-for.patch \
                    file://0012-Enable-mmcblk0-block.patch \
                    file://0013-Implement-a-memory-driver-share-memory.patch \
+                   file://0014-Eth0-error-and-dump-kernel-logs.patch \
                  "
 
 do_add_overwrite_files () {
