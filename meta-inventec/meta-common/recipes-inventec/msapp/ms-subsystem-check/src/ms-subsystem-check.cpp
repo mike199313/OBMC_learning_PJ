@@ -233,105 +233,104 @@ void static check_IntelME_sensor_status(
     }
 }
 
+/* Only checks the FRUs explicitly mentioned in the checklist. */
 
 void static check_FRU_devices_status(
     std::shared_ptr<sdbusplus::asio::connection> bus)
 {
-    std::vector<pathsOfServiceAndObject> serviceAndObjectList;
+    const char *filename = "/usr/share/ipmi-providers/fru_config.json";
+    std::ifstream fruConfigFile(filename);
 
-    GetSubTreeType resp;
-
-    // If no FRU dbus object is found it is empty/invalid error
-    std::vector<std::string> interfaces = {"xyz.openbmc_project.FruDevice"};
-    auto method =
-        bus->new_method_call("xyz.openbmc_project.ObjectMapper",
-                             "/xyz/openbmc_project/object_mapper",
-                             "xyz.openbmc_project.ObjectMapper", "GetSubTree");
-
-    method.append("/", 0, interfaces);
-    try
+    /* Get essential FRU list from config file. */
+    if (fruConfigFile.is_open())
     {
-        auto reply = bus->call(method);
-        reply.read(resp);
-    }
-    catch (const sdbusplus::exception_t& e)
-    {
-        fprintf(stderr, "%s:%d exception:%s \n", __func__, __LINE__, e.what());
-        return;
-    }
-
-    for (auto p1 : resp)
-    {
-        auto objPath = p1.first;
-        auto vect1 = p1.second;
-        for (auto p2 : vect1)
+        auto jsonData = nlohmann::json::parse(fruConfigFile, nullptr, false);
+        if (!jsonData.is_discarded())
         {
-            auto service = p2.first;
-            pathsOfServiceAndObject val = {service, objPath};
-            serviceAndObjectList.push_back(val);
-        }
-    }
+            auto frus = jsonData["fru"];
+            for (nlohmann::json &fru : frus)
+            {
+                if (!fru.contains("Bus"))
+                {
+                    std::cerr << "Fru json bus parsing fail\n";
+                }
+                uint32_t fruBus = fru.value("Bus", 0);
 
-    for (auto p : serviceAndObjectList)
-    {
-        // Check if the bus/address of the FRU is working by trying opening the
-        // mapped file in /sys/bus/i2c/devices
-        auto busProperty = ipmi::getDbusProperty(
-            *bus, p.first, p.second, "xyz.openbmc_project.FruDevice", "BUS");
-        auto addressProperty =
-            ipmi::getDbusProperty(*bus, p.first, p.second,
-                            "xyz.openbmc_project.FruDevice", "ADDRESS");
-        std::stringstream output;
-        output << "/sys/bus/i2c/devices/" << std::get<uint32_t>(busProperty)
-               << "-" << std::right << std::setfill('0') << std::setw(4)
-               << std::hex << std::get<uint32_t>(addressProperty) << "/eeprom";
-        std::ifstream file(output.str(),
-                           std::ios::in | std::ios::binary | std::ios::ate);
-        if (file.is_open() == false)
-        {
-            std::cerr << "Unable to oepn file " << output.str() << std::endl;
-            std::vector<uint8_t> eventData = {0xFF, 0xFF, 0xFF};
-            eventData.at(0) = BMC_HEALTH_MASK_EMPTY_INVALID_FRU;
-            eventData.at(1) = 0xFF;
-            eventData.at(2) = 0xFF;
+                if (!fru.contains("Address"))
+                {
+                    std::cerr << "Fru json address parsing fail\n";
+                }
+                uint32_t fruAddress = fru.value("Address", 0);
 
-            do_SystemEventRecordSEL(bus, DBUS_OBJPATH_BMC_HEALTH_CHECK,
-                                    eventData, std::string("BMC Health Check"),
-                                    true, static_cast<uint8_t>(0x20));
-            return;
+                // Check if the bus/address of the essential FRUs is working by
+                // trying to open the mapped file in /sys/bus/i2c/devices
+
+                std::stringstream output;
+                output << "/sys/bus/i2c/devices/" << fruBus
+                       << "-" << std::right << std::setfill('0') << std::setw(4)
+                       << std::hex << fruAddress << "/eeprom";
+                std::ifstream file(output.str(),
+                                   std::ios::in | std::ios::binary | std::ios::ate);
+
+                if (file.is_open() == false)
+                {
+                    std::cerr << "Unable to open file " << output.str() << std::endl;
+                    std::vector<uint8_t> eventData = {0xFF, 0xFF, 0xFF};
+                    eventData.at(0) = BMC_HEALTH_MASK_EMPTY_INVALID_FRU;
+                    eventData.at(1) = 0xFF;
+                    eventData.at(2) = 0xFF;
+
+                    do_SystemEventRecordSEL(bus, DBUS_OBJPATH_BMC_HEALTH_CHECK,
+                                            eventData, std::string("BMC Health Check"),
+                                            true, static_cast<uint8_t>(0x20));
+                    return;
+                }
+                else
+                {
+                    file.close();
+                }
+
+                // checking if the data of the dbus properties is empty
+
+                std::string service = "xyz.openbmc_project.FruDevice";
+                std::string objPathPrefix = "/xyz/openbmc_project/FruDevice/";
+                std::stringstream objPath;
+                objPath << objPathPrefix << fruBus
+                        << "_" << fruAddress;
+                ipmi::PropertyMap properties = ipmi::getAllDbusProperties(
+                    *bus, service, objPath.str(), "xyz.openbmc_project.FruDevice");
+
+                size_t zeroLengthCount = 0;
+                for (auto map : properties)
+                {
+                    try
+                    {
+                        // only get the std::string.
+                        std::string value = std::get<std::string>(map.second);
+                        if (value.length() == 0)
+                            zeroLengthCount++;
+                    }
+                    catch (std::exception &e)
+                    {}
+                }
+                // ignore ADDRESS / BUS properties
+                if (zeroLengthCount >= (properties.size() - 2))
+                {
+                    std::vector<uint8_t> eventData = {0xFF, 0xFF, 0xFF};
+                    eventData.at(0) = BMC_HEALTH_MASK_EMPTY_INVALID_FRU;
+                    eventData.at(1) = 0xFF;
+                    eventData.at(2) = 0xFF;
+                    do_SystemEventRecordSEL(bus, DBUS_OBJPATH_BMC_HEALTH_CHECK,
+                                            eventData, std::string("BMC Health Check"),
+                                            true, static_cast<uint8_t>(0x20));
+                }
+            }
         }
         else
         {
-            file.close();
-        }
-
-        // checking if the data in the properties is empty
-
-        ipmi::PropertyMap properties = ipmi::getAllDbusProperties(
-            *bus, p.first, p.second, "xyz.openbmc_project.FruDevice");
-        size_t zeroLengthCount = 0;
-        for (auto map : properties)
-        {
-            try
-            {
-                // only get the std::string.
-                std::string value = std::get<std::string>(map.second);
-                if (value.length() == 0)
-                    zeroLengthCount++;
-            }
-            catch (std::exception& e)
-            {}
-        }
-        // ignore ADDRESS / BUS properties
-        if (zeroLengthCount >= (properties.size() - 2))
-        {
-            std::vector<uint8_t> eventData = {0xFF, 0xFF, 0xFF};
-            eventData.at(0) = BMC_HEALTH_MASK_EMPTY_INVALID_FRU;
-            eventData.at(1) = 0xFF;
-            eventData.at(2) = 0xFF;
-            do_SystemEventRecordSEL(bus, DBUS_OBJPATH_BMC_HEALTH_CHECK,
-                                    eventData, std::string("BMC Health Check"),
-                                    true, static_cast<uint8_t>(0x20));
+            std::cerr << "FRU config JSON parser failure" << std::endl;
+            phosphor::logging::log<phosphor::logging::level::ERR>(
+                "FRU config JSON parser failure, not checking FRU device status!");
         }
     }
 }
