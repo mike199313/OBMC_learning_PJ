@@ -117,6 +117,10 @@ if [ $ACTION = "plug" ]; then
     if  [ $INIT -ne "1" ]; then
         sleep $DEVICE_READY_DELAY
     fi
+
+    # Delete the PSU before creating a new one, since the entity manager will attempt to 
+    # create one during system boot up, and this may cause the creation process to fail.
+    echo $I2C_ADDR > /sys/bus/i2c/devices/i2c-$I2C_BUS/delete_device
     echo "pmbus" $I2C_ADDR > /sys/bus/i2c/devices/i2c-$I2C_BUS/new_device
 
     update_inventory $PSU_ID $DBUS_ITEM_INTERFACE 1 "Present" "b" "true"

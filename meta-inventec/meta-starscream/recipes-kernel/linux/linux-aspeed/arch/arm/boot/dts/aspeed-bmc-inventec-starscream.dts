@@ -336,16 +336,6 @@
                 #io-channel-cells = <1>;
         };
 
-        psu@58 {
-                compatible = "pmbus";
-                reg = <0x58>;
-        };
-
-        psu@5a {
-                compatible = "pmbus";
-                reg = <0x5a>;
-        };
-
         // Motherboard Temp_U89
         tmp421@4e {
                 compatible = "ti,tmp421";
