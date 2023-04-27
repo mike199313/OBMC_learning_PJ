@@ -1,7 +1,8 @@
-From 52f28c7c04eb34e93880aa7695f5c6e50d5ad1e4 Mon Sep 17 00:00:00 2001
+From efe825bcfd9ee534b614179a9b69aefbf98ca3c8 Mon Sep 17 00:00:00 2001
 From: link <link@inventec.com>
-Date: Thu, 5 Jan 2023 17:39:00 +0800
-Subject: [PATCH] Add inventec maxError pi control algorithm
+Date: Mon, 8 May 2023 17:23:07 +0800
+Subject: [PATCH] Add inventec maxError pi control algorithm - Fix the finding
+ of gain value (2023/5/11) - Adding integral info (2023/5/8)
 
 ---
  Makefile.am       |   8 ++-
@@ -9,11 +10,11 @@ Subject: [PATCH] Add inventec maxError pi control algorithm
  configure.ac      |   9 +++
  meson.build       |   7 +-
  meson_options.txt |   1 +
- pid/buildjson.cpp |  49 +++++++++++++
- pid/ec/pi.cpp     | 173 ++++++++++++++++++++++++++++++++++++++++++++++
- pid/ec/pid.hpp    |  11 +++
- pid/util.cpp      |   1 +
- 9 files changed, 266 insertions(+), 2 deletions(-)
+ pid/buildjson.cpp |  56 +++++++++++++++
+ pid/ec/pi.cpp     | 175 ++++++++++++++++++++++++++++++++++++++++++++++
+ pid/ec/pid.hpp    |  13 ++++
+ pid/util.cpp      |   2 +
+ 9 files changed, 278 insertions(+), 2 deletions(-)
  create mode 100644 pid/ec/pi.cpp
 
 diff --git a/Makefile.am b/Makefile.am
@@ -43,7 +44,7 @@ index 351b26b..a9df062 100644
  libmanualcmds_LTLIBRARIES = libmanualcmds.la
  libmanualcmds_la_SOURCES = \
 diff --git a/conf.hpp b/conf.hpp
-index 45a02f9..2682d01 100644
+index 45a02f9..b08a116 100644
 --- a/conf.hpp
 +++ b/conf.hpp
 @@ -43,6 +43,15 @@ struct ControllerInfo
@@ -51,9 +52,9 @@ index 45a02f9..2682d01 100644
  };
  
 +/*
-+ * Structure for holding proportionalGainInfo.
++ * Structure for holding GainInfo.
 + */
-+struct ProportionalGainInfo
++struct GainInfo
 +{
 +    double reading[ec::maxGainPoints];
 +    double output[ec::maxGainPoints];
@@ -117,7 +118,7 @@ index 9655044..062b93a 100644
  option('systemd_target', type: 'string', value: 'multi-user.target', description: 'Target for starting this service')
 +option('inv-pi-algorithm', type: 'feature', value: 'enabled', description: 'inventec maxError pi algorithm')
 diff --git a/pid/buildjson.cpp b/pid/buildjson.cpp
-index 8c227fc..9287d37 100644
+index 8c227fc..279f6ec 100644
 --- a/pid/buildjson.cpp
 +++ b/pid/buildjson.cpp
 @@ -31,6 +31,47 @@ using json = nlohmann::json;
@@ -125,8 +126,8 @@ index 8c227fc..9287d37 100644
  namespace conf
  {
 +
-+/*ProportionalGainInfo*/
-+void from_json(const json& j, conf::ProportionalGainInfo& info)
++/*GainInfo*/
++void from_json(const json& j, conf::GainInfo& info)
 +{
 +    auto reading = j.find("reading");
 +    if (reading != j.end())
@@ -168,7 +169,7 @@ index 8c227fc..9287d37 100644
  void from_json(const json& j, conf::ControllerInfo& c)
  {
      j.at("type").get_to(c.type);
-@@ -91,6 +132,14 @@ void from_json(const json& j, conf::ControllerInfo& c)
+@@ -91,6 +132,21 @@ void from_json(const json& j, conf::ControllerInfo& c)
          c.pidInfo.negativeHysteresis = negativeHysteresisValue;
          c.pidInfo.derivativeCoeff = derivativeCoeffValue;
          c.pidInfo.movingAveragePoint = movingAveragePointValue;
@@ -177,18 +178,25 @@ index 8c227fc..9287d37 100644
 +        auto gains = p.find("proportionalGains");
 +        if (gains != p.end()) {
 +            auto gainInfo = p["proportionalGains"];
-+            auto item = gainInfo.get<conf::ProportionalGainInfo>();
++            auto item = gainInfo.get<conf::GainInfo>();
 +            std::memcpy(&c.pidInfo.proportionalGains, &item, sizeof(c.pidInfo.proportionalGains));
++        }
++        //inventec integral gains
++        gains = p.find("integralGains");
++        if (gains != p.end()) {
++            auto gainInfo = p["integralGains"];
++            auto item = gainInfo.get<conf::GainInfo>();
++            std::memcpy(&c.pidInfo.integralGains, &item, sizeof(c.pidInfo.integralGains));
 +        }
      }
      else
      {
 diff --git a/pid/ec/pi.cpp b/pid/ec/pi.cpp
 new file mode 100644
-index 0000000..6a8cb02
+index 0000000..52477a5
 --- /dev/null
 +++ b/pid/ec/pi.cpp
-@@ -0,0 +1,173 @@
+@@ -0,0 +1,175 @@
 +/**
 + * Copyright 2017 Google Inc.
 + *
@@ -216,22 +224,11 @@ index 0000000..6a8cb02
 +namespace ec
 +{
 +
-+struct Range {
-+    double min;
-+    double max;
-+};
-+
-+struct ProportionalFactorTable {
-+
-+    Range err;
-+    double factor;
-+};
-+
 +/********************************
-+ *  proportinalGainFind
-+ *  Note: it takes to find adptive proportinal Gain
++ *  GainFind
++ *  Note: it takes to find adptive Gain info
 + */
-+double proportionalGainFind(struct ProportionalGainInfo& info, double err)
++double gainFind(struct GainInfo& info, double err)
 +{
 +    double output = info.output[0]; // if we are below the lowest
 +                                   // point, we set the lowest value
@@ -240,7 +237,12 @@ index 0000000..6a8cb02
 +    {
 +        if (info.output[ii] == 0)
 +        {
-+            output = 1.0;
++            /*
++             * If table items (PGain or IGain) exist
++             * When we reach to 0, it means we are just out of array
++             * Set the output to the last item of the array
++             */
++            output = info.output[ii - 1];
 +            break;
 +        }
 +        if (err <= info.reading[ii])
@@ -248,6 +250,13 @@ index 0000000..6a8cb02
 +            break;
 +        }
 +        output = info.output[ii];
++    }
++    /*
++     * When output = 0, it means table items (PGain or IGain) not exist
++     * We set the default output value to 1.0, because gain value shouldn't be 0
++     */
++    if(output == 0){
++        output = 1.0;
 +    }
 +
 +    return output;
@@ -298,7 +307,7 @@ index 0000000..6a8cb02
 +    coreContext.setpoint = setpoint;
 +
 +    double error = 0.0;
-+    double pGain = 1.0;
++    double pGain = 1.0, iGain = 1.0;
 +
 +    double proportionalTerm = 0.0;
 +    double integralTerm = 0.0;
@@ -310,7 +319,7 @@ index 0000000..6a8cb02
 +    coreContext.error = error;
 +
 +    if(error <= ERR_MAX) {
-+        pGain = proportionalGainFind(pidinfoptr->proportionalGains, std::fabs(error));
++        pGain = gainFind(pidinfoptr->proportionalGains, std::fabs(error));
 +        //Pid
 +        proportionalTerm = pGain * pidinfoptr->proportionalCoeff * error;
 +        coreContext.proportionalTerm = proportionalTerm;
@@ -320,7 +329,8 @@ index 0000000..6a8cb02
 +        {
 +            //pId
 +            integralTerm = pidinfoptr->integral;
-+            integralTerm += pGain * error * pidinfoptr->integralCoeff * pidinfoptr->ts;
++            iGain = gainFind(pidinfoptr->integralGains, std::fabs(error));
++            integralTerm += iGain * error * pidinfoptr->integralCoeff * pidinfoptr->ts;
 +            coreContext.integralTerm1 = integralTerm;
 +
 +            /*clamp to avoid integral winding*/
@@ -363,7 +373,7 @@ index 0000000..6a8cb02
 +} // namespace ec
 +} // namespace pid_control
 diff --git a/pid/ec/pid.hpp b/pid/ec/pid.hpp
-index 3463b4b..cced564 100644
+index 3463b4b..e5c5203 100644
 --- a/pid/ec/pid.hpp
 +++ b/pid/ec/pid.hpp
 @@ -2,11 +2,13 @@
@@ -385,7 +395,7 @@ index 3463b4b..cced564 100644
  } limits_t;
  
 +constexpr size_t maxGainPoints = 20;
-+struct ProportionalGainInfo
++struct GainInfo
 +{
 +    double reading[maxGainPoints]; //input:error range//
 +    double output[maxGainPoints]; // output: the gain of corresponding error range
@@ -394,31 +404,34 @@ index 3463b4b..cced564 100644
  /* Note: If you update these structs you need to update the copy code in
   * pid/util.cpp.
   */
-@@ -39,6 +48,7 @@ typedef struct
+@@ -39,6 +48,8 @@ typedef struct
      double positiveHysteresis;
      double negativeHysteresis;
      double movingAveragePoint;
-+    struct ProportionalGainInfo proportionalGains;
++    struct GainInfo proportionalGains;
++    struct GainInfo integralGains;
  } pid_info_t;
  
  double pid(pid_info_t* pidinfoptr, double input, double setpoint,
-@@ -60,6 +70,7 @@ struct pidinfo
+@@ -60,6 +71,8 @@ struct pidinfo
      double positiveHysteresis;
      double negativeHysteresis;
      double movingAveragePoint;
-+    struct ProportionalGainInfo proportionalGains;
++    struct GainInfo proportionalGains;
++    struct GainInfo integralGains;
  };
  
  } // namespace ec
 diff --git a/pid/util.cpp b/pid/util.cpp
-index a392a38..a9b91f8 100644
+index a392a38..65bbc5e 100644
 --- a/pid/util.cpp
 +++ b/pid/util.cpp
-@@ -41,6 +41,7 @@ void initializePIDStruct(ec::pid_info_t* info, const ec::pidinfo& initial)
+@@ -41,6 +41,8 @@ void initializePIDStruct(ec::pid_info_t* info, const ec::pidinfo& initial)
      info->negativeHysteresis = initial.negativeHysteresis;
      info->positiveHysteresis = initial.positiveHysteresis;
      info->movingAveragePoint = initial.movingAveragePoint;
-+    std::memcpy(&(info->proportionalGains), &(initial.proportionalGains), sizeof(ec::ProportionalGainInfo));
++    std::memcpy(&(info->proportionalGains), &(initial.proportionalGains), sizeof(ec::GainInfo));
++    std::memcpy(&(info->integralGains), &(initial.integralGains), sizeof(ec::GainInfo));
  }
  
  void dumpPIDStruct(ec::pid_info_t* info)
