@@ -6,9 +6,9 @@ RUN apt-get install -y \
         libsdl1.2-dev texinfo gawk chrpath diffstat
 
 RUN apt-get install -y \
-        python3-minimal
+        python3.8-minimal
 RUN apt-get install -y \
-        python3
+        python3.8
 RUN apt-get install -y \
         sudo \
         cpio \
@@ -18,7 +18,12 @@ RUN apt-get install -y \
 RUN apt-get install -y \
         vim \
         liblz4-tool \
-        zstd
+        zstd \
+        pkg-config
+
+RUN rm /usr/bin/python3
+RUN ln -s python3.8 /usr/bin/python3
+
 
 RUN sed -i -e 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen && \
     locale-gen

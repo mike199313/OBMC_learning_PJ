@@ -2,9 +2,17 @@
 TOPDIR=`pwd`/../..
 USER=`pwd|awk -F"/" '{print $3}'`
 
+
+#LOCAL_DOWNLOAD=""
+#LOCAL_TMP=""
+
+
+
 DOCKER_IMAGE=${USER}_openbmc
 CONTAINER_NAME=${USER}_openbmc
 OPENBMC_DIR=/openbmc
+OPENBMC_DOWNLOAD="$OPENBMC_DIR/downloads"
+OPENBMC_TMP="$OPENBMC_DIR/tmp"
 PROXY_ENV_SETTING=
 APT_CONF_FILE=apt.conf
 GIT_CONF_FILE=.gitconfig
@@ -82,12 +90,30 @@ rm -rf $GIT_CONF_FILE
 
 
 
-
 echo $CONTAINER_NAME
-DOCKER_RUN_ARGS="--rm --net host --name $CONTAINER_NAME --workdir $OPENBMC_DIR $PROXY_ENV_SETTING -v $TOPDIR:$OPENBMC_DIR $DOCKER_IMAGE"
+DOCKER_RUN_ARGS+="--rm --net host "
+DOCKER_RUN_ARGS+="--name $CONTAINER_NAME "
+DOCKER_RUN_ARGS+="--workdir $OPENBMC_DIR "
+DOCKER_RUN_ARGS+="$PROXY_ENV_SETTING "
+DOCKER_RUN_ARGS+="-v $TOPDIR:$OPENBMC_DIR "
+
+if [ -z "$LOCAL_DOWNLOAD" ]; then
+  echo "LOCAL_DOWNLOAD not set"
+else
+  DOCKER_RUN_ARGS+="-v $LOCAL_DOWNLOAD:$OPENBMC_DOWNLOAD "
+fi
+
+if [ -z "$LOCAL_TMP" ]; then
+  echo "LOCAL_TMP not set"
+else
+  DOCKER_RUN_ARGS+="-v $LOCAL_TMP:$OPENBMC_TMP "
+fi
+
+DOCKER_RUN_ARGS+="$DOCKER_IMAGE"
 
 if [ -z "$TARGET" ]
 then
+    echo docker run -it $DOCKER_RUN_ARGS /bin/bash
     docker run -it $DOCKER_RUN_ARGS /bin/bash
 else
     docker run -i $DOCKER_RUN_ARGS  /bin/bash /openbmc/inv/build_bmc.sh $TARGET $BITBAKE_TARGET
