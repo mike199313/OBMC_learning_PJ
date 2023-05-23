@@ -5,7 +5,7 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/Apache-2.0;md5
 
 FILESEXTRAPATHS:prepend := "${THISDIR}:"
 
-inherit cmake systemd logging obmc-phosphor-sdbus-service
+inherit cmake systemd obmc-phosphor-sdbus-service
 
 DEPENDS = "boost \
            dbus \

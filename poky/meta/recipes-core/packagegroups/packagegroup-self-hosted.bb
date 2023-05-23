@@ -98,11 +98,14 @@ RDEPENDS:packagegroup-self-hosted-sdk:append:libc-glibc = "\
     glibc-utils \
     rpcsvc-proto \
     "
+
+STRACE = "strace"
+STRACE:riscv32 = ""
 RDEPENDS:packagegroup-self-hosted-debug = " \
     gdb \
     gdbserver \
     rsync \
-    strace \
+    ${STRACE} \
     tcf-agent"
 
 
@@ -124,12 +127,10 @@ RDEPENDS:packagegroup-self-hosted-extended = "\
     grep \
     groff \
     gzip \
-    settings-daemon \
     libaio \
     libusb1 \
     libxml2 \
     lsof \
-    lzo \
     man \
     man-pages \
     mdadm \
@@ -158,6 +159,7 @@ RDEPENDS:packagegroup-self-hosted-extended = "\
     readline \
     rpm \
     setserial \
+    settings-daemon \
     socat \
     subversion \
     sudo \
@@ -171,22 +173,23 @@ RDEPENDS:packagegroup-self-hosted-extended = "\
     wget \
     which \
     xinetd \
+    xz \
     zip \
     zlib \
-    xz \
+    zstd \
     "
 
 
 RDEPENDS:packagegroup-self-hosted-graphics = "\
+    adwaita-icon-theme \
     builder \
+    l3afpad \
     libgl \
     libgl-dev \
     libglu \
     libglu-dev \
     libx11-dev \
-    adwaita-icon-theme \
-    xdg-utils \
-    l3afpad \
     pcmanfm \
     vte \
+    xdg-utils \
     "

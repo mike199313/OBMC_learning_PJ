@@ -1,4 +1,6 @@
 #
+# Copyright OpenEmbedded Contributors
+#
 # SPDX-License-Identifier: GPL-2.0-only
 #
 
@@ -214,11 +216,23 @@ class SPDXPackageVerificationCode(SPDXObject):
 
 
 class SPDXPackage(SPDXObject):
+    ALLOWED_CHECKSUMS = [
+        "SHA1",
+        "SHA224",
+        "SHA256",
+        "SHA384",
+        "SHA512",
+        "MD2",
+        "MD4",
+        "MD5",
+        "MD6",
+    ]
+
     name = _String()
     SPDXID = _String()
     versionInfo = _String()
     downloadLocation = _String(default="NOASSERTION")
-    packageSupplier = _String(default="NOASSERTION")
+    supplier = _String(default="NOASSERTION")
     homepage = _String()
     licenseConcluded = _String(default="NOASSERTION")
     licenseDeclared = _String(default="NOASSERTION")
@@ -232,6 +246,7 @@ class SPDXPackage(SPDXObject):
     hasFiles = _StringList()
     packageFileName = _String()
     annotations = _ObjectList(SPDXAnnotation)
+    checksums = _ObjectList(SPDXChecksum)
 
 
 class SPDXFile(SPDXObject):

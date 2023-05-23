@@ -1,5 +1,8 @@
 require conf/distro/include/phosphor-defaults.inc
 
+# Match the distro codename from upstream poky.
+DISTRO_CODENAME ?= "langdale"
+
 # Override these in poky based distros
 POKY_DEFAULT_DISTRO_FEATURES = "largefile opengl ptest multiarch wayland vulkan"
 POKY_DEFAULT_EXTRA_RDEPENDS = "packagegroup-core-boot"
@@ -68,7 +71,7 @@ ERROR_QA:append = " ${WARN_TO_ERROR_QA}"
 require conf/distro/include/no-static-libs.inc
 require conf/distro/include/yocto-uninative.inc
 
-DISTRO_NAME = "Phosphor OpenBMC (Phosphor OpenBMC Project Reference Distro)"
+DISTRO_NAME ?= "Phosphor OpenBMC (Phosphor OpenBMC Project Reference Distro)"
 TARGET_VENDOR="-openbmc"
 
 VIRTUAL-RUNTIME_keymaps = ""
@@ -134,7 +137,9 @@ LAYER_CONF_VERSION ?= "8"
 KERNEL_CLASSES:append = " obmc-phosphor-kernel-version"
 
 # Some packages have directory trees of YAML files arranged based on
-# canonical organization names.  'xyz/openbmc_project' should be used
-# everywhere in phosphor, but some layers may append this with their
-# own organization(s).
-OBMC_ORG_YAML_SUBDIRS += " xyz/openbmc_project"
+# canonical organization names.  'org/freedesktop' and 'xyz/openbmc_project'
+# should be used everywhere in phosphor, but some layers may append this with
+# their own organization(s).
+OBMC_ORG_YAML_SUBDIRS += " org/freedesktop xyz/openbmc_project"
+
+PREFERRED_VERSION_libgpiod = "1.6.4"

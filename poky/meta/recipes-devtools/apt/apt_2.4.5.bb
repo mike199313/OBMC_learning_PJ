@@ -13,6 +13,10 @@ SRC_URI = "${DEBIAN_MIRROR}/main/a/apt/${BPN}_${PV}.tar.xz \
            file://0001-cmake-Do-not-build-po-files.patch \
            file://0001-Hide-fstatat64-and-prlimit64-defines-on-musl.patch \
            file://0001-aptwebserver.cc-Include-array.patch \
+           file://0001-Remove-using-std-binary_function.patch \
+           file://0001-typecast-time_t-and-suseconds_t-from-std-chrono.patch \
+           file://0002-interactive-helper-Undefine-_FORTIFY_SOURCE.patch \
+           file://0001-add-missing-cstdint-for-uint16_t.patch \
            "
 
 SRC_URI:append:class-native = " \
@@ -31,8 +35,12 @@ LIC_FILES_CHKSUM = "file://COPYING.GPL;md5=b234ee4d69f5fce4486a80fdaf4a4263"
 # the package is taken from snapshots.debian.org; that source is static and goes stale
 # so we check the latest upstream from a directory that does get updated
 UPSTREAM_CHECK_URI = "${DEBIAN_MIRROR}/main/a/apt/"
+# apt seems to follow a peculiar version policy, where every *other* even version
+# is considered stable, e.g. 1.0, 1.4, 1.8, 2.2, 2.6, etc. As there is no way
+# to express 'divisible by 4 plus 2' in regex (that I know of), let's hardcode a few.
+UPSTREAM_CHECK_REGEX = "[^\d\.](?P<pver>((2\.2)|(2\.6)|(3\.0)|(3\.4)|(3\.8)|(4\.2))(\.\d+)+)\.tar"
 
-inherit cmake perlnative bash-completion upstream-version-is-even useradd
+inherit cmake perlnative bash-completion useradd
 
 # User is added to allow apt to drop privs, will runtime warn without
 USERADD_PACKAGES = "${PN}"
@@ -117,6 +125,7 @@ do_install:append:class-native() {
 
 do_install:append:class-nativesdk() {
 	customize_apt_conf_sample
+        rm -rf ${D}${localstatedir}/log
 }
 
 do_install:append:class-target() {
@@ -132,5 +141,5 @@ do_install:append:class-target() {
 
 do_install:append() {
 	# Avoid non-reproducible -src package
-	sed -i -e "s,${B},,g" ${B}/apt-pkg/tagfile-keys.cc
+	sed -i -e "s,${B}/include/,,g" ${B}/apt-pkg/tagfile-keys.cc
 }

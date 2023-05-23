@@ -3,14 +3,13 @@ POWER_SERVICE_PACKAGES_FP5280G2 = " \
                                     phosphor-power-systemd-links-monitor \
                                     phosphor-power-utils \
                                     phosphor-power \
-                                    phosphor-power-psu-monitor \
                                   "
 
 RDEPENDS:${PN}-inventory:append:fp5280g2 = " \
                                              openpower-fru-vpd \
                                              openpower-occ-control \
                                              phosphor-cooling-type \
-                                             virtual/obmc-gpio-presence \
+                                             phosphor-gpio-monitor-presence \
                                             "
 
 RDEPENDS:${PN}-extras:append:fp5280g2 = " \

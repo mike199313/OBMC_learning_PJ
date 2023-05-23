@@ -1,4 +1,4 @@
-From abd5b40c9b094e721e91a5d75132639149d7952f Mon Sep 17 00:00:00 2001
+From e47cc405eadcbe37a579c375e824e20a5c53bfad Mon Sep 17 00:00:00 2001
 From: Paul Eggleton <paul.eggleton@linux.intel.com>
 Date: Tue, 17 Jul 2012 11:27:39 +0100
 Subject: [PATCH] Log the SELinux context at startup.
@@ -8,6 +8,7 @@ Log the SELinux context at startup.
 Upstream-Status: Inappropriate [other]
 
 Note: unlikely to be any interest in this upstream
+
 ---
  configure.in  |  5 +++++
  server/core.c | 26 ++++++++++++++++++++++++++
@@ -73,6 +74,3 @@ index 4da7209..d3ca25b 100644
      return OK;
  }
  
--- 
-2.25.1
-

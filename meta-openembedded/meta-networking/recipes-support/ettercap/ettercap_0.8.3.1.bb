@@ -10,6 +10,7 @@ DEPENDS += "ethtool \
             librepo \
             libnet \
             libpcap \
+            libpcre \
             ncurses \
             openssl \
             zlib \
@@ -19,7 +20,8 @@ DEPENDS += "ethtool \
 
 RDEPENDS:${PN} += "bash ethtool libgcc"
 
-SRC_URI = "gitsm://github.com/Ettercap/ettercap;branch=master;protocol=https"
+SRC_URI = "gitsm://github.com/Ettercap/ettercap;branch=master;protocol=https \
+           file://0001-sslstrip-Enhance-the-libcurl-version-check-to-consid.patch"
 
 SRCREV = "7281fbddb7da7478beb1d21e3cb105fff3778b31"
 
@@ -32,6 +34,7 @@ EXTRA_OECMAKE = " \
     -DENABLE_GTK=OFF \
 "
 
+CFLAGS += "-D_GNU_SOURCE"
 # Replaces default encoding set (ISO-8859-1) with UTF-8 in ettercap
 # configuration file installed by the package.
 # It ensures that all characters are properly decoded and avoids

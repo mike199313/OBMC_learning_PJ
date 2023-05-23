@@ -72,10 +72,9 @@ simple JSON files.
 .. note::
 
    The project uses Buildbot for historical reasons but also because
-   many of the project developers have knowledge of python. It is
+   many of the project developers have knowledge of Python. It is
    possible to use the outer layers from another Continuous Integration
-   (CI) system such as
-   `Jenkins <https://en.wikipedia.org/wiki/Jenkins_(software)>`__
+   (CI) system such as :wikipedia:`Jenkins <Jenkins_(software)>`
    instead of Buildbot.
 
 The following figure shows the Yocto Project Autobuilder stack with a
@@ -83,9 +82,10 @@ topology that includes a controller and a cluster of workers:
 
 .. image:: figures/ab-test-cluster.png
    :align: center
+   :width: 70%
 
-Yocto Project Tests - Types of Testing Overview
-===============================================
+Yocto Project Tests --- Types of Testing Overview
+=================================================
 
 The Autobuilder tests different elements of the project by using
 the following types of tests:
@@ -100,12 +100,11 @@ the following types of tests:
    different configurations, such as different init systems. The
    Autobuilder tests literally hundreds of configurations and targets.
 
-   -  *Sanity Checks During the Build Process:* Tests initiated through
-      the :ref:`insane <ref-classes-insane>`
-      class. These checks ensure the output of the builds are correct.
-      For example, does the ELF architecture in the generated binaries
-      match the target system? ARM binaries would not work in a MIPS
-      system!
+   -  *Sanity Checks During the Build Process:* Tests initiated through the
+      :ref:`ref-classes-insane` class. These checks ensure the output of the
+      builds are correct. For example, does the ELF architecture in the
+      generated binaries match the target system? ARM binaries would not work
+      in a MIPS system!
 
 -  *Build Performance Testing:* Tests whether or not commonly used steps
    during builds work efficiently and avoid regressions. Tests to time
@@ -121,7 +120,8 @@ the following types of tests:
 
       $ bitbake image -c testsdkext
 
-   The tests utilize the :ref:`testsdkext <ref-classes-testsdk>` class and the ``do_testsdkext`` task.
+   The tests utilize the :ref:`ref-classes-testsdk` class and the
+   ``do_testsdkext`` task.
 
 -  *Feature Testing:* Various scenario-based tests are run through the
    :ref:`OpenEmbedded Self test (oe-selftest) <ref-manual/release-process:Testing and Quality Assurance>`. We test oe-selftest on each of the main distributions
@@ -131,8 +131,8 @@ the following types of tests:
 
       $ bitbake image -c testimage
 
-   The tests utilize the :ref:`testimage* <ref-classes-testimage*>`
-   classes and the :ref:`ref-tasks-testimage` task.
+   The tests utilize the :ref:`ref-classes-testimage`
+   class and the :ref:`ref-tasks-testimage` task.
 
 -  *Layer Testing:* The Autobuilder has the possibility to test whether
    specific layers work with the test of the system. The layers tested
@@ -142,7 +142,7 @@ the following types of tests:
 -  *Package Testing:* A Package Test (ptest) runs tests against packages
    built by the OpenEmbedded build system on the target machine. See the
    :ref:`Testing Packages With
-   ptest <dev-manual/common-tasks:Testing Packages With ptest>` section
+   ptest <dev-manual/packages:Testing Packages With ptest>` section
    in the Yocto Project Development Tasks Manual and the
    ":yocto_wiki:`Ptest </Ptest>`" Wiki page for more
    information on Ptest.
@@ -151,7 +151,7 @@ the following types of tests:
 
       $ bitbake image -c testsdk
 
-   The tests utilize the :ref:`testsdk <ref-classes-testsdk>` class and
+   The tests utilize the :ref:`ref-classes-testsdk` class and
    the ``do_testsdk`` task.
 
 -  *Unit Testing:* Unit tests on various components of the system run
@@ -174,19 +174,25 @@ Tests map into the codebase as follows:
    which include the fetchers. The tests are located in
    ``bitbake/lib/*/tests``.
 
+   Some of these tests run the ``bitbake`` command, so ``bitbake/bin``
+   must be added to the ``PATH`` before running ``bitbake-selftest``.
    From within the BitBake repository, run the following::
 
+      $ export PATH=$PWD/bin:$PATH
+
+   After that, you can run the selftest script::
+
       $ bitbake-selftest
-
-   To skip tests that access the Internet, use the ``BB_SKIP_NETTESTS``
-   variable when running "bitbake-selftest" as follows::
-
-      $ BB_SKIP_NETTESTS=yes bitbake-selftest
 
    The default output is quiet and just prints a summary of what was
    run. To see more information, there is a verbose option::
 
       $ bitbake-selftest -v
+
+   To skip tests that access the Internet, use the ``BB_SKIP_NETTESTS``
+   variable when running "bitbake-selftest" as follows::
+
+      $ BB_SKIP_NETTESTS=yes bitbake-selftest
 
    Use this option when you wish to skip tests that access the network,
    which are mostly necessary to test the fetcher modules. To specify
@@ -335,12 +341,12 @@ A simple test example from ``lib/bb/tests/data.py`` is::
             self.assertEqual(str(val), "value_of_foo")
 
 In this example, a ``DataExpansions`` class of tests is created,
-derived from standard python unittest. The class has a common ``setUp``
+derived from standard Python unittest. The class has a common ``setUp``
 function which is shared by all the tests in the class. A simple test is
 then added to test that when a variable is expanded, the correct value
 is found.
 
-Bitbake selftests are straightforward python unittest. Refer to the
+BitBake selftests are straightforward Python unittest. Refer to the
 Python unittest documentation for additional information on writing
 these tests at: https://docs.python.org/3/library/unittest.html.
 
@@ -468,7 +474,7 @@ following::
 
 In this example, if nativesdk-python3-core has been installed into the SDK, the code runs
 the python3 interpreter with a basic command to check it is working
-correctly. The test would only run if python3 is installed in the SDK.
+correctly. The test would only run if Python3 is installed in the SDK.
 
 ``oe-build-perf-test``
 ----------------------
@@ -506,14 +512,14 @@ workers, consider the following:
 
 **Running "cleanall" is not permitted.**
 
-This can delete files from DL_DIR which would potentially break other
-builds running in parallel. If this is required, DL_DIR must be set to
+This can delete files from :term:`DL_DIR` which would potentially break other
+builds running in parallel. If this is required, :term:`DL_DIR` must be set to
 an isolated directory.
 
 **Running "cleansstate" is not permitted.**
 
-This can delete files from SSTATE_DIR which would potentially break
-other builds running in parallel. If this is required, SSTATE_DIR must
+This can delete files from :term:`SSTATE_DIR` which would potentially break
+other builds running in parallel. If this is required, :term:`SSTATE_DIR` must
 be set to an isolated directory. Alternatively, you can use the "-f"
 option with the ``bitbake`` command to "taint" tasks by changing the
 sstate checksums to ensure sstate cache items will not be reused.

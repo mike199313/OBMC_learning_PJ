@@ -1,33 +1,9 @@
-inherit systemd
-inherit useradd
-
-USERADD_PACKAGES = "${PN}"
-
-# add a user called httpd for the server to assume
-USERADD_PARAM:${PN} = "-r -s /sbin/nologin bmcweb"
-GROUPADD_PARAM:${PN} = "web; redfish"
-
 LICENSE = "Apache-2.0"
 LIC_FILES_CHKSUM = "file://LICENSE;md5=175792518e4ac015ab6696d16c4f607e"
-
-SRC_URI = "git://github.com/openbmc/bmcweb.git;branch=master;protocol=https;nobranch=1"
-
-PV = "1.0+git${SRCPV}"
-SRCREV = "3d768a165183dd8cf7e485ac67ab7270845d5f87"
-
-S = "${WORKDIR}/git"
-
-inherit pkgconfig meson ptest
-
-SRC_URI += " \
-    file://run-ptest \
-"
-
 DEPENDS = " \
     openssl \
     zlib \
     boost \
-    boost-url \
     libpam \
     sdbusplus \
     gtest \
@@ -36,10 +12,24 @@ DEPENDS = " \
     ${@bb.utils.contains('PTEST_ENABLED', '1', 'gtest', '', d)} \
     ${@bb.utils.contains('PTEST_ENABLED', '1', 'gmock', '', d)} \
 "
+SRCREV = "28f4b387a0f448f0be1b746a85fc58458ece8db3"
+PV = "1.0+git${SRCPV}"
 
-RDEPENDS:${PN} += " \
-    jsnbd \
-    phosphor-mapper \
+SRC_URI = "git://github.com/openbmc/bmcweb.git;branch=master;protocol=https"
+SRC_URI += " \
+    file://run-ptest \
+"
+
+S = "${WORKDIR}/git"
+SYSTEMD_SERVICE:${PN} += "bmcweb.service bmcweb.socket"
+
+inherit systemd
+inherit useradd
+inherit pkgconfig meson ptest
+
+EXTRA_OEMESON = " \
+    --buildtype=minsize \
+    -Dtests=${@bb.utils.contains('PTEST_ENABLED', '1', 'enabled', 'disabled', d)} \
 "
 
 do_install_ptest() {
@@ -47,15 +37,16 @@ do_install_ptest() {
         cp -rf ${B}/*_test ${D}${PTEST_PATH}/test/
 }
 
-FILES:${PN} += "${datadir}/** "
-
-
-EXTRA_OEMESON = " \
-    --buildtype=minsize \
-    -Dtests=${@bb.utils.contains('PTEST_ENABLED', '1', 'enabled', 'disabled', d)} \
-    -Dyocto-deps=enabled \
+RDEPENDS:${PN} += " \
+    jsnbd \
+    phosphor-objmgr \
 "
 
-SYSTEMD_SERVICE:${PN} += "bmcweb.service bmcweb.socket"
+FILES:${PN} += "${datadir}/** "
 
-FULL_OPTIMIZATION = "-Os "
+USERADD_PACKAGES = "${PN}"
+# add a user called httpd for the server to assume
+USERADD_PARAM:${PN} = "-r -s /sbin/nologin bmcweb"
+
+GROUPADD_PARAM:${PN} = "web; redfish; hostconsole"
+FULL_OPTIMIZATION:append = " -Os"

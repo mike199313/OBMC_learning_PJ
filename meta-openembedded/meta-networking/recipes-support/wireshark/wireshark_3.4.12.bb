@@ -15,6 +15,7 @@ SRC_URI += " \
     file://0002-flex-Remove-line-directives.patch \
     file://0003-bison-Remove-line-directives.patch \
     file://0004-lemon-Remove-line-directives.patch \
+    file://CVE-2022-3190.patch \
 "
 
 UPSTREAM_CHECK_URI = "https://1.as.dl.wireshark.org/src"
@@ -23,7 +24,7 @@ SRC_URI[sha256sum] = "881a13303e263b7dc7fe337534c8a541d4914552287879bed30bbe76c5
 
 PE = "1"
 
-inherit cmake pkgconfig python3native perlnative upstream-version-is-even mime mime-xdg
+inherit cmake pkgconfig python3native python3targetconfig perlnative upstream-version-is-even mime mime-xdg
 
 PACKAGECONFIG ?= "libpcap gnutls libnl libcap sbc"
 
@@ -45,6 +46,7 @@ PACKAGECONFIG[sbc] = "-DENABLE_SBC=ON,-DENABLE_SBC=OFF, sbc"
 PACKAGECONFIG[libssh] = ",,libssh2"
 PACKAGECONFIG[lz4] = "-DENABLE_LZ4=ON,-DENABLE_LZ4=OFF, lz4"
 PACKAGECONFIG[zstd] = "-DENABLE_STTD=ON,-DENABLE_ZSTD=OFF, zstd"
+PACKAGECONFIG[nghttp2] = "-DENABLE_NGHTTP2=ON,-DENABLE_NGHTTP2=OFF, nghttp2"
 
 # these next two options require addional layers
 PACKAGECONFIG[c-ares] = "-DENABLE_CARES=ON,-DENABLE_CARES=OFF, c-ares"

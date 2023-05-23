@@ -12,17 +12,17 @@ Dependencies
 This layer depends on:
 
 URI: git://git.openembedded.org/meta-openembedded
-branch: kirkstone
+branch: mickledore
 
 
 Maintenance
 -----------
 
 Send patches / pull requests to openembedded-devel@lists.openembedded.org
-with '[meta-initramfs][kirkstone]' in the subject.
+with '[meta-initramfs][mickledore]' in the subject.
 
 When sending single patches, please using something like:
-git send-email -M -1 --to openembedded-devel@lists.openembedded.org --subject-prefix='meta-initramfs][kirkstone][PATCH'
+git send-email -M -1 --to openembedded-devel@lists.openembedded.org --subject-prefix='meta-initramfs][mickledore][PATCH'
 
 Interm layer maintainer: Armin Kuster <akuster808@gmail.com>
 

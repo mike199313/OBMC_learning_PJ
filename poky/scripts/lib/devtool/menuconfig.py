@@ -3,6 +3,8 @@
 # Copyright (C) 2018 Xilinx
 # Written by: Chandana Kalluri <ckalluri@xilinx.com>
 #
+# SPDX-License-Identifier: MIT
+#
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 2 as
 # published by the Free Software Foundation.
@@ -43,7 +45,7 @@ def menuconfig(args, config, basepath, workspace):
             return 1
 
         check_workspace_recipe(workspace, args.component)
-        pn = rd.getVar('PN', True)
+        pn = rd.getVar('PN')
 
         if not rd.getVarFlag('do_menuconfig','task'):
             raise DevtoolError("This recipe does not support menuconfig option")

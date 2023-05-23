@@ -1,3 +1,5 @@
+.. SPDX-License-Identifier: CC-BY-SA-2.0-UK
+
 Release 2.2 (morty)
 ===================
 
@@ -70,7 +72,7 @@ Metadata Must Now Use Python 3 Syntax
 
 The metadata is now required to use Python 3 syntax. For help preparing
 metadata, see any of the many Python 3 porting guides available.
-Alternatively, you can reference the conversion commits for Bitbake and
+Alternatively, you can reference the conversion commits for BitBake and
 you can use :term:`OpenEmbedded-Core (OE-Core)` as a guide for changes. Following are
 particular areas of interest:
 
@@ -103,7 +105,7 @@ online package-manager support through SMART still require Python 2.
 ``buildtools-tarball`` Includes Python 3
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-``buildtools-tarball`` now includes Python 3.
+The :term:`buildtools` tarball now includes Python 3.
 
 .. _migration-2.2-uclibc-replaced-by-musl:
 
@@ -119,11 +121,10 @@ compared to uClibc.
 ``${B}`` No Longer Default Working Directory for Tasks
 ------------------------------------------------------
 
-``${``\ :term:`B`\ ``}`` is no longer the default working
-directory for tasks. Consequently, any custom tasks you define now need
-to either have the
-``[``\ :ref:`dirs <bitbake:bitbake-user-manual/bitbake-user-manual-metadata:variable flags>`\ ``]`` flag
-set, or the task needs to change into the appropriate working directory
+``${``\ :term:`B`\ ``}`` is no longer the default working directory for tasks.
+Consequently, any custom tasks you define now need to either have the
+``[``\ :ref:`dirs <bitbake-user-manual/bitbake-user-manual-metadata:variable flags>`\ ``]``
+flag set, or the task needs to change into the appropriate working directory
 manually (e.g using ``cd`` for a shell task).
 
 .. note::
@@ -182,13 +183,7 @@ root filesystem, provides an image, and uses the ``nographic`` option::
    $ runqemu qemux86-64 tmp/deploy/images/qemux86-64/core-image-minimal-qemux86-64.ext4 tmp/deploy/images/qemux86-64/bzImage nographic
 
 Following is a list of variables that can be set in configuration files
-such as ``bsp.conf`` to enable the BSP to be booted by ``runqemu``:
-
-.. note::
-
-   "QB" means "QEMU Boot".
-
-::
+such as ``bsp.conf`` to enable the BSP to be booted by ``runqemu``::
 
    QB_SYSTEM_NAME: QEMU name (e.g. "qemu-system-i386")
    QB_OPT_APPEND: Options to append to QEMU (e.g. "-show-cursor")
@@ -220,6 +215,10 @@ such as ``bsp.conf`` to enable the BSP to be booted by ``runqemu``:
 
 To use ``runqemu``, set :term:`IMAGE_CLASSES` as
 follows and run ``runqemu``:
+
+.. note::
+
+   "QB" means "QEMU Boot".
 
 .. note::
 
@@ -442,7 +441,7 @@ The following miscellaneous changes have occurred:
 -  :ref:`ref-classes-image`: Renamed COMPRESS(ION) to CONVERSION. This change
    means that ``COMPRESSIONTYPES``, ``COMPRESS_DEPENDS`` and
    ``COMPRESS_CMD`` are deprecated in favor of ``CONVERSIONTYPES``,
-   ``CONVERSION_DEPENDS`` and ``CONVERSION_CMD``. The ``COMPRESS*``
+   ``CONVERSION_DEPENDS`` and :term:`CONVERSION_CMD`. The ``COMPRESS*``
    variable names will still work in the 2.2 release but metadata that
    does not need to be backwards-compatible should be changed to use the
    new names as the ``COMPRESS*`` ones will be removed in a future

@@ -6,9 +6,9 @@ HOMEPAGE = "https://sourceware.org/systemtap/"
 
 require systemtap_git.inc
 
-SRC_URI += "file://0001-improve-reproducibility-for-c-compiling.patch \
-            file://0001-staprun-address-ncurses-6.3-failures.patch \
-            file://0001-gcc12-c-compatibility-re-tweak-for-rhel6-use-functio.patch \
+SRC_URI += " \
+           file://0001-improve-reproducibility-for-c-compiling.patch \
+           file://0001-staprun-address-ncurses-6.3-failures.patch \
            "
 
 DEPENDS = "elfutils"
@@ -33,6 +33,9 @@ PACKAGECONFIG[python3-probes] = "--with-python3-probes,--without-python3-probes,
 
 inherit autotools gettext pkgconfig systemd
 inherit ${@bb.utils.contains('PACKAGECONFIG', 'python3-probes', 'setuptools3-base', '', d)}
+
+# | ../git/elaborate.cxx:2601:21: error: storing the address of local variable 'sym' in '*s.systemtap_session::symbol_resolver' [-Werror=dangling-pointer=]
+CXXFLAGS += "-Wno-dangling-pointer"
 
 # exporter comes with python3-probes
 PACKAGES =+ "${PN}-exporter"

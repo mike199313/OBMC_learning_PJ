@@ -13,13 +13,14 @@ inherit autotools \
         perlnative
 
 SRC_URI = "git://git@github.com/open-power/pdata;branch="main";protocol=https"
-SRCREV = "3e2938dd0ca6ada3fce0e5452f0fe866826e71d8"
+SRCREV = "1ae8abf6c3caa4a166b73ef15512cdf4e78d4b5f"
 
 DEPENDS = "pdbg \
            libxml-simple-perl-native \
            libxml-libxml-perl-native \
            ekb-native \
-           autoconf-archive"
+           autoconf-archive \
+           dtc-native"
 
 PDATA_CONFARG = "CHIP=p10"
 EXTRA_OECONF = "--enable-gen_attrsinfo ${PDATA_CONFARG}"

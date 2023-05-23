@@ -17,7 +17,7 @@ The 'perf' tool is the profiling and tracing tool that comes bundled
 with the Linux kernel.
 
 Don't let the fact that it's part of the kernel fool you into thinking
-that it's only for tracing and profiling the kernel - you can indeed use
+that it's only for tracing and profiling the kernel --- you can indeed use
 it to trace and profile just the kernel, but you can also use it to
 profile specific applications separately (with or without kernel
 context), and you can also use it to trace and profile the kernel and
@@ -176,7 +176,7 @@ interactive text-based UI (or simply as text if we specify ``--stdio`` to
 
 As our first attempt at profiling this workload, we'll simply run 'perf
 record', handing it the workload we want to profile (everything after
-'perf record' and any perf options we hand it - here none - will be
+'perf record' and any perf options we hand it --- here none, will be
 executed in a new shell). perf collects samples until the process exits
 and records them in a file named 'perf.data' in the current working
 directory. ::
@@ -197,12 +197,13 @@ in an interactive UI::
 
 .. image:: figures/perf-wget-flat-stripped.png
    :align: center
+   :width: 70%
 
 The above screenshot displays a 'flat' profile, one entry for each
 'bucket' corresponding to the functions that were profiled during the
 profiling run, ordered from the most popular to the least (perf has
 options to sort in various orders and keys as well as display entries
-only above a certain threshold and so on - see the perf documentation
+only above a certain threshold and so on --- see the perf documentation
 for details). Note that this includes both userspace functions (entries
 containing a [.]) and kernel functions accounted to the process (entries
 containing a [k]). (perf has command-line modifiers that can be used to
@@ -230,6 +231,7 @@ but the entire callchain to the sampled function as well::
 
 .. image:: figures/perf-wget-g-copy-to-user-expanded-stripped.png
    :align: center
+   :width: 70%
 
 Using the callgraph view, we can actually see not only which functions
 took the most time, but we can also see a summary of how those functions
@@ -266,6 +268,7 @@ busybox.
 
 .. image:: figures/perf-wget-g-copy-from-user-expanded-stripped.png
    :align: center
+   :width: 70%
 
 The above screenshot shows the other half of the journey for the data -
 from the wget program's userspace buffers to disk. To get the buffers to
@@ -283,6 +286,7 @@ let's expand the first entry containing BusyBox:
 
 .. image:: figures/perf-wget-busybox-expanded-stripped.png
    :align: center
+   :width: 70%
 
 Again, before we expanded we saw that the function was labeled with a
 hex value instead of a symbol as with most of the kernel entries.
@@ -330,6 +334,7 @@ their functions symbolically:
 
 .. image:: figures/perf-wget-busybox-debuginfo.png
    :align: center
+   :width: 70%
 
 If we expand one of the entries and press 'enter' on a leaf node, we're
 presented with a menu of actions we can take to get more information
@@ -337,6 +342,7 @@ related to that entry:
 
 .. image:: figures/perf-wget-busybox-dso-zoom-menu.png
    :align: center
+   :width: 70%
 
 One of these actions allows us to show a view that displays a
 busybox-centric view of the profiled functions (in this case we've also
@@ -344,6 +350,7 @@ expanded all the nodes using the 'E' key):
 
 .. image:: figures/perf-wget-busybox-dso-zoom.png
    :align: center
+   :width: 70%
 
 Finally, we can see that now that the BusyBox debuginfo is installed,
 the previously unresolved symbol in the ``sys_clock_gettime()`` entry
@@ -354,6 +361,7 @@ function:
 
 .. image:: figures/perf-wget-g-copy-to-user-expanded-debuginfo.png
    :align: center
+   :width: 70%
 
 At the lowest level of detail, we can dive down to the assembly level
 and see which instructions caused the most overhead in a function.
@@ -362,6 +370,7 @@ with a menu:
 
 .. image:: figures/perf-wget-busybox-annotate-menu.png
    :align: center
+   :width: 70%
 
 Selecting 'Annotate udhcpc_main', we get a detailed listing of
 percentages by instruction for the udhcpc_main function. From the
@@ -370,6 +379,7 @@ taken up by a couple tests and the move of a constant (1) to a register:
 
 .. image:: figures/perf-wget-busybox-annotate-udhcpc.png
    :align: center
+   :width: 70%
 
 As a segue into tracing, let's try another profile using a different
 counter, something other than the default 'cycles'.
@@ -593,11 +603,12 @@ and tell perf to do a profile using it as the sampling event::
 
 .. image:: figures/sched-wakeup-profile.png
    :align: center
+   :width: 70%
 
 The screenshot above shows the results of running a profile using
 sched:sched_switch tracepoint, which shows the relative costs of various
 paths to sched_wakeup (note that sched_wakeup is the name of the
-tracepoint - it's actually defined just inside ttwu_do_wakeup(), which
+tracepoint --- it's actually defined just inside ttwu_do_wakeup(), which
 accounts for the function name actually displayed in the profile:
 
 .. code-block:: c
@@ -740,7 +751,7 @@ entry/exit events we recorded::
    root@crownbay:~# perf script -g python
    generated Python script: perf-script.py
 
-The skeleton script simply creates a python function for each event type in the
+The skeleton script simply creates a Python function for each event type in the
 perf.data file. The body of each function simply prints the event name along
 with its parameters. For example:
 
@@ -859,14 +870,14 @@ goes a little way to support the idea mentioned previously that given
 the right kind of trace data, higher-level profiling-type summaries can
 be derived from it.
 
-Documentation on using the `'perf script' python
+Documentation on using the `'perf script' Python
 binding <https://linux.die.net/man/1/perf-script-python>`__.
 
 System-Wide Tracing and Profiling
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The examples so far have focused on tracing a particular program or
-workload - in other words, every profiling run has specified the program
+workload --- in other words, every profiling run has specified the program
 to profile in the command-line e.g. 'perf record wget ...'.
 
 It's also possible, and more interesting in many cases, to run a
@@ -894,6 +905,7 @@ other processes running on the system as well:
 
 .. image:: figures/perf-systemwide.png
    :align: center
+   :width: 70%
 
 In the snapshot above, we can see callchains that originate in libc, and
 a callchain from Xorg that demonstrates that we're using a proprietary X
@@ -911,6 +923,7 @@ record a profile::
 
 .. image:: figures/perf-report-cycles-u.png
    :align: center
+   :width: 70%
 
 Notice in the screenshot above, we see only userspace entries ([.])
 
@@ -921,6 +934,7 @@ the entries associated with the libc-xxx.so DSO.
 
 .. image:: figures/perf-systemwide-libc.png
    :align: center
+   :width: 70%
 
 We can also use the system-wide -a switch to do system-wide tracing.
 Here we'll trace a couple of scheduler events::
@@ -950,7 +964,7 @@ Filtering
 Notice that there are a lot of events that don't really have anything to
 do with what we're interested in, namely events that schedule 'perf'
 itself in and out or that wake perf up. We can get rid of those by using
-the '--filter' option - for each event we specify using -e, we can add a
+the '--filter' option --- for each event we specify using -e, we can add a
 --filter after that to filter out trace events that contain fields with
 specific values::
 
@@ -1116,11 +1130,12 @@ callgraphs from starting a few programs during those 30 seconds:
 
 .. image:: figures/perf-probe-do_fork-profile.png
    :align: center
+   :width: 70%
 
 .. admonition:: Tying it Together
 
    The trace events subsystem accommodate static and dynamic tracepoints
-   in exactly the same way - there's no difference as far as the
+   in exactly the same way --- there's no difference as far as the
    infrastructure is concerned. See the ftrace section for more details
    on the trace event subsystem.
 
@@ -1149,7 +1164,7 @@ section can be found here:
 -  The `'perf script'
    manpage <https://linux.die.net/man/1/perf-script>`__.
 
--  Documentation on using the `'perf script' python
+-  Documentation on using the `'perf script' Python
    binding <https://linux.die.net/man/1/perf-script-python>`__.
 
 -  The top-level `perf(1) manpage <https://linux.die.net/man/1/perf>`__.
@@ -1186,7 +1201,7 @@ For this section, we'll assume you've already performed the basic setup
 outlined in the ":ref:`profile-manual/intro:General Setup`" section.
 
 ftrace, trace-cmd, and kernelshark run on the target system, and are
-ready to go out-of-the-box - no additional setup is necessary. For the
+ready to go out-of-the-box --- no additional setup is necessary. For the
 rest of this section we assume you've ssh'ed to the host and will be
 running ftrace on the target. kernelshark is a GUI application and if
 you use the '-X' option to ssh you can have the kernelshark GUI run on
@@ -1306,7 +1321,7 @@ great way to learn about how the kernel code works in a dynamic sense.
    ftrace:function tracepoint.
 
 It is a little more difficult to follow the call chains than it needs to
-be - luckily there's a variant of the function tracer that displays the
+be --- luckily there's a variant of the function tracer that displays the
 callchains explicitly, called the 'function_graph' tracer::
 
    root@sugarbay:/sys/kernel/debug/tracing# echo function_graph > current_tracer
@@ -1684,6 +1699,7 @@ events (or even one or more complete subsystems) to trace:
 
 .. image:: figures/kernelshark-choose-events.png
    :align: center
+   :width: 70%
 
 Note that these are exactly the same sets of events described in the
 previous trace events subsystem section, and in fact is where trace-cmd
@@ -1699,6 +1715,7 @@ will turn into the 'Stop' button after the trace has started):
 
 .. image:: figures/kernelshark-output-display.png
    :align: center
+   :width: 70%
 
 Notice that the right-hand pane shows the exact trace-cmd command-line
 that's used to run the trace, along with the results of the trace-cmd
@@ -1710,16 +1727,18 @@ detailed event listing below that:
 
 .. image:: figures/kernelshark-i915-display.png
    :align: center
+   :width: 70%
 
 Here's another example, this time a display resulting from tracing 'all
 events':
 
 .. image:: figures/kernelshark-all.png
    :align: center
+   :width: 70%
 
 The tool is pretty self-explanatory, but for more detailed information
 on navigating through the data, see the `kernelshark
-website <https://rostedt.homelinux.com/kernelshark/>`__.
+website <https://kernelshark.org/Documentation.html>`__.
 
 ftrace Documentation
 --------------------
@@ -1748,8 +1767,8 @@ There is a nice series of articles on using ftrace and trace-cmd at LWN:
 -  `trace-cmd: A front-end for
    Ftrace <https://lwn.net/Articles/410200/>`__
 
-There's more detailed documentation kernelshark usage here:
-`KernelShark <https://rostedt.homelinux.com/kernelshark/>`__
+See also `KernelShark's documentation <https://kernelshark.org/Documentation.html>`__
+for further usage details.
 
 An amusing yet useful README (a tracing mini-HOWTO) can be found in
 ``/sys/kernel/debug/tracing/README``.
@@ -1876,9 +1895,9 @@ manual, and boot the resulting target image.
 
 .. note::
 
-   If you have a build directory containing multiple machines, you need
-   to have the MACHINE you're connecting to selected in local.conf, and
-   the kernel in that machine's build directory must match the kernel on
+   If you have a :term:`Build Directory` containing multiple machines, you need
+   to have the :term:`MACHINE` you're connecting to selected in local.conf, and
+   the kernel in that machine's :term:`Build Directory` must match the kernel on
    the booted system exactly, or you'll get the above 'crosstap' message
    when you try to invoke a script.
 
@@ -1974,6 +1993,7 @@ with profiling data:
 
 .. image:: figures/sysprof-copy-to-user.png
    :align: center
+   :width: 70%
 
 The left pane shows a list of functions and processes. Selecting one of
 those expands that function in the right pane, showing all its callees.
@@ -1988,6 +2008,7 @@ in the perf display shown in the perf section of this page.
 
 .. image:: figures/sysprof-copy-from-user.png
    :align: center
+   :width: 70%
 
 Similarly, the above is a snapshot of the Sysprof display of a
 copy-from-user callchain.
@@ -1999,6 +2020,7 @@ left pane. In this case, the lower pane is showing all the callers of
 
 .. image:: figures/sysprof-callers.png
    :align: center
+   :width: 70%
 
 Double-clicking on one of those functions will in turn change the focus
 to the selected function, and so on.
@@ -2116,7 +2138,7 @@ You can now view the trace in text form on the target::
    .
 
 You can now safely destroy the trace
-session (note that this doesn't delete the trace - it's still there in
+session (note that this doesn't delete the trace --- it's still there in
 ~/lttng-traces)::
 
    root@crownbay:~# lttng destroy
@@ -2200,7 +2222,7 @@ You can now view the trace in text form on the target::
    .
 
 You can now safely destroy the trace session (note that this doesn't delete the
-trace - it's still there in ~/lttng-traces)::
+trace --- it's still there in ~/lttng-traces)::
 
    root@crownbay:~# lttng destroy
    Session auto-20190303-021943 destroyed at /home/root
@@ -2535,7 +2557,7 @@ Execute the workload you're interested in::
    root@crownbay:/sys/kernel/debug/tracing# cat /media/sdc/testfile.txt
 
 And look at the output (note here that we're using 'trace_pipe' instead of
-trace to capture this trace - this allows us to wait around on the pipe
+trace to capture this trace --- this allows us to wait around on the pipe
 for data to appear)::
 
    root@crownbay:/sys/kernel/debug/tracing# cat trace_pipe

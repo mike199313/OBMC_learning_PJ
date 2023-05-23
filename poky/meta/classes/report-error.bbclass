@@ -4,7 +4,8 @@
 # Copyright (C) 2013 Intel Corporation
 # Author: Andreea Brandusa Proca <andreea.b.proca@intel.com>
 #
-# Licensed under the MIT license, see COPYING.MIT for details
+# SPDX-License-Identifier: MIT
+#
 
 ERR_REPORT_DIR ?= "${LOG_DIR}/error-report"
 
@@ -63,7 +64,7 @@ python errorreport_handler () {
             data['target_sys'] = e.data.getVar("TARGET_SYS")
             data['failures'] = []
             data['component'] = " ".join(e.getPkgs())
-            data['branch_commit'] = str(base_detect_branch(e.data)) + ": " + str(base_detect_revision(e.data))
+            data['branch_commit'] = str(oe.buildcfg.detect_branch(e.data)) + ": " + str(oe.buildcfg.detect_revision(e.data))
             data['bitbake_version'] = e.data.getVar("BB_VERSION")
             data['layer_version'] = get_layers_branch_rev(e.data)
             data['local_conf'] = get_conf_data(e, 'local.conf')
@@ -106,6 +107,31 @@ python errorreport_handler () {
             errorreport_savedata(e, jsondata, "error-report.txt")
             bb.utils.unlockfile(lock)
 
+        elif isinstance(e, bb.event.NoProvider):
+            bb.utils.mkdirhier(logpath)
+            data = {}
+            machine = e.data.getVar("MACHINE")
+            data['machine'] = machine
+            data['build_sys'] = e.data.getVar("BUILD_SYS")
+            data['nativelsb'] = nativelsb()
+            data['distro'] = e.data.getVar("DISTRO")
+            data['target_sys'] = e.data.getVar("TARGET_SYS")
+            data['failures'] = []
+            data['component'] = str(e._item)
+            data['branch_commit'] = str(oe.buildcfg.detect_branch(e.data)) + ": " + str(oe.buildcfg.detect_revision(e.data))
+            data['bitbake_version'] = e.data.getVar("BB_VERSION")
+            data['layer_version'] = get_layers_branch_rev(e.data)
+            data['local_conf'] = get_conf_data(e, 'local.conf')
+            data['auto_conf'] = get_conf_data(e, 'auto.conf')
+            taskdata={}
+            taskdata['log'] = str(e)
+            taskdata['package'] = str(e._item)
+            taskdata['task'] = "Nothing provides " + "'" + str(e._item) + "'"
+            data['failures'].append(taskdata)
+            lock = bb.utils.lockfile(datafile + '.lock')
+            errorreport_savedata(e, data, "error-report.txt")
+            bb.utils.unlockfile(lock)
+
         elif isinstance(e, bb.event.BuildCompleted):
             lock = bb.utils.lockfile(datafile + '.lock')
             jsondata = json.loads(errorreport_getdata(e))
@@ -119,4 +145,4 @@ python errorreport_handler () {
 }
 
 addhandler errorreport_handler
-errorreport_handler[eventmask] = "bb.event.BuildStarted bb.event.BuildCompleted bb.build.TaskFailed"
+errorreport_handler[eventmask] = "bb.event.BuildStarted bb.event.BuildCompleted bb.build.TaskFailed bb.event.NoProvider"

@@ -100,15 +100,15 @@ function fw_rev() {
 
   #Save Major Version value between v and . "vXX." then convert Hex to Decimal
   MajorVersion=${StringVersion#*v}
-  MajorVersion=$(( 16#${MajorVersion%.*}))
+  MajorVersion=$(( 10#${MajorVersion%.*}))
 
   #Save SubMajor Version valeu between . and - ".XX-" then convert  Hex to Decimal
   SubMajorVersion=${StringVersion##*.}
-  SubMajorVersion=$(( 16#${SubMajorVersion%%-*}))
+  SubMajorVersion=$(( 10#${SubMajorVersion%%-*}))
 
   #Save Minor Version value between - and - "-XX-" then convert  Hex to Decimal
   MinorVersion=${StringVersion#*-}
-  MinorVersion=$(( 16#${MinorVersion%-*}))
+  MinorVersion=$(( 10#${MinorVersion%-*}))
 
   echo " BMC: " ${MajorVersion}.${SubMajorVersion}.${MinorVersion}
 
@@ -125,8 +125,9 @@ function fw_rev() {
 
   cmd=$(i2cget -f -y "${I2C_S0_SMPRO[0]}" 0x"${I2C_S0_SMPRO[1]}" 0x1 w);
   echo " SCP Firmware: ${cmd}"
+  get_scp_eeprom
 
-  adm1266_ver  | grep REVISION
+  adm1266_ver "${I2C_MB_PWRSEQ1[0]}" | grep REVISION
 
 }
 
@@ -281,12 +282,12 @@ function ledtoggle() {
 }
 
 function usblist() {
-  for i in {0..8}
+  for i in {5..9}
   do
     cmd=$(devmem 0xf083"${i}"154)
-    printf "udc%d : 0xF803%d154-" "${i}" "${i}"
-    $cmd
-   done
+    printf "udc%d : 0xF083%d154-" "${i}" "${i}"
+    echo "$cmd"
+  done
 }
 
 case $1 in

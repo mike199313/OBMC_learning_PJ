@@ -1,8 +1,19 @@
 FILESEXTRAPATHS:prepend := "${THISDIR}/${PN}:"
 
-SRC_URI += "file://nvme_config.json"
+inherit obmc-phosphor-systemd
 
-do_install:append() {
-        install -d ${D}/${sysconfdir}/nvme/
-        install -m 0644 ${WORKDIR}/nvme_config.json ${D}/${sysconfdir}/nvme/
+SRC_URI:append:bletchley = " \
+    file://nvme-json-rewrite \
+    file://nvme-json-rewrite.conf \
+"
+
+RDEPENDS:${PN}:bletchley += "bash"
+
+do_install:append:bletchley() {
+        install -d ${D}${libexecdir}/${PN}/
+        install -m 0755 ${WORKDIR}/nvme-json-rewrite ${D}${libexecdir}/${PN}/
 }
+
+SYSTEMD_OVERRIDE:${PN}:append:bletchley = " \
+    nvme-json-rewrite.conf:xyz.openbmc_project.nvme.manager.service.d/nvme-json-rewrite.conf \
+"

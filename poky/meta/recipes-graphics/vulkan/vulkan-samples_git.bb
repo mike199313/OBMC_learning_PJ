@@ -5,19 +5,20 @@ LICENSE = "Apache-2.0"
 
 LIC_FILES_CHKSUM = "file://LICENSE;md5=48aa35cefb768436223a6e7f18dc2a2a"
 
-SRC_URI = "gitsm://github.com/KhronosGroup/Vulkan-Samples.git;branch=master;protocol=https \
-           file://0001-CMakeLists.txt-do-not-hardcode-lib-as-installation-t.patch \
+SRC_URI = "gitsm://github.com/KhronosGroup/Vulkan-Samples.git;branch=main;protocol=https;lfs=0 \
            file://debugfix.patch \
+           file://0001-Do-not-use-LFS64-functions-on-linux-musl.patch;patchdir=third_party/spdlog \
+           file://0001-Deprecate-u8string_view.patch;patchdir=third_party/spdlog \
            "
 
 UPSTREAM_CHECK_COMMITS = "1"
-SRCREV = "28ca2dad83ceb157386e0708f5151ae89c177ad4"
+SRCREV = "3df7dba1b1f428f24cd9a242af78540a518f4b67"
 
 UPSTREAM_CHECK_GITTAGREGEX = "These are not the releases you're looking for"
 S = "${WORKDIR}/git"
 
 REQUIRED_DISTRO_FEATURES = 'vulkan'
-COMPATIBLE_HOST = "(x86_64|aarch64|mips64|powerpc64|riscv64).*-linux"
+COMPATIBLE_HOST = "(x86_64|aarch64|mips64|powerpc64|riscv64|loongarch64).*-linux"
 
 inherit cmake features_check
 

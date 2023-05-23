@@ -164,6 +164,7 @@ python () {
     # become unset/disappear.
     #
     def test_parse_classextend_contamination(self):
+        self.d.setVar("__bbclasstype", "recipe")
         cls = self.parsehelper(self.classextend_bbclass, suffix=".bbclass")
         #clsname = os.path.basename(cls.name).replace(".bbclass", "")
         self.classextend = self.classextend.replace("###CLASS###", cls.name)
@@ -193,4 +194,50 @@ deltask ${EMPTYVAR}
         self.assertTrue("addtask contained multiple 'after' keywords" in stdout)
         self.assertTrue('addtask ignored: " do_patch"' in stdout)
         #self.assertTrue('dependent task do_foo for do_patch does not exist' in stdout)
+
+    broken_multiline_comment = """
+# First line of comment \\
+# Second line of comment \\
+
+"""
+    def test_parse_broken_multiline_comment(self):
+        f = self.parsehelper(self.broken_multiline_comment)
+        with self.assertRaises(bb.BBHandledException):
+            d = bb.parse.handle(f.name, self.d)['']
+
+
+    comment_in_var = """
+VAR = " \\
+    SOMEVAL \\
+#   some comment \\
+    SOMEOTHERVAL \\
+"
+"""
+    def test_parse_comment_in_var(self):
+        f = self.parsehelper(self.comment_in_var)
+        with self.assertRaises(bb.BBHandledException):
+            d = bb.parse.handle(f.name, self.d)['']
+
+
+    at_sign_in_var_flag = """
+A[flag@.service] = "nonet"
+B[flag@.target] = "ntb"
+C[f] = "flag"
+
+unset A[flag@.service]
+"""
+    def test_parse_at_sign_in_var_flag(self):
+        f = self.parsehelper(self.at_sign_in_var_flag)
+        d = bb.parse.handle(f.name, self.d)['']
+        self.assertEqual(d.getVar("A"), None)
+        self.assertEqual(d.getVar("B"), None)
+        self.assertEqual(d.getVarFlag("A","flag@.service"), None)
+        self.assertEqual(d.getVarFlag("B","flag@.target"), "ntb")
+        self.assertEqual(d.getVarFlag("C","f"), "flag")
+
+    def test_parse_invalid_at_sign_in_var_flag(self):
+        invalid_at_sign = self.at_sign_in_var_flag.replace("B[f", "B[@f")
+        f = self.parsehelper(invalid_at_sign)
+        with self.assertRaises(bb.parse.ParseError):
+            d = bb.parse.handle(f.name, self.d)['']
 

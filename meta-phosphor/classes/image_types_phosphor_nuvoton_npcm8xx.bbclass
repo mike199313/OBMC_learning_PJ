@@ -13,6 +13,39 @@ UBOOT_SUFFIX:append = ".${MERGED_SUFFIX}"
 
 IGPS_DIR = "${STAGING_DIR_NATIVE}/${datadir}/npcm8xx-igps"
 
+BB_BIN = "arbel_a35_bootblock.bin"
+BL31_BIN = "bl31.bin"
+OPTEE_BIN = "tee.bin"
+UBOOT_BIN = "u-boot.bin"
+
+# Align images if needed
+python do_pad_binary() {
+    def Pad_bin_file_inplace(inF, align):
+        padding_size = 0
+        padding_size_end = 0
+
+        F_size = os.path.getsize(inF)
+
+        padding_size = align - (F_size % align)
+
+        infile = open(inF, "ab")
+        infile.seek(0, 2)
+        infile.write(b'\x00' * padding_size)
+        infile.close()
+
+    Pad_bin_file_inplace(os.path.join(d.getVar('DEPLOY_DIR_IMAGE', True),
+        '%s' % d.getVar('BB_BIN',True)), int(d.getVar('PAD_ALIGN', True)))
+
+    Pad_bin_file_inplace(os.path.join(d.getVar('DEPLOY_DIR_IMAGE', True),
+        '%s' % d.getVar('BL31_BIN',True)), int(d.getVar('PAD_ALIGN', True)))
+
+    Pad_bin_file_inplace(os.path.join(d.getVar('DEPLOY_DIR_IMAGE', True),
+        '%s' % d.getVar('OPTEE_BIN',True)), int(d.getVar('PAD_ALIGN', True)))
+
+    Pad_bin_file_inplace(os.path.join(d.getVar('DEPLOY_DIR_IMAGE', True),
+        '%s' % d.getVar('UBOOT_BIN',True)), int(d.getVar('PAD_ALIGN', True)))
+}
+
 # Prepare the Bootblock and U-Boot images using npcm8xx-bingo
 do_prepare_bootloaders() {
     local olddir="$(pwd)"
@@ -28,14 +61,14 @@ do_prepare_bootloaders() {
             -o ${DEPLOY_DIR_IMAGE}/${BOOTBLOCK}
 
     bingo ${IGPS_DIR}/UbootHeader_${DEVICE_GEN}.xml \
-            -o ${DEPLOY_DIR_IMAGE}/${UBOOT_BINARY}.${FULL_SUFFIX}
+            -o ${UBOOT_BINARY}.${FULL_SUFFIX}
 
     cd "$olddir"
 }
 
 python do_merge_bootloaders() {
 
-    def Merge_bin_files_and_pad(inF1, inF2, outF, align, padding_at_end):
+    def Merge_bin_files_and_pad(inF1, inF2, outF, align, align_end):
         padding_size = 0
         padding_size_end = 0
         F1_size = os.path.getsize(inF1)
@@ -44,8 +77,8 @@ python do_merge_bootloaders() {
         if ((F1_size % align) != 0):
             padding_size = align - (F1_size % align)
 
-        if ((F2_size % align) != 0):
-            padding_size_end = align - (F2_size % align)
+        if ((F2_size % align_end) != 0):
+            padding_size_end = align_end - (F2_size % align_end)
 
         with open(outF, "wb") as file3:
             with open(inF1, "rb") as file1:
@@ -63,30 +96,30 @@ python do_merge_bootloaders() {
     Merge_bin_files_and_pad(os.path.join(d.getVar('DEPLOY_DIR_IMAGE', True), '%s' % d.getVar('KMT_TIPFW_BINARY',True)),
         os.path.join(d.getVar('DEPLOY_DIR_IMAGE', True), '%s' % d.getVar('BOOTBLOCK',True)),
         os.path.join(d.getVar('DEPLOY_DIR_IMAGE', True), '%s' % d.getVar('KMT_TIPFW_BB_BINARY',True)),
-        0x80000, 0x20)
+        int(d.getVar('BB_ALIGN', True)), int(d.getVar('ALIGN_END', True)))
 
     Merge_bin_files_and_pad(os.path.join(d.getVar('DEPLOY_DIR_IMAGE', True), '%s' % d.getVar('KMT_TIPFW_BB_BINARY',True)),
         os.path.join(d.getVar('DEPLOY_DIR_IMAGE', True), '%s' % d.getVar('ATF_BINARY',True)),
         os.path.join(d.getVar('DEPLOY_DIR_IMAGE', True), '%s' % d.getVar('KMT_TIPFW_BB_BL31_BINARY',True)),
-        0x1000, 0x20)
+        int(d.getVar('ATF_ALIGN', True)), int(d.getVar('ALIGN_END', True)))
 
     Merge_bin_files_and_pad(os.path.join(d.getVar('DEPLOY_DIR_IMAGE', True), '%s' % d.getVar('KMT_TIPFW_BB_BL31_BINARY',True)),
         os.path.join(d.getVar('DEPLOY_DIR_IMAGE', True), '%s' % d.getVar('OPTEE_BINARY',True)),
         os.path.join(d.getVar('DEPLOY_DIR_IMAGE', True), '%s' % d.getVar('KMT_TIPFW_BB_BL31_TEE_BINARY',True)),
-        0x1000, 0x20)
+        int(d.getVar('OPTEE_ALIGN', True)), int(d.getVar('ALIGN_END', True)))
 
     Merge_bin_files_and_pad(os.path.join(d.getVar('DEPLOY_DIR_IMAGE', True), '%s' % d.getVar('KMT_TIPFW_BB_BL31_TEE_BINARY',True)),
         os.path.join(d.getVar('DEPLOY_DIR_IMAGE', True), '%s.full' % d.getVar('UBOOT_BINARY',True)),
         os.path.join(d.getVar('DEPLOY_DIR_IMAGE', True), '%s' % d.getVar('KMT_TIPFW_BB_UBOOT_BINARY',True)),
-        0x1000, 0x20)
+        int(d.getVar('UBOOT_ALIGN', True)), int(d.getVar('ALIGN_END', True)))
 }
 
-do_prepare_bootloaders[depends] += " \
+do_pad_binary[depends] += " \
     npcm8xx-tip-fw:do_deploy \
     npcm8xx-bootblock:do_deploy \
-    arm-trusted-firmware:do_deploy \
-    optee-os:do_deploy \
     u-boot-nuvoton:do_deploy \
+    trusted-firmware-a:do_deploy \
+    optee-os:do_deploy \
     npcm7xx-bingo-native:do_populate_sysroot \
     npcm8xx-igps-native:do_populate_sysroot \
     "
@@ -101,6 +134,7 @@ do_generate_ext4_tar:append() {
     ln -sf ${IMAGE_NAME}.rootfs.wic.gz image-emmc.gz
 }
 
+addtask do_pad_binary before do_prepare_bootloaders
 addtask do_prepare_bootloaders before do_generate_static after do_generate_rwfs_static
 addtask do_merge_bootloaders before do_generate_static after do_prepare_bootloaders
 addtask do_merge_bootloaders before do_generate_ext4_tar after do_prepare_bootloaders

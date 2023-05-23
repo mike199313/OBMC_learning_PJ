@@ -12,7 +12,7 @@ LIC_FILES_CHKSUM = "file://COPYING;md5=7eb5c1bf854e8881005d673599ee74d3 \
                     file://libpamc/License;md5=a4da476a14c093fdc73be3c3c9ba8fb3 \
                     "
 
-SRC_URI = "https://github.com/linux-pam/linux-pam/releases/download/v${PV}/Linux-PAM-${PV}.tar.xz \
+SRC_URI = "${GITHUB_BASE_URI}/download/v${PV}/Linux-PAM-${PV}.tar.xz \
            file://99_pam \
            file://pam.d/common-account \
            file://pam.d/common-auth \
@@ -30,7 +30,7 @@ SRC_URI = "https://github.com/linux-pam/linux-pam/releases/download/v${PV}/Linux
 SRC_URI[md5sum] = "558ff53b0fc0563ca97f79e911822165"
 SRC_URI[sha256sum] = "eff47a4ecd833fbf18de9686632a70ee8d0794b79aecb217ebd0ce11db4cd0db"
 
-DEPENDS = "bison-native flex flex-native cracklib libxml2-native virtual/crypt"
+DEPENDS = "bison-native flex-native cracklib libxml2-native virtual/crypt"
 
 EXTRA_OECONF = "--includedir=${includedir}/security \
                 --libdir=${base_libdir} \
@@ -42,7 +42,7 @@ CFLAGS:append = " -fPIC "
 
 S = "${WORKDIR}/Linux-PAM-${PV}"
 
-inherit autotools gettext pkgconfig
+inherit autotools gettext pkgconfig systemd ptest github-releases
 
 PACKAGECONFIG ??= ""
 PACKAGECONFIG[audit] = "--enable-audit,--disable-audit,audit,"
@@ -191,6 +191,6 @@ CONFFILES:${PN}-runtime += "${sysconfdir}/pam.d/common-session-noninteractive"
 CONFFILES:${PN}-runtime += "${sysconfdir}/pam.d/common-account"
 CONFFILES:${PN}-runtime += "${sysconfdir}/security/limits.conf"
 
-UPSTREAM_CHECK_URI = "https://github.com/linux-pam/linux-pam/releases"
+GITHUB_BASE_URI = "https://github.com/linux-pam/linux-pam/releases"
 
 CVE_PRODUCT = "linux-pam"

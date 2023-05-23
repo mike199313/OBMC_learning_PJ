@@ -7,7 +7,7 @@ LICENSE = "CLOSED"
 
 DEPENDS += "i2c-tools"
 
-SRC_URI += "git://git@github.com/amd/esmi_oob_library.git;protocol=ssh"
+SRC_URI += "git://git@github.com/amd/esmi_oob_library.git;branch=master;protocol=ssh"
 SRCREV = "697a8ccf5099e5304a05d95136aa3a5a1a67ed5f"
 
 S="${WORKDIR}/git"

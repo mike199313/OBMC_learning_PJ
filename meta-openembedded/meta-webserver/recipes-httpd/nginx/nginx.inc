@@ -37,12 +37,14 @@ NGINX_USER   ?= "www"
 EXTRA_OECONF = ""
 DISABLE_STATIC = ""
 
-PACKAGECONFIG ??= "ssl"
+PACKAGECONFIG ??= "ssl ${@bb.utils.filter('DISTRO_FEATURES', 'ipv6', d)}"
 
 PACKAGECONFIG[gunzip] = "--with-http_gunzip_module,,"
 PACKAGECONFIG[http2] = "--with-http_v2_module,,"
 PACKAGECONFIG[ssl] = "--with-http_ssl_module,,openssl"
 PACKAGECONFIG[http-auth-request] = "--with-http_auth_request_module,,"
+PACKAGECONFIG[ipv6] = "--with-ipv6,,"
+PACKAGECONFIG[webdav] = "--with-http_dav_module,,"
 
 do_configure () {
     if [ "${SITEINFO_BITS}" = "64" ]; then
@@ -146,7 +148,7 @@ do_install () {
 
 pkg_postinst:${PN} () {
     if [ -z "$D" ]; then
-        if type systemd-tmpfiles >/dev/null; then
+        if type systemd-tmpfiles >/dev/null 2>&1; then
             systemd-tmpfiles --create
         elif [ -e ${sysconfdir}/init.d/populate-volatile.sh ]; then
             ${sysconfdir}/init.d/populate-volatile.sh update

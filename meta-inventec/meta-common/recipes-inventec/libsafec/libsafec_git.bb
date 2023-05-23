@@ -15,7 +15,7 @@ RDEPENDS:${PN} += " \
         "
 
 
-SRC_URI = "git://github.com/rurban/safeclib"
+SRC_URI = "git://github.com/rurban/safeclib;branch=master;protocol=https"
 SRCREV = "0234bec46da4863f849f100c2f5336412ab2f69b"
 
 PACKAGECONFIG ??= "libsafec"

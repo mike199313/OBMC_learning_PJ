@@ -19,10 +19,12 @@ inherit ptest
 
 SRC_URI += " \
 	file://run-ptest \
+	file://0001-Fix-DeprecationWarning-__int__-returned-non-int-on-P.patch \
 "
 
 RDEPENDS:${PN}-ptest += " \
 	${PYTHON_PN}-pytest \
+	${PYTHON_PN}-unittest-automake-output \
 "
 
 do_install_ptest() {

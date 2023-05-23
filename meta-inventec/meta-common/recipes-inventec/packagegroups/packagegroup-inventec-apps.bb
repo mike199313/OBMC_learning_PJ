@@ -34,7 +34,6 @@ RDEPENDS:${PN}-fans = " \
 
 SUMMARY:${PN}-flash = "Inventec Flash"
 RDEPENDS:${PN}-flash = " \
-        obmc-control-bmc \
         phosphor-ipmi-blobs \
         phosphor-ipmi-flash \
         "

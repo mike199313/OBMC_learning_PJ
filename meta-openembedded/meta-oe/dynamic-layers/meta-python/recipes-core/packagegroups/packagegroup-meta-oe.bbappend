@@ -1,9 +1,12 @@
 RDEPENDS:packagegroup-meta-oe-devtools += "\
     python3-distutils-extra \
     rwmem \
-    speedtest-cli \
     mongodb \
 "
+RDEPENDS:packagegroup-meta-oe-devtools:remove:riscv64 = "mongodb"
+RDEPENDS:packagegroup-meta-oe-devtools:remove:riscv32 = "mongodb"
+RDEPENDS:packagegroup-meta-oe-devtools:remove:mipsarch = "mongodb"
+RDEPENDS:packagegroup-meta-oe-devtools:remove:powerpc = "mongodb"
 
 RDEPENDS:packagegroup-meta-oe-connectivity += "\
     lirc \
@@ -11,9 +14,10 @@ RDEPENDS:packagegroup-meta-oe-connectivity += "\
 
 RDEPENDS:packagegroup-meta-oe-extended += "\
     lcdproc \
-    mozjs \
+    mozjs-102 \
 "
 RDEPENDS:packagegroup-meta-oe-support += "\
+    nvmetcli \
     smem \
 "
 RDEPENDS:packagegroup-meta-oe-extended:remove:libc-musl = "lcdproc"
