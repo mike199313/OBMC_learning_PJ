@@ -15,20 +15,21 @@ Solution/Change:
 
 Entry Test:
 	N/A
+
 ---
- .../Control/Boot/Config/meson.build           | 14 ++++
- .../Control/Boot/Flag/meson.build             | 14 ++++
- .../Control/Boot/InitiatorInfo/meson.build    | 14 ++++
- .../Control/Boot/Mailbox/meson.build          | 14 ++++
- .../Control/Boot/Partition/meson.build        | 14 ++++
- .../openbmc_project/Control/Boot/meson.build  | 75 +++++++++++++++++++
+ .../Control/Boot/Config/meson.build           | 13 ++++
+ .../Control/Boot/Flag/meson.build             | 13 ++++
+ .../Control/Boot/InitiatorInfo/meson.build    | 13 ++++
+ .../Control/Boot/Mailbox/meson.build          | 13 ++++
+ .../Control/Boot/Partition/meson.build        | 13 ++++
+ .../openbmc_project/Control/Boot/meson.build  | 74 +++++++++++++++++++
  .../Control/Boot/Config.interface.yaml        | 13 ++++
  .../Control/Boot/Flag.interface.yaml          | 42 +++++++++++
  .../Control/Boot/InitiatorInfo.interface.yaml |  9 +++
  .../Control/Boot/Mailbox.interface.yaml       |  6 ++
  .../Control/Boot/Partition.interface.yaml     | 10 +++
  .../Control/Boot/Source.interface.yaml        | 21 ++++++
- 12 files changed, 246 insertions(+)
+ 12 files changed, 240 insertions(+)
  create mode 100644 gen/xyz/openbmc_project/Control/Boot/Config/meson.build
  create mode 100644 gen/xyz/openbmc_project/Control/Boot/Flag/meson.build
  create mode 100644 gen/xyz/openbmc_project/Control/Boot/InitiatorInfo/meson.build
@@ -42,10 +43,10 @@ Entry Test:
 
 diff --git a/gen/xyz/openbmc_project/Control/Boot/Config/meson.build b/gen/xyz/openbmc_project/Control/Boot/Config/meson.build
 new file mode 100644
-index 0000000..c401850
+index 0000000..8bbb90b
 --- /dev/null
 +++ b/gen/xyz/openbmc_project/Control/Boot/Config/meson.build
-@@ -0,0 +1,14 @@
+@@ -0,0 +1,13 @@
 +# Generated file; do not modify.
 +generated_sources += custom_target(
 +    'xyz/openbmc_project/Control/Boot/Config__cpp'.underscorify(),
@@ -59,13 +60,12 @@ index 0000000..c401850
 +        'xyz/openbmc_project/Control/Boot/Config',
 +    ],
 +)
-+
 diff --git a/gen/xyz/openbmc_project/Control/Boot/Flag/meson.build b/gen/xyz/openbmc_project/Control/Boot/Flag/meson.build
 new file mode 100644
-index 0000000..ddd20de
+index 0000000..1775bfb
 --- /dev/null
 +++ b/gen/xyz/openbmc_project/Control/Boot/Flag/meson.build
-@@ -0,0 +1,14 @@
+@@ -0,0 +1,13 @@
 +# Generated file; do not modify.
 +generated_sources += custom_target(
 +    'xyz/openbmc_project/Control/Boot/Flag__cpp'.underscorify(),
@@ -79,13 +79,12 @@ index 0000000..ddd20de
 +        'xyz/openbmc_project/Control/Boot/Flag',
 +    ],
 +)
-+
 diff --git a/gen/xyz/openbmc_project/Control/Boot/InitiatorInfo/meson.build b/gen/xyz/openbmc_project/Control/Boot/InitiatorInfo/meson.build
 new file mode 100644
-index 0000000..9fbeb10
+index 0000000..a8afe96
 --- /dev/null
 +++ b/gen/xyz/openbmc_project/Control/Boot/InitiatorInfo/meson.build
-@@ -0,0 +1,14 @@
+@@ -0,0 +1,13 @@
 +# Generated file; do not modify.
 +generated_sources += custom_target(
 +    'xyz/openbmc_project/Control/Boot/InitiatorInfo__cpp'.underscorify(),
@@ -99,13 +98,12 @@ index 0000000..9fbeb10
 +        'xyz/openbmc_project/Control/Boot/InitiatorInfo',
 +    ],
 +)
-+
 diff --git a/gen/xyz/openbmc_project/Control/Boot/Mailbox/meson.build b/gen/xyz/openbmc_project/Control/Boot/Mailbox/meson.build
 new file mode 100644
-index 0000000..39f9ccd
+index 0000000..f573c46
 --- /dev/null
 +++ b/gen/xyz/openbmc_project/Control/Boot/Mailbox/meson.build
-@@ -0,0 +1,14 @@
+@@ -0,0 +1,13 @@
 +# Generated file; do not modify.
 +generated_sources += custom_target(
 +    'xyz/openbmc_project/Control/Boot/Mailbox__cpp'.underscorify(),
@@ -119,13 +117,12 @@ index 0000000..39f9ccd
 +        'xyz/openbmc_project/Control/Boot/Mailbox',
 +    ],
 +)
-+
 diff --git a/gen/xyz/openbmc_project/Control/Boot/Partition/meson.build b/gen/xyz/openbmc_project/Control/Boot/Partition/meson.build
 new file mode 100644
-index 0000000..78add36
+index 0000000..fd2f2ba
 --- /dev/null
 +++ b/gen/xyz/openbmc_project/Control/Boot/Partition/meson.build
-@@ -0,0 +1,14 @@
+@@ -0,0 +1,13 @@
 +# Generated file; do not modify.
 +generated_sources += custom_target(
 +    'xyz/openbmc_project/Control/Boot/Partition__cpp'.underscorify(),
@@ -139,12 +136,11 @@ index 0000000..78add36
 +        'xyz/openbmc_project/Control/Boot/Partition',
 +    ],
 +)
-+
 diff --git a/gen/xyz/openbmc_project/Control/Boot/meson.build b/gen/xyz/openbmc_project/Control/Boot/meson.build
-index 0945964..eee7206 100644
+index 7ddeb50..36a515a 100644
 --- a/gen/xyz/openbmc_project/Control/Boot/meson.build
 +++ b/gen/xyz/openbmc_project/Control/Boot/meson.build
-@@ -69,3 +69,78 @@ generated_others += custom_target(
+@@ -74,3 +74,77 @@ generated_others += custom_target(
      ],
  )
  
@@ -222,10 +218,9 @@ index 0945964..eee7206 100644
 +    ],
 +    build_by_default: true,
 +)
-+
 diff --git a/yaml/xyz/openbmc_project/Control/Boot/Config.interface.yaml b/yaml/xyz/openbmc_project/Control/Boot/Config.interface.yaml
 new file mode 100644
-index 0000000..8e62d98
+index 0000000..b44abef
 --- /dev/null
 +++ b/yaml/xyz/openbmc_project/Control/Boot/Config.interface.yaml
 @@ -0,0 +1,13 @@
@@ -242,10 +237,9 @@ index 0000000..8e62d98
 +    - name : InitiatorAckData
 +      type : byte
 +      default: 0
-\ No newline at end of file
 diff --git a/yaml/xyz/openbmc_project/Control/Boot/Flag.interface.yaml b/yaml/xyz/openbmc_project/Control/Boot/Flag.interface.yaml
 new file mode 100644
-index 0000000..701065b
+index 0000000..3c529a3
 --- /dev/null
 +++ b/yaml/xyz/openbmc_project/Control/Boot/Flag.interface.yaml
 @@ -0,0 +1,42 @@
@@ -291,10 +285,9 @@ index 0000000..701065b
 +      default: 0  
 +    - name: InstanceSelector
 +      type: byte
-\ No newline at end of file
 diff --git a/yaml/xyz/openbmc_project/Control/Boot/InitiatorInfo.interface.yaml b/yaml/xyz/openbmc_project/Control/Boot/InitiatorInfo.interface.yaml
 new file mode 100644
-index 0000000..a7ccb7a
+index 0000000..2b63958
 --- /dev/null
 +++ b/yaml/xyz/openbmc_project/Control/Boot/InitiatorInfo.interface.yaml
 @@ -0,0 +1,9 @@
@@ -307,10 +300,9 @@ index 0000000..a7ccb7a
 +      default: 0
 +    - name : BootInfoTimestamp
 +      type : uint32
-\ No newline at end of file
 diff --git a/yaml/xyz/openbmc_project/Control/Boot/Mailbox.interface.yaml b/yaml/xyz/openbmc_project/Control/Boot/Mailbox.interface.yaml
 new file mode 100644
-index 0000000..54f1193
+index 0000000..17d3976
 --- /dev/null
 +++ b/yaml/xyz/openbmc_project/Control/Boot/Mailbox.interface.yaml
 @@ -0,0 +1,6 @@
@@ -320,10 +312,9 @@ index 0000000..54f1193
 +      default: 0
 +    - name: Data
 +      type: array[byte]
-\ No newline at end of file
 diff --git a/yaml/xyz/openbmc_project/Control/Boot/Partition.interface.yaml b/yaml/xyz/openbmc_project/Control/Boot/Partition.interface.yaml
 new file mode 100644
-index 0000000..1b173fc
+index 0000000..0d7ec98
 --- /dev/null
 +++ b/yaml/xyz/openbmc_project/Control/Boot/Partition.interface.yaml
 @@ -0,0 +1,10 @@
@@ -337,7 +328,6 @@ index 0000000..1b173fc
 +    - name: PartitionDiscovered
 +      type: boolean
 +      default: 0
-\ No newline at end of file
 diff --git a/yaml/xyz/openbmc_project/Control/Boot/Source.interface.yaml b/yaml/xyz/openbmc_project/Control/Boot/Source.interface.yaml
 index 8a7b46b..d5a3080 100644
 --- a/yaml/xyz/openbmc_project/Control/Boot/Source.interface.yaml
@@ -375,5 +365,5 @@ index 8a7b46b..d5a3080 100644
 +            description: >
 +              Boot from remotely connected floppy/primary removable media (USB).
 -- 
-2.33.0
+2.25.1
 

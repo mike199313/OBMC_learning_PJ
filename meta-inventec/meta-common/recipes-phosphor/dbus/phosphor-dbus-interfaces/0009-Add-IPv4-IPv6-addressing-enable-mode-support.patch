@@ -22,15 +22,16 @@ Entry Test:
         ipmitool raw 0x0c 0x01 0x01 0x33 0x01
     - Get current IP addressing mode
         ipmitool raw 0x0c 0x02 0x01 0x33 0x00 0x00
+
 ---
  .../Network/EthernetInterface.interface.yaml         | 12 ++++++++++++
  1 file changed, 12 insertions(+)
 
 diff --git a/yaml/xyz/openbmc_project/Network/EthernetInterface.interface.yaml b/yaml/xyz/openbmc_project/Network/EthernetInterface.interface.yaml
-index 2f7bba5..8a9f82a 100644
+index ebec0a5..c2098fa 100644
 --- a/yaml/xyz/openbmc_project/Network/EthernetInterface.interface.yaml
 +++ b/yaml/xyz/openbmc_project/Network/EthernetInterface.interface.yaml
-@@ -111,6 +111,10 @@ properties:
+@@ -115,6 +115,10 @@ properties:
            IPv6 header static hop limit.
        errors:
            - xyz.openbmc_project.Common.Error.InvalidArgument
@@ -38,10 +39,10 @@ index 2f7bba5..8a9f82a 100644
 +      type: enum[self.IPFamilyConf]
 +      description: >
 +          IPv4/IPv6 Addressing supported of the ethernet interface.
- 
+
  enumerations:
      - name: LinkLocalConf
-@@ -141,3 +145,11 @@ enumerations:
+@@ -142,3 +146,11 @@ enumerations:
            - name: v6stateless
            - name: v4
            - name: none
@@ -53,6 +54,5 @@ index 2f7bba5..8a9f82a 100644
 +        - name: both
 +        - name: v4
 +        - name: v6
--- 
-2.33.0
-
+--
+2.25.1

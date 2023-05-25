@@ -22,15 +22,16 @@ Set destination address
 ipmitool raw 0x0c 0x01 0x01 0x13 0x00 0x00 0x00 0x0a 0x6 0x8d 0x21 0x7c 0xd3 0x0a 0xc4 0x90 0xe4
 Get destination address
 ipmitool raw 0x0c 0x02 0x01 0x13 0x00 0x00
+
 ---
  yaml/xyz/openbmc_project/Network/Client.interface.yaml | 9 +++++++++
  1 file changed, 9 insertions(+)
 
 diff --git a/yaml/xyz/openbmc_project/Network/Client.interface.yaml b/yaml/xyz/openbmc_project/Network/Client.interface.yaml
-index 188bcd9..b5d3714 100644
+index 9789e47..218f772 100644
 --- a/yaml/xyz/openbmc_project/Network/Client.interface.yaml
 +++ b/yaml/xyz/openbmc_project/Network/Client.interface.yaml
-@@ -17,3 +17,12 @@ properties:
+@@ -16,3 +16,12 @@ properties:
            The value of this property is the network port number.
        errors:
            - xyz.openbmc_project.Common.Error.InternalFailure
@@ -43,7 +44,5 @@ index 188bcd9..b5d3714 100644
 +      errors:
 +        - xyz.openbmc_project.Common.Error.InvalidArgument
 +        - xyz.openbmc_project.Common.Error.InternalFailure
-\ No newline at end of file
--- 
-2.33.0
-
+--
+2.25.1

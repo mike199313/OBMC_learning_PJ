@@ -5,23 +5,20 @@ Subject: [PATCH 20/20] Modify 'Notify' method, to allow new value types as
  input
 
 ---
- yaml/xyz/openbmc_project/Inventory/Manager.interface.yaml | 4 ++--
- 1 file changed, 2 insertions(+), 2 deletions(-)
+ yaml/xyz/openbmc_project/Inventory/Manager.interface.yaml | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/yaml/xyz/openbmc_project/Inventory/Manager.interface.yaml b/yaml/xyz/openbmc_project/Inventory/Manager.interface.yaml
-index 6c791ee..fb06e81 100644
+index b9e8821..2108d14 100644
 --- a/yaml/xyz/openbmc_project/Inventory/Manager.interface.yaml
 +++ b/yaml/xyz/openbmc_project/Inventory/Manager.interface.yaml
 @@ -12,6 +12,6 @@ methods:
            state managed.
        parameters:
            - name: object
--            type: dict[path,dict[string,dict[string,variant[boolean,size,int64,string,array[byte]]]]]
-+            type: dict[path,dict[string,dict[string,variant[boolean,size,int64,uint16,string,array[byte],array[uint16],array[string]]]]]
+-            type: dict[object_path,dict[string,dict[string,variant[boolean,size,int64,uint16,string,array[byte],array[string]]]]]
++            type: dict[object_path,dict[string,dict[string,variant[boolean,size,int64,uint16,string,array[byte],array[uint16],array[string]]]]]
              description: >
--                A dictionary of fully enumerated items to be managed.
-+                A dictionary of fully enumerated items to be managed.
-\ No newline at end of file
--- 
-2.33.0
-
+                 A dictionary of fully enumerated items to be managed.
+--
+2.25.1

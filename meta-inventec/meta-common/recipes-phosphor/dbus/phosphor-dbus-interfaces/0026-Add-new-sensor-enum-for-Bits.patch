@@ -8,16 +8,18 @@ Subject: [PATCH] Add new sensor enum for Bits
  1 file changed, 3 insertions(+)
 
 diff --git a/yaml/xyz/openbmc_project/Sensor/Value.interface.yaml b/yaml/xyz/openbmc_project/Sensor/Value.interface.yaml
-index bf51eff..e006b02 100644
+index f2139a7..6b0e6c5 100644
 --- a/yaml/xyz/openbmc_project/Sensor/Value.interface.yaml
 +++ b/yaml/xyz/openbmc_project/Sensor/Value.interface.yaml
-@@ -89,3 +89,6 @@ enumerations:
+@@ -87,6 +87,9 @@ enumerations:
            - name: Watts
              description: >
                  Rate of energy transfer as Watts.
 +          - name: Bits
 +            description: >
 +                Bits for network.
--- 
-2.33.0
 
+ associations:
+     - name: inventory
+--
+2.25.1

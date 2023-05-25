@@ -162,7 +162,7 @@ index 0000000..4fd4682
 +    ],
 +)
 diff --git a/gen/xyz/openbmc_project/MCTP/meson.build b/gen/xyz/openbmc_project/MCTP/meson.build
-index b9598ad..fa6e5da 100644
+index fc9ca6c..ade50bd 100644
 --- a/gen/xyz/openbmc_project/MCTP/meson.build
 +++ b/gen/xyz/openbmc_project/MCTP/meson.build
 @@ -1,4 +1,35 @@
@@ -201,7 +201,7 @@ index b9598ad..fa6e5da 100644
  subdir('Endpoint')
  generated_others += custom_target(
      'xyz/openbmc_project/MCTP/Endpoint__markdown'.underscorify(),
-@@ -13,3 +44,17 @@ generated_others += custom_target(
+@@ -14,3 +45,17 @@ generated_others += custom_target(
      ],
  )
  
@@ -534,13 +534,13 @@ index 0000000..d46298e
 +      type: boolean
 +      description: Indicates Eid pool is managed by self
 diff --git a/yaml/xyz/openbmc_project/MCTP/Endpoint.interface.yaml b/yaml/xyz/openbmc_project/MCTP/Endpoint.interface.yaml
-index 8cb0f13..a3bd436 100644
+index 0d99995..029a2d5 100644
 --- a/yaml/xyz/openbmc_project/MCTP/Endpoint.interface.yaml
 +++ b/yaml/xyz/openbmc_project/MCTP/Endpoint.interface.yaml
-@@ -40,3 +40,7 @@ properties:
-           DSP0239 specification. A device that supports a given message type
-           may not support that message type equally across all buses that
-           connect to the device.
+@@ -39,3 +39,7 @@ properties:
+           DSP0239 specification. A device that supports a given message type may
+           not support that message type equally across all buses that connect to
+           the device.
 +
 +    - name: Mode
 +      type: enum[xyz.openbmc_project.MCTP.Base.BindingModeTypes]
@@ -587,3 +587,5 @@ index 0000000..fa447ee
 +    - name: VDIANA
 +      type: boolean
 +      description: Indicates support availability
+-- 
+2.25.1

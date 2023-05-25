@@ -9,10 +9,10 @@ Subject: [PATCH 01/20] Add property 'EepromPath' and 'EepromService' under
  1 file changed, 8 insertions(+)
 
 diff --git a/yaml/xyz/openbmc_project/Inventory/Item.interface.yaml b/yaml/xyz/openbmc_project/Inventory/Item.interface.yaml
-index 0e19118..0a4d41e 100644
+index 4ef840b..a7aa567 100644
 --- a/yaml/xyz/openbmc_project/Inventory/Item.interface.yaml
 +++ b/yaml/xyz/openbmc_project/Inventory/Item.interface.yaml
-@@ -10,3 +10,11 @@ properties:
+@@ -15,6 +15,14 @@ properties:
        type: boolean
        description: >
            Whether or not the item is present.
@@ -24,6 +24,9 @@ index 0e19118..0a4d41e 100644
 +      type: string
 +      description: >
 +          The name of eeprom service
--- 
-2.33.0
+
+ associations:
+     - name: containing
+--
+2.25.1
 

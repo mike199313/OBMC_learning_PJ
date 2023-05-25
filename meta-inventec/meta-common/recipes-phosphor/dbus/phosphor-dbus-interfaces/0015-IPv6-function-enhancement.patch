@@ -129,19 +129,19 @@ Content-Transfer-Encoding: 8bit
 [comment for 2.12 upgrade]
 Only whitespaces is added inSystemConfiguration.interface.yaml in original patch
 Remove when upgrade
+
 ---
  .../Network/EthernetInterface.interface.yaml       | 14 ++++++++++++++
  1 file changed, 14 insertions(+)
 
 diff --git a/yaml/xyz/openbmc_project/Network/EthernetInterface.interface.yaml b/yaml/xyz/openbmc_project/Network/EthernetInterface.interface.yaml
-index 8a9f82a..155faa7 100644
+index c2098fa..8c224ad 100644
 --- a/yaml/xyz/openbmc_project/Network/EthernetInterface.interface.yaml
 +++ b/yaml/xyz/openbmc_project/Network/EthernetInterface.interface.yaml
-@@ -115,6 +115,20 @@ properties:
-       type: enum[self.IPFamilyConf]
+@@ -120,6 +120,20 @@ properties:
        description: >
            IPv4/IPv6 Addressing supported of the ethernet interface.
-+          
+
 +    - name: gateway6PrefixValue
 +      type: string
 +      description: >
@@ -155,9 +155,9 @@ index 8a9f82a..155faa7 100644
 +          default IPv6 gateway prefix length, value from 0 to 128
 +      errors:
 +        - xyz.openbmc_project.Common.Error.InvalidArgument
- 
++
  enumerations:
      - name: LinkLocalConf
--- 
-2.33.0
-
+       description: >
+--
+2.25.1

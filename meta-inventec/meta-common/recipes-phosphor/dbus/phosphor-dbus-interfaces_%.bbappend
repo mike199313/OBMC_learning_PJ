@@ -7,7 +7,6 @@ SRC_URI:append = " \
     file://0004-inventec-state-watchdog-Store-Don-t-log-flag-to-dbus.patch \
     file://0005-inventec-common-Add-RequestedPowerIntervalMs-propert.patch \
     file://0006-Implement-LAN-Config-IPv6-Static-Hop-Limit.patch \
-    file://0007-inventec-common-Modify-power-capability-for-DCMI.patch \
     file://0008-Implement-LAN-Config-VLAN-Priority.patch \
     file://0009-Add-IPv4-IPv6-addressing-enable-mode-support.patch \
     file://0010-Add-MACAddress-property-in-Client-interface.patch \
@@ -21,13 +20,13 @@ SRC_URI:append = " \
     file://0018-New-dbus-interfaces-support-for-composition-service.patch \
     file://0019-Implement-PEF-features.patch \
     file://0020-Modify-Notify-method-to-allow-new-value-types-as-inp.patch \
-    file://0021-Remove-read-only-flag-from-NTPServers.patch \
     file://0022-MCTP-Daemon-D-Bus-interface-definition.patch \
     file://0023-Add-D-Bus-interfaces-for-PLDM-FW-update.patch \
     file://0024-Add-PLDM-version-purpose-enumeration.patch \
     file://0025-update-meson-build-for-PLDM-FWU-interfaces.patch \
-    file://0026-Add-new-sensor-enum-for-Bits.patch \
 "
+
+#    file://0026-Add-new-sensor-enum-for-Bits.patch 
 
 
 FILESEXTRAPATHS:prepend := "${THISDIR}/${PN}:"

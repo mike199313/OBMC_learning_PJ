@@ -23,6 +23,7 @@ xyz.openbmc_project.State.Watchdog  interface -         -                       
 .ResetTimeRemaining                 method    b         -                                        -
 .CurrentTimerUse                    property  s         "xyz.openbmc_project.State.Watchdog.T... emits-change writable
 .DontLog                            property  b         true                                     emits-change writable
+
 ---
  yaml/xyz/openbmc_project/State/Watchdog.interface.yaml | 5 +++++
  1 file changed, 5 insertions(+)

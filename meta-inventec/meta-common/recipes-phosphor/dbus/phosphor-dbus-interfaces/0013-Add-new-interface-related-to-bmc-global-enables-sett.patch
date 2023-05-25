@@ -15,20 +15,21 @@ Subject: [PATCH 13/20] Add new interface related to bmc global enables setting
 
     Entry Test:
             N/A
+
 ---
- .../Ipmi/GlobalEnables/meson.build            | 14 +++++++++++
+ .../Ipmi/GlobalEnables/meson.build            | 13 ++++++++++
  gen/xyz/openbmc_project/Ipmi/meson.build      | 14 +++++++++++
  .../Ipmi/GlobalEnables.interface.yaml         | 24 +++++++++++++++++++
- 3 files changed, 52 insertions(+)
+ 3 files changed, 51 insertions(+)
  create mode 100644 gen/xyz/openbmc_project/Ipmi/GlobalEnables/meson.build
  create mode 100644 yaml/xyz/openbmc_project/Ipmi/GlobalEnables.interface.yaml
 
 diff --git a/gen/xyz/openbmc_project/Ipmi/GlobalEnables/meson.build b/gen/xyz/openbmc_project/Ipmi/GlobalEnables/meson.build
 new file mode 100644
-index 0000000..71ed3cf
+index 0000000..f25b839
 --- /dev/null
 +++ b/gen/xyz/openbmc_project/Ipmi/GlobalEnables/meson.build
-@@ -0,0 +1,14 @@
+@@ -0,0 +1,13 @@
 +# Generated file; do not modify.
 +generated_sources += custom_target(
 +    'xyz/openbmc_project/Ipmi/GlobalEnables__cpp'.underscorify(),
@@ -42,15 +43,14 @@ index 0000000..71ed3cf
 +        'xyz/openbmc_project/Ipmi/GlobalEnables',
 +    ],
 +)
-+
 diff --git a/gen/xyz/openbmc_project/Ipmi/meson.build b/gen/xyz/openbmc_project/Ipmi/meson.build
-index 35e3850..9b52f91 100644
+index dc92556..ee57947 100644
 --- a/gen/xyz/openbmc_project/Ipmi/meson.build
 +++ b/gen/xyz/openbmc_project/Ipmi/meson.build
-@@ -27,3 +27,17 @@ generated_others += custom_target(
+@@ -29,3 +29,17 @@ generated_others += custom_target(
      ],
  )
- 
+
 +subdir('GlobalEnables')
 +generated_others += custom_target(
 +    'xyz/openbmc_project/Ipmi/GlobalEnables__markdown'.underscorify(),
@@ -65,10 +65,9 @@ index 35e3850..9b52f91 100644
 +    ],
 +    build_by_default: true,
 +)
-\ No newline at end of file
 diff --git a/yaml/xyz/openbmc_project/Ipmi/GlobalEnables.interface.yaml b/yaml/xyz/openbmc_project/Ipmi/GlobalEnables.interface.yaml
 new file mode 100644
-index 0000000..f572f6c
+index 0000000..43f2a70
 --- /dev/null
 +++ b/yaml/xyz/openbmc_project/Ipmi/GlobalEnables.interface.yaml
 @@ -0,0 +1,24 @@
@@ -85,7 +84,7 @@ index 0000000..f572f6c
 +      type: boolean
 +      default: false
 +      description: >
-+        To show wheather Event Message Buffer full interrupt is enabled  
++        To show wheather Event Message Buffer full interrupt is enabled
 +    - name: RcvMsgQueueIntr
 +      type: boolean
 +      default: false
@@ -96,7 +95,5 @@ index 0000000..f572f6c
 +      default: true
 +      description: .
 +        To show wheather System Event Logging is enabled
-\ No newline at end of file
--- 
-2.33.0
-
+--
+2.25.1

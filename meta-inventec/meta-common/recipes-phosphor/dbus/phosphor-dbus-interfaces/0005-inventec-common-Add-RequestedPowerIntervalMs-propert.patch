@@ -19,18 +19,19 @@ Solution/Change:
 
 Entry Test:
 	sudo ipmitool raw 0x00 0x0b 0x03
+
 ---
  yaml/xyz/openbmc_project/State/Chassis.interface.yaml | 6 ++++++
  1 file changed, 6 insertions(+)
 
 diff --git a/yaml/xyz/openbmc_project/State/Chassis.interface.yaml b/yaml/xyz/openbmc_project/State/Chassis.interface.yaml
-index 0d1fb45..d3a8edc 100644
+index 7c74a04..6119a0b 100644
 --- a/yaml/xyz/openbmc_project/State/Chassis.interface.yaml
 +++ b/yaml/xyz/openbmc_project/State/Chassis.interface.yaml
-@@ -32,6 +32,12 @@ properties:
-           in milliseconds.  This can be used to tell when the chassis
-           was last powered on or off.
- 
+@@ -31,6 +31,12 @@ properties:
+           the CurrentPowerState property, in epoch time, in milliseconds.  This
+           can be used to tell when the chassis was last powered on or off.
+
 +    - name: RequestedPowerIntervalMs
 +      type: uint32
 +      description: >
@@ -40,6 +41,5 @@ index 0d1fb45..d3a8edc 100644
  enumerations:
      - name: Transition
        description: >
--- 
-2.33.0
-
+--
+2.25.1

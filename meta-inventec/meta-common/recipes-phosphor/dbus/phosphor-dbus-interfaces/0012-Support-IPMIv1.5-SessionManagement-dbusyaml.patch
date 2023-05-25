@@ -65,27 +65,24 @@ Subject: [PATCH 12/20] Support IPMI v1.5 Session Management
             privilege level               : ADMINISTRATOR
             session type                  : IPMIv2/RMCP+
             channel number                : 0x01
+
 ---
  yaml/xyz/openbmc_project/Ipmi/SessionInfo.interface.yaml | 6 ++++++
  1 file changed, 6 insertions(+)
 
 diff --git a/yaml/xyz/openbmc_project/Ipmi/SessionInfo.interface.yaml b/yaml/xyz/openbmc_project/Ipmi/SessionInfo.interface.yaml
-index 6d8a899..ba44159 100644
+index 027b9d6..b98c3e9 100644
 --- a/yaml/xyz/openbmc_project/Ipmi/SessionInfo.interface.yaml
 +++ b/yaml/xyz/openbmc_project/Ipmi/SessionInfo.interface.yaml
-@@ -4,6 +4,12 @@ description: >
-     with sessionID_sessionHandle(unique identifier)as path suffix.
- 
- properties:
+@@ -53,3 +53,9 @@ properties:
+           Session state.
+       errors:
+           - xyz.openbmc_project.Common.Error.InternalFailure
 +    - name: rmcpType
 +      type: byte
 +      description: >
 +           Session created RMCP+(1) or RMCP(0)
 +      errors:
 +          - xyz.openbmc_project.Common.Error.InternalFailure
-     - name: SessionHandle
-       type: byte
-       description: >
--- 
-2.33.0
-
+--
+2.25.1

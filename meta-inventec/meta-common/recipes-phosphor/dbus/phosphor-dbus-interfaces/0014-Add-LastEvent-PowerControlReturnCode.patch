@@ -47,23 +47,23 @@ Subject: [PATCH 14/20] Bug623 - [SW][Transformers][OpenBMC][IPMI] Implement
         - ipmitool chassis status
         - ipmitool raw 0x00 0x01
             -- to get current chassis status
+
 ---
  .../State/Chassis.interface.yaml              | 28 +++++++++++++++++++
  1 file changed, 28 insertions(+)
 
 diff --git a/yaml/xyz/openbmc_project/State/Chassis.interface.yaml b/yaml/xyz/openbmc_project/State/Chassis.interface.yaml
-index d3a8edc..8cb6cd6 100644
+index 6119a0b..2cbc46b 100644
 --- a/yaml/xyz/openbmc_project/State/Chassis.interface.yaml
 +++ b/yaml/xyz/openbmc_project/State/Chassis.interface.yaml
 @@ -37,6 +37,22 @@ properties:
-       description: >
            The desired power cycle interval in milliseconds on this chassis.
            This will be preserved across AC power cycles of the BMC.
-+    
+
 +    - name: LastPowerEvent
 +      type: uint32
 +      description: >
-+            The LastPowerEvent. The are 
++            The LastPowerEvent. The are
 +            power on by ipmicommand
 +            power down because of power fault
 +            power down because of power interlock is activated
@@ -75,9 +75,10 @@ index d3a8edc..8cb6cd6 100644
 +      description: >
 +            If request power contorl to on or off but failed
 +            the PowerControlResult will be non-zero, otherwise false
- 
++
  enumerations:
      - name: Transition
+       description: >
 @@ -93,3 +109,15 @@ enumerations:
            - name: "Good"
              description: >
@@ -94,7 +95,5 @@ index d3a8edc..8cb6cd6 100644
 +          - name: 'TransitioningToOn'
 +            description: >
 +              Firmware is transitioning the chassis to an On state
-\ No newline at end of file
--- 
-2.33.0
-
+--
+2.25.1

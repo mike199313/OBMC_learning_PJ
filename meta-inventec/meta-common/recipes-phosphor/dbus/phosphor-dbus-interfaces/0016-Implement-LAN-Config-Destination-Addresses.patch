@@ -24,6 +24,7 @@ Entry Test:
         ipmitool raw 0x0c 0x02 0x01 0x13 0x01 0x00
     - Set Destination Addresses
         ipmitool raw 0x0c 0x01 0x01 0x13 0x00 0x00 0x00 0x0a 0x6 0x8d 0x21 0x7c 0xd3 0x0a 0xc4 0x90 0xe4
+
 ---
  yaml/xyz/openbmc_project/Network/Client/Create.interface.yaml | 4 ++++
  1 file changed, 4 insertions(+)
@@ -43,6 +44,5 @@ index d904762..8b11ba4 100644
        errors:
            - xyz.openbmc_project.Common.Error.InvalidArgument
        returns:
--- 
-2.33.0
-
+--
+2.25.1
