@@ -18,23 +18,23 @@ Solution/Change:
 Entry Test:
     - Print channel config
         ipmitool lan print 3
+
 ---
  src/ethernet_interface.cpp | 2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/src/ethernet_interface.cpp b/src/ethernet_interface.cpp
-index 053dfe4..9fafc01 100644
+index 4bea89b..3f96c94 100644
 --- a/src/ethernet_interface.cpp
 +++ b/src/ethernet_interface.cpp
-@@ -231,7 +231,7 @@ void EthernetInterface::createIPAddressObjects()
-         {
-             origin = IP::AddressOrigin::DHCP;
-         }
--        if (isLinkLocalIP(addr.ipaddress))
-+        if (isLinkLocalIP(addr.ipaddress) && interfaceName() != USB_INTF_NAME)
-         {
-             origin = IP::AddressOrigin::LinkLocal;
-         }
+@@ -202,7 +202,7 @@ void EthernetInterface::addAddr(const AddressInfo& info)
+         origin = IP::AddressOrigin::DHCP;
+     }
+ #ifdef LINK_LOCAL_AUTOCONFIGURATION
+-    if (info.scope == RT_SCOPE_LINK)
++    if (info.scope == RT_SCOPE_LINK && interfaceName() != USB_INTF_NAME)
+     {
+         origin = IP::AddressOrigin::LinkLocal;
+     }
 -- 
-2.33.0
-
+2.25.1

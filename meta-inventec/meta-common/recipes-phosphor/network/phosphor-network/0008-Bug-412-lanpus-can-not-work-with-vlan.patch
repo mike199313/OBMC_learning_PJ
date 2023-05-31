@@ -45,58 +45,80 @@ Subject: [PATCH 08/10] Bug 412 [Transformers][OpenBMC][IPMI] lanpus can not
                 802.1q VLAN ID          : 2
                 802.1q VLAN Priority    : 0
                 RMCP+ Cipher Suites     : 17
+
 ---
- src/ethernet_interface.cpp   |  2 ++
- src/network_manager.cpp      | 42 ++++++++++++++++++++++++++++++++++++
- src/network_manager.hpp      |  9 ++++++++
- src/network_manager_main.cpp | 12 +++++++++++
- src/types.hpp                |  2 ++
- 5 files changed, 67 insertions(+)
+ src/ethernet_interface.cpp | 11 +++++++++++
+ src/ethernet_interface.hpp |  3 +++
+ src/network_manager.cpp    | 32 ++++++++++++++++++++++++++++++++
+ src/network_manager.hpp    |  6 ++++++
+ 4 files changed, 52 insertions(+)
 
 diff --git a/src/ethernet_interface.cpp b/src/ethernet_interface.cpp
-index 9fafc01..5bfd9f2 100644
+index 3f96c94..4d53864 100644
 --- a/src/ethernet_interface.cpp
 +++ b/src/ethernet_interface.cpp
-@@ -538,6 +538,7 @@ void EthernetInterface::deleteVLANObject(const std::string& interface)
- 
-     writeConfigurationFile();
-     manager.reloadConfigs();
-+    manager.startNetipmidTimer();
+@@ -979,6 +979,13 @@ uint8_t EthernetInterface::ipv6HopLimit(uint8_t value)
+     return value;
  }
  
- std::string EthernetInterface::generateObjectPath(
-@@ -1020,6 +1021,7 @@ ObjectPath EthernetInterface::createVLAN(VlanId id)
- 
-     writeConfigurationFile();
-     manager.reloadConfigs();
-+    manager.startNetipmidTimer();
- 
-     return path;
++void EthernetInterface::restartNetipmid(void)
++{
++    log<level::INFO>("Sending ipmi-net reload");
++    manager.get().restartSystemdUnit("phosphor-ipmi-net@" + interfaceName() + ".service");
++    log<level::INFO>("Done ipmi-net reload");
++}
++
+ EthernetInterface::IPFamilyConf EthernetInterface::ipFamily(IPFamilyConf value)
+ {
+     if (value == EthernetInterfaceIntf::ipFamily())
+@@ -1033,6 +1040,7 @@ EthernetInterface::VlanProperties::VlanProperties(
+     VlanIntf::id(*info.vlan_id, true);
+     VlanIntf::priority(*info.vlan_priority, true);
+     emit_object_added();
++    eth.get().restartNetipmid();
  }
+ 
+ uint8_t EthernetInterface::VlanProperties::priority(uint8_t value)
+@@ -1086,6 +1094,9 @@ void EthernetInterface::VlanProperties::delete_()
+         eth.get().manager.get().ignoredIntf.emplace(eth.get().ifIdx);
+     }
+ 
++    // We need to reload netipmid so that lanplus can work properly
++    eth.get().manager.get().addReloadPostHook(
++        [&]() { eth.get().restartNetipmid(); });
+     eth.get().manager.get().reloadConfigs();
+ }
+ 
+diff --git a/src/ethernet_interface.hpp b/src/ethernet_interface.hpp
+index b0099c8..8d076cd 100644
+--- a/src/ethernet_interface.hpp
++++ b/src/ethernet_interface.hpp
+@@ -205,6 +205,9 @@ class EthernetInterface : public Ifaces
+     /** Set value of IPFamily */
+     IPFamilyConf ipFamily(IPFamilyConf value) override;
+ 
++    /** Restart phosphor-ipmi-net service */
++    void restartNetipmid(void);
++
+     using EthernetInterfaceIntf::interfaceName;
+     using EthernetInterfaceIntf::linkUp;
+     using EthernetInterfaceIntf::mtu;
 diff --git a/src/network_manager.cpp b/src/network_manager.cpp
-index 2a206d9..cf0dbd8 100644
+index ffcae48..fa7f658 100644
 --- a/src/network_manager.cpp
 +++ b/src/network_manager.cpp
-@@ -37,6 +37,7 @@ namespace network
- 
- extern std::unique_ptr<Timer> reloadTimer;
- extern std::unique_ptr<Timer> restartNicTimer;
-+extern std::unique_ptr<Timer> restartNetipmidTimer;
- using namespace phosphor::logging;
- using namespace sdbusplus::xyz::openbmc_project::Common::Error;
- 
-@@ -296,6 +297,38 @@ void Manager::startNicResetTimer()
-     restartNicTimer->restartOnce(restartNicTimeout);
+@@ -523,5 +523,37 @@ void Manager::handleAdminState(std::string_view state, unsigned ifidx)
+     }
  }
  
 +void Manager::restartSystemdUnit(const std::string& unit)
 +{
 +    try
 +    {
-+        auto method = bus.new_method_call(SYSTEMD_BUSNAME, SYSTEMD_PATH,
++        auto method = bus.get().new_method_call(SYSTEMD_BUSNAME, SYSTEMD_PATH,
 +                                          SYSTEMD_INTERFACE, "ResetFailedUnit");
 +        method.append(unit);
-+        bus.call_noreply(method);
++        bus.get().call_noreply(method);
 +    }
 +    catch (const sdbusplus::exception::SdBusError& ex)
 +    {
@@ -108,10 +130,10 @@ index 2a206d9..cf0dbd8 100644
 +
 +    try
 +    {
-+        auto method = bus.new_method_call(SYSTEMD_BUSNAME, SYSTEMD_PATH,
++        auto method = bus.get().new_method_call(SYSTEMD_BUSNAME, SYSTEMD_PATH,
 +                                          SYSTEMD_INTERFACE, "RestartUnit");
 +        method.append(unit.c_str(), "replace");
-+        bus.call_noreply(method);
++        bus.get().call_noreply(method);
 +    }
 +    catch (const sdbusplus::exception::SdBusError& ex)
 +    {
@@ -121,100 +143,24 @@ index 2a206d9..cf0dbd8 100644
 +    }
 +}
 +
- void Manager::restartNIC(const std::string& interface)
- {
-     for (const auto& intf : interfaces)
-@@ -310,5 +343,14 @@ void Manager::restartNIC(const std::string& interface)
-     }
- }
- 
-+void Manager::startNetipmidTimer(void)
-+{
-+    using namespace std::chrono;
-+    if (restartNetipmidTimer)
-+    {
-+        restartNetipmidTimer->restartOnce(restartNetipmidTimeout);
-+    }
-+}
-+
  } // namespace network
  } // namespace phosphor
 diff --git a/src/network_manager.hpp b/src/network_manager.hpp
-index 20f2d5e..4fd9426 100644
+index 490c4bc..13055f6 100644
 --- a/src/network_manager.hpp
 +++ b/src/network_manager.hpp
-@@ -137,12 +137,21 @@ class Manager : public details::VLANCreateIface
-     /** @brief restart the NIC timer. */
-     void startNicResetTimer();
+@@ -77,6 +77,12 @@ class Manager : public ManagerIface
+     void addDefGw(unsigned ifidx, InAddrAny addr);
+     void removeDefGw(unsigned ifidx, InAddrAny addr);
  
 +    /** @brief Restart the systemd unit
 +     *  @param[in] unit - systemd unit name which needs to be
 +     *                    restarted.
 +     */
-+    virtual void restartSystemdUnit(const std::string& unit);
++    void restartSystemdUnit(const std::string& unit);
 +
-     /** @brief Restart the NIC card
-      *  @param[in] interface - NIC interface which needs to be
-      *                         restarted.
+     /** @brief gets the network conf directory.
       */
-     virtual void restartNIC(const std::string& interface);
- 
-+    /** @brief restart the netipmid timer */
-+    void startNetipmidTimer(void);
-+
-     /** @brief Returns the number of interfaces under this manager.
-      *
-      * @return the number of interfaces managed by this manager.
-diff --git a/src/network_manager_main.cpp b/src/network_manager_main.cpp
-index 0a3cae4..f4e1059 100644
---- a/src/network_manager_main.cpp
-+++ b/src/network_manager_main.cpp
-@@ -50,6 +50,7 @@ std::unique_ptr<phosphor::network::Manager> manager = nullptr;
- std::unique_ptr<Timer> refreshObjectTimer = nullptr;
- std::unique_ptr<Timer> reloadTimer = nullptr;
- std::unique_ptr<Timer> restartNicTimer = nullptr;
-+std::unique_ptr<Timer> restartNetipmidTimer = nullptr;
- 
- #ifdef SYNC_MAC_FROM_INVENTORY
- std::unique_ptr<sdbusplus::bus::match::match> EthInterfaceMatch = nullptr;
-@@ -264,6 +265,16 @@ void reloadNetworkd()
-     }
- }
- 
-+void restartNetipmid(void)
-+{
-+    if (manager)
-+    {
-+        log<level::INFO>("Sending ipmi-net reload");
-+        manager->restartSystemdUnit("phosphor-ipmi-net@" DEFAULT_NIC ".service");
-+        log<level::INFO>("Done ipmi-net reload");
-+    }
-+}
-+
- void initializeTimers()
- {
-     auto event = sdeventplus::Event::get_default();
-@@ -271,6 +282,7 @@ void initializeTimers()
-         std::make_unique<Timer>(event, std::bind(refreshObjects));
-     reloadTimer = std::make_unique<Timer>(event, std::bind(reloadNetworkd));
-     restartNicTimer = std::make_unique<Timer>(event, std::bind(restartNic));
-+    restartNetipmidTimer = std::make_unique<Timer>(event, std::bind(restartNetipmid));
- }
- 
- } // namespace network
-diff --git a/src/types.hpp b/src/types.hpp
-index 4f9244c..65cf7d2 100644
---- a/src/types.hpp
-+++ b/src/types.hpp
-@@ -36,6 +36,8 @@ constexpr auto refreshTimeout = reloadTimeout + 7s;
- 
- constexpr auto restartNicTimeout = refreshTimeout + 2s;
- 
-+constexpr auto restartNetipmidTimeout = refreshTimeout + 4s;
-+
- namespace systemd
- {
- namespace config
+     inline const auto& getConfDir() const
 -- 
-2.33.0
-
+2.25.1

@@ -27,55 +27,108 @@ Entry Test:
         ipmitool raw 0x0c 0x01 0x01 0x15 0x5
     - Get VLAN priority
         ipmitool raw 0x0c 0x02 0x01 0x15 0x00 0x00
+
 ---
- src/ethernet_interface.cpp |  6 ++--
- src/util.hpp               | 66 ++++++++++++++++++++++++++++++++++++++
- src/vlan_interface.cpp     | 17 +++++++++-
- src/vlan_interface.hpp     | 10 +++++-
- 4 files changed, 95 insertions(+), 4 deletions(-)
+ src/ethernet_interface.cpp | 18 ++++++++++
+ src/ethernet_interface.hpp |  8 +++++
+ src/types.hpp              |  1 +
+ src/util.hpp               | 71 ++++++++++++++++++++++++++++++++++++++
+ 4 files changed, 98 insertions(+)
 
 diff --git a/src/ethernet_interface.cpp b/src/ethernet_interface.cpp
-index 6381e32..e5437ef 100644
+index 057ca74..c932205 100644
 --- a/src/ethernet_interface.cpp
 +++ b/src/ethernet_interface.cpp
-@@ -939,9 +939,11 @@ void EthernetInterface::loadVLAN(VlanId id)
- 
-     DHCPConf dhcpEnabled =
-         getDHCPValue(manager.getConfDir().string(), vlanInterfaceName);
+@@ -595,6 +595,8 @@ ObjectPath EthernetInterface::createVLAN(uint16_t id)
+     {
+         mac.emplace(ToAddr<ether_addr>{}(macStr));
+     }
 +    uint8_t priority = 0;
 +    loadConfigValue<uint8_t>(LAN_CONFIG_VLAN_PCP, priority);
-     auto vlanIntf = std::make_unique<phosphor::network::VlanInterface>(
-         bus, path.c_str(), dhcpEnabled, EthernetInterfaceIntf::nicEnabled(), id,
--        *this, manager);
-+        *this, manager, priority);
+     auto info = AllIntfInfo{InterfaceInfo{
+         .idx = 0, // TODO: Query the correct value after creation
+         .flags = 0,
+@@ -603,6 +605,7 @@ ObjectPath EthernetInterface::createVLAN(uint16_t id)
+         .mtu = mtu(),
+         .parent_idx = ifIdx,
+         .vlan_id = id,
++        .vlan_priority = priority,
+     }};
  
-     // Fetch the ip address from the system
-     // and create the dbus object.
-@@ -964,7 +966,7 @@ ObjectPath EthernetInterface::createVLAN(VlanId id)
+     // Pass the parents nicEnabled property, so that the child
+@@ -944,9 +947,24 @@ EthernetInterface::VlanProperties::VlanProperties(
+     parentIdx(*info.parent_idx), eth(eth)
+ {
+     VlanIntf::id(*info.vlan_id, true);
++    VlanIntf::priority(*info.vlan_priority, true);
+     emit_object_added();
+ }
  
-     auto vlanIntf = std::make_unique<phosphor::network::VlanInterface>(
-         bus, path.c_str(), EthernetInterface::DHCPConf::none,
--        EthernetInterfaceIntf::nicEnabled(), id, *this, manager);
-+        EthernetInterfaceIntf::nicEnabled(), id, *this, manager, (uint8_t)0);
++uint8_t EthernetInterface::VlanProperties::priority(uint8_t value)
++{
++    if (value == VlanIntf::priority())
++    {
++        return value;
++    }
++
++    VlanIntf::priority(value);
++    execute("/sbin/vconfig", "vconfig", "set_egress_map",
++        eth.get().interfaceName().c_str(), "0", std::to_string((int)value).c_str());
++    updateConfigValue<uint8_t>(LAN_CONFIG_VLAN_PCP, value);
++    return value;
++}
++
+ void EthernetInterface::VlanProperties::delete_()
+ {
+     auto intf = eth.get().interfaceName();
+diff --git a/src/ethernet_interface.hpp b/src/ethernet_interface.hpp
+index 247fd07..21aea1b 100644
+--- a/src/ethernet_interface.hpp
++++ b/src/ethernet_interface.hpp
+@@ -240,6 +240,14 @@ class EthernetInterface : public Ifaces
+         void delete_() override;
+         unsigned parentIdx;
+         stdplus::PinnedRef<EthernetInterface> eth;
++
++        using VlanIntf::priority;
++
++        /** @brief sets VLAN priority.
++        *  @param[in] value - VLAN priority value
++        *  @returns VLAN priority value of the interface or throws an error.
++        */
++        uint8_t priority(uint8_t value) override;
+     };
+     std::optional<VlanProperties> vlan;
  
-     // write the device file for the vlan interface.
-     vlanIntf->writeDeviceFile();
+diff --git a/src/types.hpp b/src/types.hpp
+index 8d1daf4..e8b6eb7 100644
+--- a/src/types.hpp
++++ b/src/types.hpp
+@@ -91,6 +91,7 @@ struct InterfaceInfo
+     std::optional<unsigned> parent_idx = std::nullopt;
+     std::optional<std::string> kind = std::nullopt;
+     std::optional<uint16_t> vlan_id = std::nullopt;
++    std::optional<uint8_t> vlan_priority = std::nullopt;
+ 
+     constexpr bool operator==(const InterfaceInfo& rhs) const noexcept
+     {
 diff --git a/src/util.hpp b/src/util.hpp
-index e9a66d2..c5ac808 100644
+index 166d60f..96bb79c 100644
 --- a/src/util.hpp
 +++ b/src/util.hpp
-@@ -14,6 +14,10 @@
- #include <string>
+@@ -8,6 +8,11 @@
  #include <string_view>
- #include <xyz/openbmc_project/Network/EthernetInterface/server.hpp>
+ #include <unordered_set>
+ 
 +#include <fstream>
 +#include <iomanip>
 +#include <nlohmann/json.hpp>
 +#include <phosphor-logging/log.hpp>
- 
++
  namespace phosphor
  {
-@@ -199,6 +203,68 @@ void execute(const char* path, ArgTypes&&... tArgs)
+ namespace network
+@@ -126,6 +131,72 @@ void execute(stdplus::const_zstring path, ArgTypes&&... tArgs)
      internal::executeCommandinChildProcess(path, args);
  }
  
@@ -84,18 +137,17 @@ index e9a66d2..c5ac808 100644
 +// Config name for LAN Config Parameters
 +constexpr auto LAN_CONFIG_VLAN_PCP = "vlan_priority";
 +
-+using namespace phosphor::logging;
-+
 +/** @brief get config value from LAN configuration file.
-++ *  @param[in] name - config name.
-++ *  @param[out] val - value of the given config name.
-++ */
++ *  @param[in] name - config name.
++ *  @param[out] val - value of the given config name.
++ */
 +template <typename T> void loadConfigValue(const std::string& name, T& val)
 +{
 +    std::ifstream configFile(LAN_CFG_FILE);
 +    if (!configFile.is_open())
 +    {
-+        log<level::ERR>("loadConfigValue : Cannot open config path");
++        phosphor::logging::log<phosphor::logging::level::ERR>
++            ("loadConfigValue : Cannot open config path");
 +        return;
 +    }
 +
@@ -103,34 +155,39 @@ index e9a66d2..c5ac808 100644
 +
 +    if (data.is_discarded())
 +    {
-+        log<level::ERR>("loadConfigValue JSON parser failure");
++        phosphor::logging::log<phosphor::logging::level::ERR>
++            ("loadConfigValue JSON parser failure");
 +        return;
 +    }
 +
 +    if (data.contains(name))
 +    {
-+        val = (T)data[name];
++        val = static_cast<T>(data[name]);
 +    }
++
++    configFile.close();
 +}
 +
 +/** @brief get config value from LAN configuration file.
-++ *  @param[in] name - config name.
-++ *  @param[in] val - value of the given config name.
-++ *  @return 0 if sucess, else returns none 0 value.
-++ */
++ *  @param[in] name - config name.
++ *  @param[in] val - value of the given config name.
++ *  @return 0 if sucess, else returns none 0 value.
++ */
 +template <typename T> int updateConfigValue(const std::string& name, T val)
 +{
 +    std::ifstream configFile(LAN_CFG_FILE);
 +    if (!configFile.is_open())
 +    {
-+        log<level::ERR>("updateConfigValue : Cannot open config path");
++        phosphor::logging::log<phosphor::logging::level::ERR>
++            ("updateConfigValue : Cannot open config path");
 +        return -1;
 +    }
 +    auto data = nlohmann::json::parse(configFile, nullptr);
 +
 +    if (data.is_discarded())
 +    {
-+        log<level::ERR>("updateConfigValue JSON parser failure");
++        phosphor::logging::log<phosphor::logging::level::ERR>
++            ("updateConfigValue JSON parser failure");
 +        return -2;
 +    }
 +
@@ -143,89 +200,7 @@ index e9a66d2..c5ac808 100644
 +
  } // namespace network
  
- class Descriptor
-diff --git a/src/vlan_interface.cpp b/src/vlan_interface.cpp
-index 2918989..95e199b 100644
---- a/src/vlan_interface.cpp
-+++ b/src/vlan_interface.cpp
-@@ -24,7 +24,8 @@ using namespace sdbusplus::xyz::openbmc_project::Common::Error;
- VlanInterface::VlanInterface(sdbusplus::bus::bus& bus,
-                              const std::string& objPath, DHCPConf dhcpEnabled,
-                              bool nicEnabled, uint32_t vlanID,
--                             EthernetInterface& intf, Manager& parent) :
-+                             EthernetInterface& intf, Manager& parent,
-+                             uint8_t vlanPriority) :
-     VlanIface(bus, objPath.c_str()),
-     DeleteIface(bus, objPath.c_str()),
-     EthernetInterface(bus, objPath, dhcpEnabled, parent, /*emitSignal=*/false,
-@@ -32,6 +33,7 @@ VlanInterface::VlanInterface(sdbusplus::bus::bus& bus,
-     parentInterface(intf)
- {
-     id(vlanID);
-+    priority(vlanPriority);
-     VlanIface::interfaceName(EthernetInterface::interfaceName());
-     MacAddressIntf::macAddress(parentInterface.macAddress());
- 
-@@ -44,6 +46,19 @@ std::string VlanInterface::macAddress(std::string)
-     elog<InternalFailure>();
- }
- 
-+uint8_t VlanInterface::priority(uint8_t value)
-+{
-+    if (value == VlanIface::priority())
-+    {
-+        return value;
-+    }
-+
-+    VlanIface::priority(value);
-+    execute("/sbin/vconfig", "vconfig", "set_egress_map", EthernetInterface::interfaceName().c_str(), "0", std::to_string((int)value).c_str());
-+    updateConfigValue<uint8_t>(LAN_CONFIG_VLAN_PCP, value);
-+    return value;
-+}
-+
- void VlanInterface::writeDeviceFile()
- {
-     using namespace std::string_literals;
-diff --git a/src/vlan_interface.hpp b/src/vlan_interface.hpp
-index c003056..ad12db3 100644
---- a/src/vlan_interface.hpp
-+++ b/src/vlan_interface.hpp
-@@ -43,12 +43,13 @@ class VlanInterface : public VlanIface,
-      *  @param[in] vlanID - vlan identifier.
-      *  @param[in] intf - ethernet interface object.
-      *  @param[in] manager - network manager object.
-+     *  @param[in] vlanPriority - vlan priority.
-      *
-      *  This constructor is called during loading the VLAN Interface
-      */
-     VlanInterface(sdbusplus::bus::bus& bus, const std::string& objPath,
-                   DHCPConf dhcpEnabled, bool nicEnabled, uint32_t vlanID,
--                  EthernetInterface& intf, Manager& parent);
-+                  EthernetInterface& intf, Manager& parent, uint8_t vlanPriority);
- 
-     /** @brief Delete this d-bus object.
-      */
-@@ -60,6 +61,12 @@ class VlanInterface : public VlanIface,
-      */
-     std::string macAddress(std::string value) override;
- 
-+    /** @brief sets VLAN priority.
-+     *  @param[in] value - VLAN priority value
-+     *  @returns VLAN priority value of the interface or throws an error.
-+     */
-+    uint8_t priority(uint8_t value) override;
-+
-     /** @brief writes the device configuration.
-                systemd reads this configuration file
-                and creates the vlan interface.*/
-@@ -68,6 +75,7 @@ class VlanInterface : public VlanIface,
-   private:
-     /** @brief VLAN Identifier. */
-     using VlanIface::id;
-+    using VlanIface::priority;
- 
-     EthernetInterface& parentInterface;
- 
+ } // namespace phosphor
 -- 
-2.33.0
+2.25.1
 

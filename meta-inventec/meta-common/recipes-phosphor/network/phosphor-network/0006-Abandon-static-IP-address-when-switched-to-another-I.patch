@@ -23,54 +23,34 @@ Entry Test:
         ipmitool raw 0x0c 0x01 0x01 0x33 0x01
     - Check lan config
         ipmitool lan print
+
 ---
- src/ethernet_interface.cpp | 19 +++++++++++++++++--
- 1 file changed, 17 insertions(+), 2 deletions(-)
+ src/ethernet_interface.cpp | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
 
 diff --git a/src/ethernet_interface.cpp b/src/ethernet_interface.cpp
-index c4eef5d..053dfe4 100644
+index c91d5fa..4bea89b 100644
 --- a/src/ethernet_interface.cpp
 +++ b/src/ethernet_interface.cpp
-@@ -1204,6 +1204,19 @@ void EthernetInterface::writeConfigurationFile()
-     // Static IP addresses
-     for (const auto& addr : addrs)
-     {
-+        if (EthernetInterfaceIntf::ipFamily() == EthernetInterfaceIntf::IPFamilyConf::v6
-+            && addr.second->type() == IP::Protocol::IPv4)
-+        {
-+            // Abandon IPv4 static address because IPFamily is set to IPv6 mode
-+            continue;
-+        }
-+        else if (EthernetInterfaceIntf::ipFamily() == EthernetInterfaceIntf::IPFamilyConf::v4
-+            && addr.second->type() == IP::Protocol::IPv6)
-+        {
-+            // Abandon IPv6 static address because IPFamily is set to IPv4 mode
-+            continue;
-+        }
+@@ -743,6 +743,19 @@ void EthernetInterface::writeConfigurationFile()
+             auto& address = network["Address"];
+             for (const auto& addr : addrs)
+             {
++                if (EthernetInterfaceIntf::ipFamily() == EthernetInterfaceIntf::IPFamilyConf::v6
++                    && addr.second->type() == IP::Protocol::IPv4)
++                {
++                    // Abandon IPv4 static address because IPFamily is set to IPv6 mode
++                    continue;
++                }
++                else if (EthernetInterfaceIntf::ipFamily() == EthernetInterfaceIntf::IPFamilyConf::v4
++                    && addr.second->type() == IP::Protocol::IPv6)
++                {
++                    // Abandon IPv6 static address because IPFamily is set to IPv4 mode
++                    continue;
++                }
 +
-         if (originIsManuallyAssigned(addr.second->origin()) &&
-             !dhcpIsEnabled(addr.second->type()))
-         {
-@@ -1221,7 +1234,8 @@ void EthernetInterface::writeConfigurationFile()
-     if (!dhcpIsEnabled(IP::Protocol::IPv4))
-     {
-         auto gateway = EthernetInterfaceIntf::defaultGateway();
--        if (!gateway.empty())
-+        if (!gateway.empty()
-+            && EthernetInterfaceIntf::ipFamily() != EthernetInterfaceIntf::IPFamilyConf::v6)
-         {
-             stream << "[Route]\n";
-             stream << "Gateway=" << gateway << "\n";
-@@ -1231,7 +1245,8 @@ void EthernetInterface::writeConfigurationFile()
-     if (!dhcpIsEnabled(IP::Protocol::IPv6))
-     {
-         auto gateway6 = EthernetInterfaceIntf::defaultGateway6();
--        if (!gateway6.empty())
-+        if (!gateway6.empty()
-+            && EthernetInterfaceIntf::ipFamily() != EthernetInterfaceIntf::IPFamilyConf::v4)
-         {
-             stream << "[Route]\n";
-             stream << "Gateway=" << gateway6 << "\n";
+                 if (originIsManuallyAssigned(addr.second->origin()))
+                 {
+                     address.emplace_back(
 -- 
-2.33.0
-
+2.25.1
