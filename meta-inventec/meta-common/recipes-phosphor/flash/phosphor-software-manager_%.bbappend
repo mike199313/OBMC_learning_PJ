@@ -5,12 +5,12 @@ DEPENDS += " \
         i2c-tools \
 "
 
-
-
 SRC_URI += " \
+            file://obmc-cpld-update@.service \
+            file://obmc-psu-update@.service \
             file://0001-add-bios-image-upload-flow.patch \
             file://0002-Fix-BIOS-version-is-null-issue.patch \
-            file://0003-MS-M-LOG-0008.patch\
+            file://0003-MS-M-LOG-0008.patch \
             file://0004-Fix-Updateable-parameter-displays-false-issue.patch \
             file://0005-add-cpld-mb-and-scm-dbus-object-and-version.patch \
             file://0006-MS-spec-BIOS-securely-transfer.patch \
@@ -25,10 +25,8 @@ SYSTEMD_SERVICE:${PN}-updater += " \
    obmc-psu-update@.service \
 "
 
-
 PACKAGECONFIG[cpld_mb] = "-Dcpld-mb-upgrade=enabled, -Dcpld-mb-upgrade=disabled"
 PACKAGECONFIG[cpld_scm] = "-Dcpld-scm-upgrade=enabled, -Dcpld-scm-upgrade=disabled"
-
 
 #enable host-bios-update cpld_mb cpld_scm feature
 PACKAGECONFIG:append =" \

@@ -26,6 +26,7 @@ sysadmin@transformers:~# busctl tree xyz.openbmc_project.Software.BMC.Updater
 
 [comment for 2.12 upgrade]
 Change the way to call Version because official code changed the class definition
+
 ---
  item_updater.cpp  | 112 ++++++++++++++++++++++++++++++++++++++++++++++
  item_updater.hpp  |  31 +++++++++++++
@@ -34,10 +35,10 @@ Change the way to call Version because official code changed the class definitio
  4 files changed, 171 insertions(+)
 
 diff --git a/item_updater.cpp b/item_updater.cpp
-index 49cc130..4864e66 100644
+index 60269e5..e6224e9 100644
 --- a/item_updater.cpp
 +++ b/item_updater.cpp
-@@ -908,6 +908,118 @@ void ItemUpdater::getRunningSlot()
+@@ -921,6 +921,118 @@ void ItemUpdater::getRunningSlot()
      f >> runningImageSlot;
  }
  
@@ -125,7 +126,7 @@ index 49cc130..4864e66 100644
 +    auto dummyErase = [](std::string /*entryId*/) {
 +        // Do nothing;
 +    };
-+    
++
 +    std::vector<std::string> compatibleNames;
 +    cpldscmVersion = std::make_unique<VersionClass>(
 +        bus, path, version, VersionPurpose::Other, "", "",
@@ -157,7 +158,7 @@ index 49cc130..4864e66 100644
  } // namespace software
  } // namespace phosphor
 diff --git a/item_updater.hpp b/item_updater.hpp
-index 46e5fd9..a71f2f4 100644
+index aa2ca7e..c000801 100644
 --- a/item_updater.hpp
 +++ b/item_updater.hpp
 @@ -74,6 +74,12 @@ class ItemUpdater : public ItemUpdaterInherit
@@ -206,7 +207,7 @@ index 46e5fd9..a71f2f4 100644
  
  } // namespace updater
 diff --git a/meson.build b/meson.build
-index e3d38ea..c6d8023 100644
+index 0d1c218..205ed8b 100644
 --- a/meson.build
 +++ b/meson.build
 @@ -67,6 +67,8 @@ conf.set('MMC_LAYOUT', get_option('bmc-layout').contains('mmc'))
@@ -234,10 +235,10 @@ index e3d38ea..c6d8023 100644
  
  sdbusplus_dep = dependency('sdbusplus')
 diff --git a/meson_options.txt b/meson_options.txt
-index e9eecff..de77ab1 100644
+index d14ed3b..596bb4a 100644
 --- a/meson_options.txt
 +++ b/meson_options.txt
-@@ -134,3 +134,21 @@ option(
+@@ -135,3 +135,21 @@ option(
      value: '/run/media/rwfs-alt/cow',
      description: 'The dir for alt-rwfs partition.',
  )
@@ -260,5 +261,4 @@ index e9eecff..de77ab1 100644
 +    description: 'The cpld scm object path.',
 +)
 -- 
-2.33.0
-
+2.25.1

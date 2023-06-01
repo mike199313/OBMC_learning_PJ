@@ -8,6 +8,6 @@ PACKAGECONFIG[dps2400eb] = "-Ddps2400eb=enabled, -Ddps2400eb=disabled"
 PACKAGECONFIG:append =" \
             psu1 \
             psu2 \
-	    dps2400eb \
+            dps2400eb \
             "
 

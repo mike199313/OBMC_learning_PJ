@@ -1,0 +1,8 @@
+[Unit]
+Description=FLASH CPLD %I to CPLD
+
+[Service]
+Type=oneshot
+RemainAfterExit=no
+ExecStart=/usr/bin/cpldupdate-i2c %i
+StandardOutput=journal+console

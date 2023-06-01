@@ -1,0 +1,8 @@
+[Unit]
+Description=FLASH PSU %I to PSU
+
+[Service]
+Type=oneshot
+RemainAfterExit=no
+ExecStart=/usr/bin/dps2400eb-psu-upgrade %i
+StandardOutput=journal+console

@@ -16,22 +16,22 @@ Solution/Change:
 Entry Test:
 - Get BIOS info
   - curl -X GET https://$bmc/redfish/v1/UpdateService/FirmwareInventory/bios_active
+
 ---
  item_updater.cpp | 1 +
  1 file changed, 1 insertion(+)
 
 diff --git a/item_updater.cpp b/item_updater.cpp
-index cd07dfa..49cc130 100644
+index bbf8891..60269e5 100644
 --- a/item_updater.cpp
 +++ b/item_updater.cpp
-@@ -848,6 +848,7 @@ void ItemUpdater::createBIOSObject()
- 
+@@ -861,6 +861,7 @@ void ItemUpdater::createBIOSObject()
+
      createActiveAssociation(path);
      createFunctionalAssociation(path);
 +    createUpdateableAssociation(path);
- 
+
      auto versionId = path.substr(pos + 1);
      auto version = getBiosVersion();
--- 
-2.33.0
-
+--
+2.25.1

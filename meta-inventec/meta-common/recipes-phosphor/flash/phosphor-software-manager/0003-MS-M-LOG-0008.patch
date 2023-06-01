@@ -137,147 +137,63 @@ SEL Record ID          : 0309
 Sensor ID              : BMC_health (0xb1)
  Entity ID             : 7.0
  Sensor Type (Discrete): Unknown
+
 ---
- activation.cpp        | 47 +++++++++++++++++++++++++++++--------------
- item_updater_main.cpp | 18 +++++++++++++++++
- mmc/flash.cpp         | 14 +++++++++++++
- static/flash.cpp      | 13 +++++++++++-
- ubi/flash.cpp         | 15 ++++++++++++++
- utils.cpp             | 20 ++++++++++++++++++
- utils.hpp             | 10 +++++++++
- 7 files changed, 121 insertions(+), 16 deletions(-)
+ activation.cpp        | 12 ++++++++++++
+ item_updater_main.cpp | 17 +++++++++++++++++
+ mmc/flash.cpp         |  9 +++++++++
+ static/flash.cpp      |  8 ++++++++
+ ubi/flash.cpp         |  8 ++++++++
+ utils.cpp             | 20 ++++++++++++++++++++
+ utils.hpp             |  8 ++++++++
+ 7 files changed, 82 insertions(+)
 
 diff --git a/activation.cpp b/activation.cpp
-index 18f28ee..14b9d91 100644
+index e434f3b..7679b4d 100644
 --- a/activation.cpp
 +++ b/activation.cpp
-@@ -346,7 +346,7 @@ void Activation::unitStateChange(sdbusplus::message::message& msg)
-         return;
-     }
- #else
--     auto purpose = parent.versions.find(versionId)->second->purpose();
-+    auto purpose = parent.versions.find(versionId)->second->purpose();
- #endif
-     if (purpose == VersionPurpose::Other)
-     {
-@@ -430,18 +430,22 @@ bool Activation::checkApplyTimeImmediate()
+@@ -422,6 +422,9 @@ bool Activation::checkApplyTimeImmediate()
  #ifdef HOST_BIOS_UPGRADE
  void Activation::flashWriteHost()
  {
-+    
 +    std::vector<uint8_t> eventData = {0xAE, 0x02, 0x00};
 +    utils::reportBySEL(this->bus, eventData);
 +
      std::string biosImagePath;
      auto ret = getImagePath(biosImagePath);
--    if(ret!=0)
-+    if (ret != 0)
-     {
-         log<level::ERR>("Error in finding host bios path.");
-         report<InternalFailure>();
-         return;
-     }
-     log<level::INFO>("flashWriteBios start.");
--      /*when instance name is absolute file path need to replace / with -
--    other the service would be recognized*/
--    std::replace( biosImagePath.begin(), biosImagePath.end(), '/', '-');
-+    /*when instance name is absolute file path need to replace / with -
-+  other the service would be recognized*/
-+    std::replace(biosImagePath.begin(), biosImagePath.end(), '/', '-');
-     biosImagePathNew.assign(biosImagePath);
+     if(ret!=0)
+@@ -453,6 +456,9 @@ void Activation::flashWriteHost()
  
-     auto method = bus.new_method_call(SYSTEMD_BUSNAME, SYSTEMD_PATH,
-@@ -461,6 +465,10 @@ void Activation::flashWriteHost()
- 
- void Activation::onStateChangesBios(sdbusplus::message::message& msg)
+ void Activation::onStateChangesBios(sdbusplus::message_t& msg)
  {
-+
 +    std::vector<uint8_t> eventData = {0xAF, 0x02, 0x00};
 +    utils::reportBySEL(this->bus, eventData);
 +
      uint32_t newStateID{};
      sdbusplus::message::object_path newStateObjPath;
      std::string newStateUnit{};
-@@ -469,7 +477,8 @@ void Activation::onStateChangesBios(sdbusplus::message::message& msg)
-     // Read the msg and populate each variable
-     msg.read(newStateID, newStateObjPath, newStateUnit, newStateResult);
- 
--    auto biosServiceFile = "obmc-flash-host-bios@" + biosImagePathNew + ".service";
-+    auto biosServiceFile =
-+        "obmc-flash-host-bios@" + biosImagePathNew + ".service";
- 
-     if (newStateUnit == biosServiceFile)
-     {
-@@ -513,16 +522,16 @@ int32_t Activation::getImagePath(std::string& imagePath)
-     dirPath = dirPath / versionId;
- 
-     int fileCounter = 0;
--    for (auto& it: fs::directory_iterator(dirPath))
-+    for (auto& it : fs::directory_iterator(dirPath))
-     {
--        if ( it.path().filename() != "MANIFEST" )
-+        if (it.path().filename() != "MANIFEST")
-         {
-             imagePath = it.path();
-         }
-         fileCounter++;
-     }
- 
--   // The count of files should be 2 : image file and Manifest.
-+    // The count of files should be 2 : image file and Manifest.
-     if (fileCounter != 2)
-     {
-         log<level::ERR>("Erro in number of files");
-@@ -533,18 +542,22 @@ int32_t Activation::getImagePath(std::string& imagePath)
+@@ -525,6 +531,9 @@ int32_t Activation::getImagePath(std::string& imagePath)
  
  void Activation::flashWriteCpld()
  {
-+    
 +    std::vector<uint8_t> eventData = {0xAE, 0x03, 0x00};
 +    utils::reportBySEL(this->bus, eventData);
 +
      std::string cpldImagePath;
      auto ret = getImagePath(cpldImagePath);
--    if(ret!=0)
-+    if (ret != 0)
-     {
-         log<level::ERR>("Error in finding image path.");
-         report<InternalFailure>();
-         return;
-     }
--     log<level::INFO>("flashWriteCpld start.");
--      /*when instance name is absolute file path need to replace / with -
--    other the service would be recognized*/
--    std::replace( cpldImagePath.begin(), cpldImagePath.end(), '/', '-');
-+    log<level::INFO>("flashWriteCpld start.");
-+    /*when instance name is absolute file path need to replace / with -
-+  other the service would be recognized*/
-+    std::replace(cpldImagePath.begin(), cpldImagePath.end(), '/', '-');
-     cpldImagePathNew.assign(cpldImagePath);
- 
-     auto method = bus.new_method_call(SYSTEMD_BUSNAME, SYSTEMD_PATH,
-@@ -564,6 +577,10 @@ void Activation::flashWriteCpld()
+     if(ret!=0)
+@@ -556,6 +565,9 @@ void Activation::flashWriteCpld()
  
  void Activation::onStateChangesCpld(sdbusplus::message::message& msg)
  {
-+
 +    std::vector<uint8_t> eventData = {0xAF, 0x03, 0x00};
 +    utils::reportBySEL(this->bus, eventData);
 +
      uint32_t newStateID{};
      sdbusplus::message::object_path newStateObjPath;
      std::string newStateUnit{};
-@@ -599,7 +616,7 @@ void Activation::onStateChangesCpld(sdbusplus::message::message& msg)
- 
-             log<level::ERR>("CPLD upgrade failed.");
-         }
--   }
-+    }
- 
-     return;
- }
 diff --git a/item_updater_main.cpp b/item_updater_main.cpp
-index 7e41ad7..76165a0 100644
+index 790af60..445253c 100644
 --- a/item_updater_main.cpp
 +++ b/item_updater_main.cpp
 @@ -7,6 +7,9 @@
@@ -290,17 +206,14 @@ index 7e41ad7..76165a0 100644
  boost::asio::io_context& getIOContext()
  {
      static boost::asio::io_context io;
-@@ -15,8 +18,23 @@ boost::asio::io_context& getIOContext()
- 
- int main()
+@@ -17,6 +20,20 @@ int main()
  {
-+
      sdbusplus::asio::connection bus(getIOContext());
  
 +    //if the /var/lib/os-release overwrite_existing
 +    //The firmware is update completed
 +    FILE *fp = fopen("/var/lib/os-release", "r");
-+    
++
 +    if( fp != NULL)
 +    {
 +        //do MS SEL firmware upgrade complete and remove the file
@@ -312,32 +225,27 @@ index 7e41ad7..76165a0 100644
 +    }
 +
      // Add sdbusplus ObjectManager.
-     sdbusplus::server::manager::manager objManager(bus, SOFTWARE_OBJPATH);
+     sdbusplus::server::manager_t objManager(bus, SOFTWARE_OBJPATH);
  
 diff --git a/mmc/flash.cpp b/mmc/flash.cpp
-index e1c5e9c..03aaf8d 100644
+index 3bc2ab8..194c617 100644
 --- a/mmc/flash.cpp
 +++ b/mmc/flash.cpp
-@@ -5,6 +5,14 @@
+@@ -5,6 +5,10 @@
  #include "activation.hpp"
  #include "item_updater.hpp"
  
-+#include <sdbusplus/bus.hpp>
-+#include <sdbusplus/message.hpp>
 +#include <filesystem>
-+#include <fstream>
 +
 +namespace fs = std::filesystem;
-+
 +
  namespace phosphor
  {
  namespace software
-@@ -16,6 +24,12 @@ namespace softwareServer = sdbusplus::xyz::openbmc_project::Software::server;
+@@ -16,6 +20,11 @@ namespace softwareServer = sdbusplus::xyz::openbmc_project::Software::server;
  
  void Activation::flashWrite()
  {
-+   
 +    auto copyOption = fs::copy_options::overwrite_existing;
 +    fs::copy("/usr/lib/os-release", "/var/lib/os-release");
 +    std::vector<uint8_t> eventData = {0xAE, 0x01, 0x00};
@@ -347,59 +255,46 @@ index e1c5e9c..03aaf8d 100644
                                        SYSTEMD_INTERFACE, "StartUnit");
      auto serviceFile = "obmc-flash-mmc@" + versionId + ".service";
 diff --git a/static/flash.cpp b/static/flash.cpp
-index 748a6cf..b43eb1f 100644
+index 74316d1..62336d9 100644
 --- a/static/flash.cpp
 +++ b/static/flash.cpp
-@@ -7,8 +7,13 @@
- #include "item_updater.hpp"
- 
- #include <phosphor-logging/lg2.hpp>
--
-+#include <sdbusplus/bus.hpp>
-+#include <sdbusplus/message.hpp>
+@@ -11,6 +11,8 @@
  #include <filesystem>
-+#include <fstream>
-+
+ #include <system_error>
+ 
 +namespace fs = std::filesystem;
 +
- 
  namespace
  {
-@@ -44,6 +49,12 @@ void Activation::flashWrite()
+ constexpr auto PATH_INITRAMFS = "/run/initramfs";
+@@ -45,6 +47,12 @@ void Activation::flashWrite()
          return;
      }
  #endif
-+    
++
 +    auto copyOption = fs::copy_options::overwrite_existing;
 +    fs::copy("/usr/lib/os-release", "/var/lib/os-release", copyOption);
 +    std::vector<uint8_t> eventData = {0xAE, 0x01, 0x00};
 +    utils::reportBySEL(bus, eventData);
-+    
++
      // For static layout code update, just put images in /run/initramfs.
      // It expects user to trigger a reboot and an updater script will program
      // the image to flash during reboot.
 diff --git a/ubi/flash.cpp b/ubi/flash.cpp
-index 0089d01..fbd8f73 100644
+index b445a56..b8ddac6 100644
 --- a/ubi/flash.cpp
 +++ b/ubi/flash.cpp
-@@ -3,6 +3,16 @@
+@@ -2,6 +2,9 @@
+ 
  #include "activation.hpp"
  #include "item_updater.hpp"
- 
-+
-+#include <sdbusplus/bus.hpp>
-+#include <sdbusplus/message.hpp>
 +#include <filesystem>
-+#include <fstream>
 +
 +namespace fs = std::filesystem;
-+
-+
-+
+ 
  namespace phosphor
  {
- namespace software
-@@ -14,6 +24,11 @@ namespace softwareServer = sdbusplus::xyz::openbmc_project::Software::server;
+@@ -14,6 +17,11 @@ namespace softwareServer = sdbusplus::xyz::openbmc_project::Software::server;
  
  void Activation::flashWrite()
  {
@@ -412,14 +307,11 @@ index 0089d01..fbd8f73 100644
                                        SYSTEMD_INTERFACE, "StartUnit");
      method.append("obmc-flash-bmc-ubirw.service", "replace");
 diff --git a/utils.cpp b/utils.cpp
-index d661fb3..746a1aa 100644
+index 204affa..2f338d5 100644
 --- a/utils.cpp
 +++ b/utils.cpp
-@@ -138,6 +138,26 @@ int executeCmd(const char* path, char** args)
-     return 0;
- }
+@@ -121,4 +121,24 @@ std::pair<int, std::string> executeCmd(char** args)
  
-+
  } // namespace internal
  
 +void reportBySEL(sdbusplus::bus::bus& bus, std::vector<uint8_t>& eventData)
@@ -441,26 +333,25 @@ index d661fb3..746a1aa 100644
 +        fprintf(stderr, "%s:%d exception=%s \n", __func__, __LINE__, e.what());
 +    }
 +}
++
  } // namespace utils
 diff --git a/utils.hpp b/utils.hpp
-index 2174938..7187481 100644
+index be4fb2c..91bfa96 100644
 --- a/utils.hpp
 +++ b/utils.hpp
-@@ -118,4 +118,14 @@ int execute(const char* path, Arg&&... args)
-     return internal::executeCmd(path, argArray.data());
+@@ -117,4 +117,12 @@ std::pair<int, std::string> execute(const char* path, Arg&&... args)
+     return internal::executeCmd(argArray.data());
  }
  
-+
 +/**
 + * @brief do system sel log for system firmware update
-+ * 
++ *
 + * @param bus the dbus bus object
 + * @param eventData the eventData of system sel
 + */
-+void reportBySEL(sdbusplus::bus::bus& bus,
-+                        std::vector<uint8_t>& eventData);
++void reportBySEL(sdbusplus::bus::bus& bus, std::vector<uint8_t>& eventData);
 +
  } // namespace utils
 -- 
-2.33.0
+2.25.1
 

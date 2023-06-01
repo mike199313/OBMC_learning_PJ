@@ -4,15 +4,15 @@ Date: Thu, 12 Jan 2023 09:26:43 +0800
 Subject: [PATCH] PLDM BMC software updater integration
 
 ---
- activation.cpp    | 74 +++++++++++++++++++++++++++++++++++++++++++++--
+ activation.cpp    | 71 +++++++++++++++++++++++++++++++++++++++++++++--
  activation.hpp    |  5 ++++
  item_updater.cpp  |  3 ++
  meson.build       |  4 +++
  meson_options.txt |  3 ++
- 5 files changed, 87 insertions(+), 2 deletions(-)
+ 5 files changed, 84 insertions(+), 2 deletions(-)
 
 diff --git a/activation.cpp b/activation.cpp
-index e1f5d0e..5e87ba3 100644
+index c6df591..8ef3ecf 100644
 --- a/activation.cpp
 +++ b/activation.cpp
 @@ -14,10 +14,13 @@
@@ -29,13 +29,13 @@ index e1f5d0e..5e87ba3 100644
  extern boost::asio::io_context& getIOContext();
  
  namespace phosphor
-@@ -151,9 +154,22 @@ auto Activation::activation(Activations value) -> Activations
+@@ -141,8 +144,20 @@ auto Activation::activation(Activations value) -> Activations
  
              return softwareServer::Activation::activation(value);
          }
 -#else
 -        auto purpose = parent.versions.find(versionId)->second->purpose();
- #endif
++#endif
 +
 +#ifdef PLDM_UPGRADE
 +        if (purpose == VersionPurpose::PLDM)
@@ -49,17 +49,14 @@ index e1f5d0e..5e87ba3 100644
 +
 +            return softwareServer::Activation::activation(value);
 +        }
-+#endif
-+
+ #endif
+ 
          if (purpose == VersionPurpose::Other)
-         {
-             if (!activationProgress)
-@@ -631,6 +647,60 @@ void Activation::onStateChangesCpld(sdbusplus::message::message& msg)
+@@ -620,6 +635,58 @@ void Activation::onStateChangesCpld(sdbusplus::message::message& msg)
      return;
  }
  
 +#ifdef PLDM_UPGRADE
-+
 +bool findImages(const fs::path& dirPath, const std::string& matchString,
 +                std::vector<fs::path>& foundPaths)
 +{
@@ -109,14 +106,13 @@ index e1f5d0e..5e87ba3 100644
 +        report<InternalFailure>();
 +    }
 +}
-+
 +#endif
 +
  void Activation::rebootBmc()
  {
      auto method = bus.new_method_call(SYSTEMD_BUSNAME, SYSTEMD_PATH,
 diff --git a/activation.hpp b/activation.hpp
-index c1f8564..e092383 100644
+index 1880aab..fcffd7e 100644
 --- a/activation.hpp
 +++ b/activation.hpp
 @@ -252,6 +252,11 @@ class Activation : public ActivationInherit, public Flash
@@ -132,10 +128,10 @@ index c1f8564..e092383 100644
      /*@brief cpld upgrade*/
      void flashWriteCpld();
 diff --git a/item_updater.cpp b/item_updater.cpp
-index 4864e66..abf77cb 100644
+index e6224e9..9db1a6d 100644
 --- a/item_updater.cpp
 +++ b/item_updater.cpp
-@@ -71,6 +71,9 @@ void ItemUpdater::createActivation(sdbusplus::message::message& msg)
+@@ -72,6 +72,9 @@ void ItemUpdater::createActivation(sdbusplus::message_t& msg)
                      if (value == VersionPurpose::BMC ||
  #ifdef HOST_BIOS_UPGRADE
                          value == VersionPurpose::Host ||
@@ -146,7 +142,7 @@ index 4864e66..abf77cb 100644
                          value == VersionPurpose::System ||
                          value == VersionPurpose::Other)
 diff --git a/meson.build b/meson.build
-index c6d8023..28028aa 100644
+index 205ed8b..753ba05 100644
 --- a/meson.build
 +++ b/meson.build
 @@ -41,6 +41,9 @@ conf.set_quoted('VERSION_BUSNAME', 'xyz.openbmc_project.Software.Version')
@@ -168,7 +164,7 @@ index c6d8023..28028aa 100644
  # Configurable variables
  conf.set('ACTIVE_BMC_MAX_ALLOWED', get_option('active-bmc-max-allowed'))
 diff --git a/meson_options.txt b/meson_options.txt
-index de77ab1..f3d3a95 100644
+index 596bb4a..58aac0e 100644
 --- a/meson_options.txt
 +++ b/meson_options.txt
 @@ -12,6 +12,9 @@ option('bmc-layout', type: 'combo',
@@ -182,5 +178,4 @@ index de77ab1..f3d3a95 100644
      description: 'Enable sync of filesystem files.')
  
 -- 
-2.33.0
-
+2.25.1

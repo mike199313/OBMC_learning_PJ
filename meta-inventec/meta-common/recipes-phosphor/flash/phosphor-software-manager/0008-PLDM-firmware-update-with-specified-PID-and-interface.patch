@@ -4,14 +4,14 @@ Date: Thu, 12 Jan 2023 17:39:22 +0800
 Subject: [PATCH] PLDM firmware update with specified PID and interface
 
 ---
- activation.cpp | 109 +++++++++++++++++++++++++++++++++++++++++++++++--
- 1 file changed, 106 insertions(+), 3 deletions(-)
+ activation.cpp | 108 +++++++++++++++++++++++++++++++++++++++++++++++--
+ 1 file changed, 105 insertions(+), 3 deletions(-)
 
 diff --git a/activation.cpp b/activation.cpp
-index 5e87ba3..67bbb42 100644
+index 8ef3ecf..2efd03e 100644
 --- a/activation.cpp
 +++ b/activation.cpp
-@@ -671,23 +671,126 @@ bool findImages(const fs::path& dirPath, const std::string& matchString,
+@@ -658,23 +658,125 @@ bool findImages(const fs::path& dirPath, const std::string& matchString,
      return true;
  }
  
@@ -87,8 +87,7 @@ index 5e87ba3..67bbb42 100644
      std::vector<fs::path> imagePaths = {};
      if (!findImages(flashId, R"(.*\.bin)", imagePaths))
      {
-+        error("Unable to find firmware image from: {FLASH_ID}", "FLASH_ID",
-+              flashId);
++        error("Unable to find firmware image from: {FLASH_ID}", "FLASH_ID", flashId);
          return;
      }
  
@@ -125,7 +124,7 @@ index 5e87ba3..67bbb42 100644
 +    auto method = bus.new_method_call(serviceName.c_str(), PLDM_PATH, PLDM_INTERFACE,
                                        "StartFWUpdate");
 -    method.append(imagePaths[0].c_str());
-+    uint8_t tid = 0; 
++    uint8_t tid = 0;
 +    try
 +    {
 +        tid = atoi(pldmTid.c_str());
@@ -140,7 +139,7 @@ index 5e87ba3..67bbb42 100644
      try
      {
          auto reply = bus.call(method);
-@@ -695,7 +798,7 @@ void Activation::flashWritePldm()
+@@ -682,7 +784,7 @@ void Activation::flashWritePldm()
      catch (const sdbusplus::exception::exception& e)
      {
          error("Error in trying to upgrade PLDM: {ERROR}", "ERROR", e);
@@ -148,7 +147,6 @@ index 5e87ba3..67bbb42 100644
 +        return;
      }
  }
- 
+ #endif
 -- 
-2.33.0
-
+2.25.1

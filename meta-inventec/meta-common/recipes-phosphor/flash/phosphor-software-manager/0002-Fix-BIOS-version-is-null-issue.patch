@@ -22,10 +22,10 @@ Entry Test:
  2 files changed, 42 insertions(+), 1 deletion(-)
 
 diff --git a/item_updater.cpp b/item_updater.cpp
-index 4ca8a6a..cd07dfa 100644
+index b0e80d4..bbf8891 100644
 --- a/item_updater.cpp
 +++ b/item_updater.cpp
-@@ -850,7 +850,7 @@ void ItemUpdater::createBIOSObject()
+@@ -863,7 +863,7 @@ void ItemUpdater::createBIOSObject()
      createFunctionalAssociation(path);
  
      auto versionId = path.substr(pos + 1);
@@ -34,7 +34,7 @@ index 4ca8a6a..cd07dfa 100644
      AssociationList assocs = {};
      biosActivation = std::make_unique<Activation>(
          bus, path, *this, versionId, server::Activation::Activations::Active,
-@@ -866,6 +866,37 @@ void ItemUpdater::createBIOSObject()
+@@ -879,6 +879,37 @@ void ItemUpdater::createBIOSObject()
          std::make_unique<phosphor::software::manager::Delete>(bus, path,
                                                                *biosVersion);
  }
@@ -73,7 +73,7 @@ index 4ca8a6a..cd07dfa 100644
  
  void ItemUpdater::getRunningSlot()
 diff --git a/item_updater.hpp b/item_updater.hpp
-index ccacd28..46e5fd9 100644
+index c50d9de..aa2ca7e 100644
 --- a/item_updater.hpp
 +++ b/item_updater.hpp
 @@ -20,6 +20,13 @@ namespace software
@@ -87,7 +87,7 @@ index ccacd28..46e5fd9 100644
 +constexpr auto PROP_INTF = "org.freedesktop.DBus.Properties";
 +constexpr auto METHOD_GET = "Get";
 +
- using ItemUpdaterInherit = sdbusplus::server::object::object<
+ using ItemUpdaterInherit = sdbusplus::server::object_t<
      sdbusplus::xyz::openbmc_project::Common::server::FactoryReset,
      sdbusplus::xyz::openbmc_project::Control::server::FieldMode,
 @@ -272,6 +279,9 @@ class ItemUpdater : public ItemUpdaterInherit
@@ -101,5 +101,4 @@ index ccacd28..46e5fd9 100644
      std::unique_ptr<Activation> biosActivation;
  
 -- 
-2.33.0
-
+2.25.1
