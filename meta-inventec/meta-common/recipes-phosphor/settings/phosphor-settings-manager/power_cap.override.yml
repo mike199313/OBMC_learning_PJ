@@ -10,7 +10,7 @@
           PowerCapEnable:
                Default: 'false'
           ExceptionAction:
-               Default: Cap::Action::None
+               Default: Cap::ExceptionActions::NoAction
           CorrectionTime:
                Default: 0
           SamplingPeriod:
