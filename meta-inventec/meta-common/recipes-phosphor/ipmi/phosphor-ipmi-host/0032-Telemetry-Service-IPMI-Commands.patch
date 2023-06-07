@@ -32,6 +32,7 @@ Entry Test:
   - ipmitool raw 0x34 0xee
 - Set log file size limit to 64KB and 32 files rotated
   - ipmitool raw 0x34 0xef 0x40 0x20
+
 ---
  include/ipmid/utils.hpp |  4 +++
  ipmid-new.cpp           | 54 +++++++++++++++++++++++++++++++++++++++++
@@ -39,10 +40,10 @@ Entry Test:
  3 files changed, 75 insertions(+)
 
 diff --git a/include/ipmid/utils.hpp b/include/ipmid/utils.hpp
-index b037505..7a0c9f5 100644
+index eb4f428..b01e19b 100644
 --- a/include/ipmid/utils.hpp
 +++ b/include/ipmid/utils.hpp
-@@ -510,4 +510,8 @@ template <typename T> int updateConfigValue(const std::string& file, const std::
+@@ -524,4 +524,8 @@ template <typename T> int updateConfigValue(const std::string& file, const std::
      return 0;
  }
  
@@ -52,17 +53,17 @@ index b037505..7a0c9f5 100644
 +
  } // namespace ipmi
 diff --git a/ipmid-new.cpp b/ipmid-new.cpp
-index 7f558cd..e57482c 100644
+index f3d12c6..691b492 100644
 --- a/ipmid-new.cpp
 +++ b/ipmid-new.cpp
-@@ -44,6 +44,7 @@
- #include <sdbusplus/bus.hpp>
- #include <sdbusplus/bus/match.hpp>
- #include <sdbusplus/timer.hpp>
-+#include <systemd/sd-journal.h>
- #include <tuple>
+@@ -48,6 +48,7 @@
  #include <unordered_map>
  #include <utility>
+ #include <vector>
++#include <systemd/sd-journal.h>
+ 
+ namespace fs = std::filesystem;
+ 
 @@ -56,6 +57,8 @@ using namespace phosphor::logging;
  // IPMI Spec, shared Reservation ID.
  static unsigned short selReservationID = 0xFFFF;
@@ -72,7 +73,7 @@ index 7f558cd..e57482c 100644
  
  unsigned short reserveSel(void)
  {
-@@ -469,6 +472,20 @@ uint8_t channelFromMessage(sdbusplus::message::message& msg)
+@@ -469,6 +472,20 @@ uint8_t channelFromMessage(sdbusplus::message_t& msg)
      }
  } // namespace ipmi
  
@@ -91,9 +92,9 @@ index 7f558cd..e57482c 100644
 +extern bool getTelemetryStatus(void);
 +
  /* called from sdbus async server context */
- auto executionEntry(boost::asio::yield_context yield,
-                     sdbusplus::message::message& m, NetFn netFn, uint8_t lun,
-@@ -560,6 +577,25 @@ auto executionEntry(boost::asio::yield_context yield,
+ auto executionEntry(boost::asio::yield_context yield, sdbusplus::message_t& m,
+                     NetFn netFn, uint8_t lun, Cmd cmd, ipmi::SecureBuffer& data,
+@@ -559,6 +576,25 @@ auto executionEntry(boost::asio::yield_context yield, sdbusplus::message_t& m,
                        entry("PRIVILEGE=%u", static_cast<uint8_t>(privilege)),
                        entry("RQSA=%x", rqSA));
  
@@ -119,7 +120,7 @@ index 7f558cd..e57482c 100644
      auto ctx = std::make_shared<ipmi::Context>(getSdBus(), netFn, lun, cmd,
                                                 channel, userId, sessionId,
                                                 privilege, rqSA, hostIdx, yield);
-@@ -567,6 +603,24 @@ auto executionEntry(boost::asio::yield_context yield,
+@@ -566,6 +602,24 @@ auto executionEntry(boost::asio::yield_context yield, sdbusplus::message_t& m,
          ctx, std::forward<ipmi::SecureBuffer>(data));
      message::Response::ptr response = executeIpmiCommand(request);
  
@@ -145,7 +146,7 @@ index 7f558cd..e57482c 100644
  }
  
 diff --git a/libipmid/utils.cpp b/libipmid/utils.cpp
-index 0f6d0dd..2e9453f 100644
+index a2e4dd2..e88c52d 100644
 --- a/libipmid/utils.cpp
 +++ b/libipmid/utils.cpp
 @@ -32,6 +32,13 @@ bool isLinkLocalIP(const std::string& ipaddress);
@@ -162,7 +163,7 @@ index 0f6d0dd..2e9453f 100644
  // TODO There may be cases where an interface is implemented by multiple
  //  objects,to handle such cases we are interested on that object
  //  which are on interested busname.
-@@ -677,4 +684,14 @@ ipmi::Cc i2cWriteRead(std::string i2cBus, const uint8_t slaveAddr,
+@@ -688,4 +695,14 @@ ipmi::Cc i2cWriteRead(std::string i2cBus, const uint8_t slaveAddr,
      return ipmi::ccSuccess;
  }
  
@@ -178,5 +179,4 @@ index 0f6d0dd..2e9453f 100644
 +
  } // namespace ipmi
 -- 
-2.17.1
-
+2.25.1

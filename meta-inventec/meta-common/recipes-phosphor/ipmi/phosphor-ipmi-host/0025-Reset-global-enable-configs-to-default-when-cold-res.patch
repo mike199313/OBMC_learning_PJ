@@ -18,22 +18,26 @@ Entry Test:
 	then
 	ipmitooll mc getenables
 	to check if the setting return to defaulty
+
 ---
- globalhandler.cpp | 29 +++++++++++++++++++++++++++++
+ globalhandler.cpp | 27 +++++++++++++++++++++++++++
  globalhandler.hpp | 15 +++++++++++++++
- 2 files changed, 44 insertions(+)
+ 2 files changed, 42 insertions(+)
 
 diff --git a/globalhandler.cpp b/globalhandler.cpp
-index 2561e08..832ed91 100644
+index 4012ce0..615b0b9 100644
 --- a/globalhandler.cpp
 +++ b/globalhandler.cpp
-@@ -32,12 +32,41 @@ void resetBMC()
+@@ -32,6 +32,33 @@ void resetBMC()
                            convertForMessage(BMC::Transition::Reboot));
  }
  
 +static void init_global_enable_configs()
 +{
 +    std::shared_ptr<sdbusplus::asio::connection> dbus = getSdBus();
++
++    /*set global enable config to default when cold reset*/
++    init_global_enable_configs();
 +
 +    try{
 +        /*Set init value for both phosphor-setting-manager and phosphor-sel-logger*/
@@ -55,22 +59,11 @@ index 2561e08..832ed91 100644
 +
 +}
 +
-+
  /** @brief implements cold and warm reset commands
   *  @param - None
   *  @returns IPMI completion code.
-  */
- ipmi::RspType<> ipmiGlobalReset()
- {
-+
-+    /*set global enable config to default when cold reset*/
-+    init_global_enable_configs();
-+
-     try
-     {
-         resetBMC();
 diff --git a/globalhandler.hpp b/globalhandler.hpp
-index 078b170..c4b92fa 100644
+index 078b170..6fb442b 100644
 --- a/globalhandler.hpp
 +++ b/globalhandler.hpp
 @@ -7,3 +7,18 @@ enum ipmi_global_control_cmds : uint8_t
@@ -92,7 +85,5 @@ index 078b170..c4b92fa 100644
 +const static bool EVENT_MSG_BUFFER_ENABLE_DEFAULT = false;
 +const static bool EVENT_MSG_BUFFER_FULL_INTR_DEFAULT = false;
 +const static bool RCV_MSG_QUEUE_INTR_DEFAULT = false;
-\ No newline at end of file
 -- 
-2.33.0
-
+2.25.1

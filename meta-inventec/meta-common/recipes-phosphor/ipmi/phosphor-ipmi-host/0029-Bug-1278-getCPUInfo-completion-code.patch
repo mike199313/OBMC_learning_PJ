@@ -27,6 +27,7 @@ Entry Test：
 
 	sysadmin@transformers:~# ipmitool raw 0x30 0x1B 0x0
 	15 00 10 ff
+
 ---
  include/ipmid/api-types.hpp | 2 ++
  1 file changed, 2 insertions(+)
@@ -45,5 +46,4 @@ index 518db03..67130f7 100644
  /* ipmi often has two return types:
   * 1. Failure: CC is non-zero; no trailing data
 -- 
-2.33.0
-
+2.25.1

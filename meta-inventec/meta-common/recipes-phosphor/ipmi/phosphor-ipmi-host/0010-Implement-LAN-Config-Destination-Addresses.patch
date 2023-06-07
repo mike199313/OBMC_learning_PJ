@@ -22,16 +22,17 @@ Entry Test:
         ipmitool raw 0x0c 0x02 0x01 0x13 0x01 0x00
     - Set Destination Addresses
         ipmitool raw 0x0c 0x01 0x01 0x13 0x00 0x00 0x00 0x0a 0x6 0x8d 0x21 0x7c 0xd3 0x0a 0xc4 0x90 0xe4
+
 ---
  transporthandler.cpp | 157 +++++++++++++++++++++++++++++++++++++++++++
- transporthandler.hpp |   9 +++
- 2 files changed, 166 insertions(+)
+ transporthandler.hpp |   6 ++
+ 2 files changed, 163 insertions(+)
 
 diff --git a/transporthandler.cpp b/transporthandler.cpp
-index b1748ba..04b7a2a 100644
+index 885eea0..802dfb4 100644
 --- a/transporthandler.cpp
 +++ b/transporthandler.cpp
-@@ -909,6 +909,58 @@ void asyncRestartService(const std::string& unit, bool reload)
+@@ -902,6 +902,58 @@ void asyncRestartService(const std::string& unit, bool reload)
      t_restart.detach();
  }
  
@@ -90,8 +91,8 @@ index b1748ba..04b7a2a 100644
  RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
                   uint8_t parameter, message::Payload& req)
  {
-@@ -1136,6 +1188,54 @@ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
-             }
+@@ -1353,6 +1405,54 @@ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
+             asyncRestartService(NETIPMID_SERVICE + interface, true);
              return responseSuccess();
          }
 +        case LanParam::DestinationNum:
@@ -142,11 +143,11 @@ index b1748ba..04b7a2a 100644
 +            configureDestAddress(client_idx, address);
 +            return responseSuccess();
 +        }
-         case LanParam::VLANId:
-         {
-             uint12_t vlanData = 0;
-@@ -1515,6 +1615,63 @@ RspType<message::Payload> getLan(Context::ptr ctx, uint4_t channelBits,
-             ret.pack(dataRef(resp));
+     }
+ 
+     if ((parameter >= oemCmdStart) && (parameter <= oemCmdEnd))
+@@ -1662,6 +1762,63 @@ RspType<message::Payload> getLan(Context::ptr ctx, uint4_t channelBits,
+             ret.pack(dataRef(port));
              return responseSuccess(std::move(ret));
          }
 +        case LanParam::DestinationNum:
@@ -206,35 +207,14 @@ index b1748ba..04b7a2a 100644
 +            }
 +            return responseRetBytesUnavailable();
 +        }
-         case LanParam::VLANId:
-         {
-             uint16_t vlan = channelCall<getVLANProperty>(channel);
+     }
+ 
+     if ((parameter >= oemCmdStart) && (parameter <= oemCmdEnd))
 diff --git a/transporthandler.hpp b/transporthandler.hpp
-index c645f24..3df9a97 100644
+index e8a9a0c..13823ac 100644
 --- a/transporthandler.hpp
 +++ b/transporthandler.hpp
-@@ -34,6 +34,7 @@
- #include <user_channel/channel_layer.hpp>
- #include <utility>
- #include <vector>
-+#include <netdb.h>
- #include <boost/process.hpp>
- #include <xyz/openbmc_project/Common/error.hpp>
- #include <xyz/openbmc_project/Network/EthernetInterface/server.hpp>
-@@ -60,6 +61,12 @@ constexpr auto INTF_NEIGHBOR_CREATE_STATIC =
-     "xyz.openbmc_project.Network.Neighbor.CreateStatic";
- constexpr auto INTF_VLAN = "xyz.openbmc_project.Network.VLAN";
- constexpr auto INTF_VLAN_CREATE = "xyz.openbmc_project.Network.VLAN.Create";
-+constexpr auto SNMP_ROOT = "/xyz/openbmc_project/network/snmp/manager";
-+constexpr auto SNMP_BUS = "xyz.openbmc_project.Network.SNMP";
-+constexpr auto INTF_CLIENT = "xyz.openbmc_project.Network.Client";
-+constexpr auto INTF_CLIENT_CREATE = "xyz.openbmc_project.Network.Client.Create";
-+
-+
- using namespace phosphor::logging;
- 
- /** @brief IPMI LAN Parameters */
-@@ -76,6 +83,8 @@ enum class LanParam : uint8_t
+@@ -74,6 +74,8 @@ enum class LanParam : uint8_t
      Gateway1 = 12,
      Gateway1MAC = 13,
      CommunityStr = 16,
@@ -243,6 +223,16 @@ index c645f24..3df9a97 100644
      VLANId = 20,
      CiphersuiteSupport = 22,
      CiphersuiteEntries = 23,
+@@ -713,6 +715,10 @@ enum class SolConfParam : uint8_t
+ constexpr uint8_t ipmiCCParamNotSupported = 0x80;
+ constexpr uint8_t ipmiCCWriteReadParameter = 0x82;
+ 
++constexpr auto SNMP_ROOT = "/xyz/openbmc_project/network/snmp/manager";
++constexpr auto SNMP_BUS = "xyz.openbmc_project.Network.SNMP";
++constexpr auto INTF_CLIENT = "xyz.openbmc_project.Network.Client";
++constexpr auto INTF_CLIENT_CREATE = "xyz.openbmc_project.Network.Client.Create";
+ // Systemd service for netipmid
+ constexpr auto NETIPMID_SERVICE = "phosphor-ipmi-net@";
+ // Config file for LAN Config Parameters
 -- 
-2.33.0
-
+2.25.1

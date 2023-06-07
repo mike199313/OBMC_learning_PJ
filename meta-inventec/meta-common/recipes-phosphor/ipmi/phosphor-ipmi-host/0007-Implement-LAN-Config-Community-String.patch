@@ -23,17 +23,18 @@ Entry Test:
         ipmitool raw 0x0c 0x02 0x01 0x10 0x00 0x00
     - Set Community String
         ipmitool raw 0x0c 0x01 0x01 0x10 0x50 0x74 0x74 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
+
 ---
- transporthandler.cpp | 25 +++++++++++++++++
- transporthandler.hpp | 64 ++++++++++++++++++++++++++++++++++++++++++++
- 2 files changed, 89 insertions(+)
+ transporthandler.cpp | 25 ++++++++++++++++++
+ transporthandler.hpp | 62 ++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 87 insertions(+)
 
 diff --git a/transporthandler.cpp b/transporthandler.cpp
-index b543bdd..7002df5 100644
+index dce3fc2..5bb06d3 100644
 --- a/transporthandler.cpp
 +++ b/transporthandler.cpp
-@@ -1066,6 +1066,22 @@ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
-             channelCall<reconfigureGatewayMAC<AF_INET>>(channel, gatewayMAC);
+@@ -1283,6 +1283,22 @@ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
+             channelCall<setIPv6HopProperty>(channel, limit);
              return responseSuccess();
          }
 +        case LanParam::CommunityStr:
@@ -52,11 +53,11 @@ index b543bdd..7002df5 100644
 +            }
 +            return responseSuccess();
 +        }
-         case LanParam::VLANId:
-         {
-             uint12_t vlanData = 0;
-@@ -1429,6 +1445,15 @@ RspType<message::Payload> getLan(Context::ptr ctx, uint4_t channelBits,
-             ret.pack(dataRef(mac));
+     }
+ 
+     if ((parameter >= oemCmdStart) && (parameter <= oemCmdEnd))
+@@ -1576,6 +1592,15 @@ RspType<message::Payload> getLan(Context::ptr ctx, uint4_t channelBits,
+             ret.pack(static_cast<uint8_t>(limit));
              return responseSuccess(std::move(ret));
          }
 +        case LanParam::CommunityStr:
@@ -68,25 +69,23 @@ index b543bdd..7002df5 100644
 +            ret.pack(dataRef(resp));
 +            return responseSuccess(std::move(ret));
 +        }
-         case LanParam::VLANId:
-         {
-             uint16_t vlan = channelCall<getVLANProperty>(channel);
+     }
+ 
+     if ((parameter >= oemCmdStart) && (parameter <= oemCmdEnd))
 diff --git a/transporthandler.hpp b/transporthandler.hpp
-index fd585be..e19b54e 100644
+index 9175fab..01fabbc 100644
 --- a/transporthandler.hpp
 +++ b/transporthandler.hpp
-@@ -37,6 +37,10 @@
+@@ -37,6 +37,8 @@
  #include <xyz/openbmc_project/Network/EthernetInterface/server.hpp>
  #include <xyz/openbmc_project/Network/IP/server.hpp>
  #include <xyz/openbmc_project/Network/Neighbor/server.hpp>
 +#include <iomanip>
-+#include <fstream>
 +#include <nlohmann/json.hpp>
-+#include <phosphor-logging/log.hpp>
  
  namespace ipmi
  {
-@@ -54,6 +58,7 @@ constexpr auto INTF_NEIGHBOR_CREATE_STATIC =
+@@ -54,6 +56,7 @@ constexpr auto INTF_NEIGHBOR_CREATE_STATIC =
      "xyz.openbmc_project.Network.Neighbor.CreateStatic";
  constexpr auto INTF_VLAN = "xyz.openbmc_project.Network.VLAN";
  constexpr auto INTF_VLAN_CREATE = "xyz.openbmc_project.Network.VLAN.Create";
@@ -94,7 +93,7 @@ index fd585be..e19b54e 100644
  
  /** @brief IPMI LAN Parameters */
  enum class LanParam : uint8_t
-@@ -67,6 +72,7 @@ enum class LanParam : uint8_t
+@@ -67,6 +70,7 @@ enum class LanParam : uint8_t
      SubnetMask = 6,
      Gateway1 = 12,
      Gateway1MAC = 13,
@@ -102,9 +101,9 @@ index fd585be..e19b54e 100644
      VLANId = 20,
      CiphersuiteSupport = 22,
      CiphersuiteEntries = 23,
-@@ -165,6 +171,64 @@ constexpr uint8_t MAX_IPV4_PREFIX_LENGTH = 32;
- constexpr uint8_t MIN_IPV6_PREFIX_LENGTH = 1;
- constexpr uint8_t MAX_IPV6_PREFIX_LENGTH = 128;
+@@ -706,5 +710,63 @@ enum class SolConfParam : uint8_t
+ constexpr uint8_t ipmiCCParamNotSupported = 0x80;
+ constexpr uint8_t ipmiCCWriteReadParameter = 0x82;
  
 +// Config file for LAN Config Parameters
 +constexpr auto LAN_CFG_FILE = "/usr/share/ipmi-providers/lan_config.json";
@@ -134,7 +133,7 @@ index fd585be..e19b54e 100644
 +
 +    if (data.contains(name))
 +    {
-+        val = data[name];
++        val = (T)data[name];
 +        return 0;
 +    }
 +
@@ -164,9 +163,7 @@ index fd585be..e19b54e 100644
 +    return 0;
 +}
 +
- /** @brief The dbus parameters for the interface corresponding to a channel
-  *         This helps reduce the number of mapper lookups we need for each
-  *         query and simplifies finding the VLAN interface if needed.
+ } // namespace transport
+ } // namespace ipmi
 -- 
-2.33.0
-
+2.25.1

@@ -28,10 +28,10 @@ Entry Test:
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/transporthandler.cpp b/transporthandler.cpp
-index e5eb7ba..0232e0b 100644
+index 374b8e1..585c644 100644
 --- a/transporthandler.cpp
 +++ b/transporthandler.cpp
-@@ -1839,7 +1839,7 @@ RspType<message::Payload> getLan(Context::ptr ctx, uint4_t channelBits,
+@@ -1754,7 +1754,7 @@ RspType<message::Payload> getLan(Context::ptr ctx, uint4_t channelBits,
          case LanParam::IPFamilySupport:
          {
              std::bitset<8> support;
@@ -40,6 +40,5 @@ index e5eb7ba..0232e0b 100644
              support[IPFamilySupportFlag::DualStack] = 1;
              support[IPFamilySupportFlag::IPv6Alerts] = 1;
              ret.pack(support);
--- 
-2.33.0
-
+--
+2.25.1

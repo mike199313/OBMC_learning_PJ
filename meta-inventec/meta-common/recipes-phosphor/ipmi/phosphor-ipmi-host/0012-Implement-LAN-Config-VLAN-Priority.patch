@@ -27,17 +27,18 @@ Entry Test:
         ipmitool raw 0x0c 0x01 0x01 0x15 0x5
     - Get VLAN priority
         ipmitool raw 0x0c 0x02 0x01 0x15 0x00 0x00
+
 ---
  transporthandler.cpp | 63 ++++++++++++++++++++++++++++++++++++++++++++
  transporthandler.hpp |  2 ++
  2 files changed, 65 insertions(+)
 
 diff --git a/transporthandler.cpp b/transporthandler.cpp
-index 04b7a2a..9c551eb 100644
+index 802dfb4..8f46886 100644
 --- a/transporthandler.cpp
 +++ b/transporthandler.cpp
-@@ -587,6 +587,43 @@ uint16_t getVLANProperty(sdbusplus::bus::bus& bus, const ChannelParams& params)
-     return vlan;
+@@ -954,6 +954,43 @@ void getDestAddress(uint8_t idx, std::string& address)
+     }
  }
  
 +/** @brief Gets the vlan priority configured on the interface
@@ -77,11 +78,11 @@ index 04b7a2a..9c551eb 100644
 +                    "Priority", priority);
 +}
 +
- /** @brief Deletes all of the possible configuration parameters for a channel
-  *
-  *  @param[in] bus    - The bus object used for lookups
-@@ -1268,6 +1305,25 @@ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
-             channelCall<reconfigureVLAN>(channel, vlan);
+ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
+                  uint8_t parameter, message::Payload& req)
+ {
+@@ -1453,6 +1490,25 @@ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
+             configureDestAddress(client_idx, address);
              return responseSuccess();
          }
 +        case LanParam::VLANPriority:
@@ -103,12 +104,12 @@ index 04b7a2a..9c551eb 100644
 +            channelCall<setVLANPriority>(channel, (uint8_t)priority);
 +            return responseSuccess();
 +        }
-         case LanParam::CiphersuiteSupport:
-         case LanParam::CiphersuiteEntries:
-         case LanParam::IPFamilySupport:
-@@ -1686,6 +1742,13 @@ RspType<message::Payload> getLan(Context::ptr ctx, uint4_t channelBits,
-             ret.pack(vlan);
-             return responseSuccess(std::move(ret));
+     }
+ 
+     if ((parameter >= oemCmdStart) && (parameter <= oemCmdEnd))
+@@ -1819,6 +1875,13 @@ RspType<message::Payload> getLan(Context::ptr ctx, uint4_t channelBits,
+             }
+             return responseRetBytesUnavailable();
          }
 +        case LanParam::VLANPriority:
 +        {
@@ -117,14 +118,14 @@ index 04b7a2a..9c551eb 100644
 +            ret.pack(priority);
 +            return responseSuccess(std::move(ret));
 +        }
-         case LanParam::CiphersuiteSupport:
-         {
-             if (getChannelSessionSupport(channel) ==
+     }
+ 
+     if ((parameter >= oemCmdStart) && (parameter <= oemCmdEnd))
 diff --git a/transporthandler.hpp b/transporthandler.hpp
-index 3df9a97..add4d11 100644
+index 13823ac..73fd927 100644
 --- a/transporthandler.hpp
 +++ b/transporthandler.hpp
-@@ -86,6 +86,7 @@ enum class LanParam : uint8_t
+@@ -77,6 +77,7 @@ enum class LanParam : uint8_t
      DestinationNum = 17,
      DestinationAddresses = 19,
      VLANId = 20,
@@ -132,14 +133,13 @@ index 3df9a97..add4d11 100644
      CiphersuiteSupport = 22,
      CiphersuiteEntries = 23,
      cipherSuitePrivilegeLevels = 24,
-@@ -172,6 +173,7 @@ constexpr Cc ccParamReadOnly = 0x82;
- // VLANs are a 12-bit value
- constexpr uint16_t VLAN_VALUE_MASK = 0x0fff;
- constexpr uint16_t VLAN_ENABLE_FLAG = 0x8000;
+@@ -726,6 +727,7 @@ constexpr auto LAN_CFG_FILE = "/usr/share/ipmi-providers/lan_config.json";
+ // Config name for LAN Config Parameters
+ constexpr auto LAN_CONFIG_COMM_STR = "community_str";
+ constexpr auto LAN_CONFIG_PRI_RMCP_PORT = "primary_rmcp_port";
 +constexpr uint8_t VLAN_PRIORITY_MASK = 0x07;
  
- // Arbitrary v6 Address Limits to prevent too much output in ipmitool
- constexpr uint8_t MAX_IPV6_STATIC_ADDRESSES = 15;
+ /** @brief get config value from LAN configuration file.
+  *  @param[in] name - config name.
 -- 
-2.33.0
-
+2.25.1

@@ -22,15 +22,16 @@ Entry Test:
         ipmitool raw 0x0c 0x01 0x01 0x13 0x00 0x00 0x00 0x0a 0x6 0x8d 0x21 0x7c 0xd3 0x0a 0xc4 0x90 0xe4
     - Get destination address
         ipmitool raw 0x0c 0x02 0x01 0x13 0x00 0x00
+
 ---
  transporthandler.cpp | 44 ++++++++++++++++++++++++--------------------
  1 file changed, 24 insertions(+), 20 deletions(-)
 
 diff --git a/transporthandler.cpp b/transporthandler.cpp
-index f171f91..e5eb7ba 100644
+index 48a2653..374b8e1 100644
 --- a/transporthandler.cpp
 +++ b/transporthandler.cpp
-@@ -1003,7 +1003,7 @@ void asyncRestartService(const std::string& unit, bool reload)
+@@ -907,7 +907,7 @@ void asyncRestartService(const std::string& unit, bool reload)
   *  @param[in] idx   - Client id
   *  @param[in] address   - IP address
   */
@@ -39,7 +40,7 @@ index f171f91..e5eb7ba 100644
  {
      try
      {
-@@ -1011,7 +1011,7 @@ void configureDestAddress(uint8_t idx, std::string& address)
+@@ -915,7 +915,7 @@ void configureDestAddress(uint8_t idx, std::string& address)
          std::string objPath = std::string(SNMP_ROOT) + "/" + std::to_string(idx);
          deleteObjectIfExists(bus, SNMP_BUS, objPath);
          auto req = bus.new_method_call(SNMP_BUS, SNMP_ROOT, INTF_CLIENT_CREATE, "Client");
@@ -48,7 +49,7 @@ index f171f91..e5eb7ba 100644
          auto reply = bus.call(req);
          sdbusplus::message::object_path newPath;
          reply.read(newPath);
-@@ -1031,7 +1031,7 @@ void configureDestAddress(uint8_t idx, std::string& address)
+@@ -935,7 +935,7 @@ void configureDestAddress(uint8_t idx, std::string& address)
   *  @param[in] idx   - Client id
   *  @param[out] address   - IP address
   */
@@ -57,7 +58,7 @@ index f171f91..e5eb7ba 100644
  {
      try
      {
-@@ -1039,6 +1039,8 @@ void getDestAddress(uint8_t idx, std::string& address)
+@@ -943,6 +943,8 @@ void getDestAddress(uint8_t idx, std::string& address)
          std::string path = std::string(SNMP_ROOT) + "/" + std::to_string(idx);
          address = std::get<std::string>(getDbusProperty(
          bus, SNMP_BUS, path, INTF_CLIENT, "Address"));
@@ -66,7 +67,7 @@ index f171f91..e5eb7ba 100644
      }
      catch (InternalFailure& e)
      {
-@@ -1292,6 +1294,7 @@ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
+@@ -1513,6 +1515,7 @@ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
              uint8_t client_idx = selector & 0x0f;
              int ip_format = (int)((format >> 4) & 0x0f);
              std::string address;
@@ -74,7 +75,7 @@ index f171f91..e5eb7ba 100644
              if (ip_format == 0) //IPv4 address with MAC
              {
                  in_addr ip;
-@@ -1305,6 +1308,7 @@ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
+@@ -1526,6 +1529,7 @@ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
                  copyInto(ip, ipbytes);
                  copyInto(mac, macbytes);
                  address = addrToString<AF_INET>(ip);
@@ -82,7 +83,7 @@ index f171f91..e5eb7ba 100644
              }
              else if (ip_format == 1) //IPv6 address
              {
-@@ -1316,13 +1320,14 @@ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
+@@ -1537,13 +1541,14 @@ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
                  }
                  copyInto(ip, ipv6_bytes);
                  address = addrToString<AF_INET6>(ip);
@@ -97,21 +98,20 @@ index f171f91..e5eb7ba 100644
 +            configureDestAddress(client_idx, address, macAddress);
              return responseSuccess();
          }
-         case LanParam::VLANId:
-@@ -1737,9 +1742,10 @@ RspType<message::Payload> getLan(Context::ptr ctx, uint4_t channelBits,
-             uint8_t format;
+         case LanParam::VLANPriority:
+@@ -1887,8 +1892,9 @@ RspType<message::Payload> getLan(Context::ptr ctx, uint4_t channelBits,
              uint8_t client_idx;
              std::string ip = "";
-+            std::string macAddr = "";
              client_idx = set & 0x0f;
 -            getDestAddress(client_idx, ip);
 -            std::cout << "[DestinationAddresses] get addr " << ip << std::endl;
++            std::string macAddr = "";
 +            getDestAddress(client_idx, ip, macAddr);
 +            std::cout << "[DestinationAddresses] get addr " << ip << ", mac " << macAddr << std::endl;
              if (ip.length() == 0)
              {
                  return responseRetBytesUnavailable();
-@@ -1761,25 +1767,23 @@ RspType<message::Payload> getLan(Context::ptr ctx, uint4_t channelBits,
+@@ -1910,25 +1916,23 @@ RspType<message::Payload> getLan(Context::ptr ctx, uint4_t channelBits,
              addr = nullptr;
              if (family == AF_INET) //IPv4
              {
@@ -150,5 +150,4 @@ index f171f91..e5eb7ba 100644
              return responseRetBytesUnavailable();
          }
 -- 
-2.33.0
-
+2.25.1

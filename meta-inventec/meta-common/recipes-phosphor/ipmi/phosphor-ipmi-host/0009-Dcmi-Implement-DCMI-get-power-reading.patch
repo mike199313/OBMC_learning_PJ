@@ -38,24 +38,25 @@ sysadmin@transformers:~# ipmitool dcmi power reading
     Average power reading over sample period:       11 Watts
     IPMI timestamp:                           05/13/21 02:18:00 UTC    Sampling period:                          00000010 Seconds.
     Power reading state is:                   deactivated
+
 ---
- dcmihandler.cpp | 221 +++++++++++++++++++++++++++++++++++++++++++++---
+ dcmihandler.cpp | 220 +++++++++++++++++++++++++++++++++++++++++++++---
  dcmihandler.hpp |   6 ++
- 2 files changed, 214 insertions(+), 13 deletions(-)
+ 2 files changed, 212 insertions(+), 14 deletions(-)
 
 diff --git a/dcmihandler.cpp b/dcmihandler.cpp
-index a7a3bf1..b95cf94 100644
+index f06441b..41cd822 100644
 --- a/dcmihandler.cpp
 +++ b/dcmihandler.cpp
-@@ -7,6 +7,7 @@
- #include <bitset>
- #include <cmath>
- #include <fstream>
+@@ -16,6 +16,7 @@
+ #include <variant>
+ #include <xyz/openbmc_project/Common/error.hpp>
+ #include <xyz/openbmc_project/Network/EthernetInterface/server.hpp>
 +#include <time.h>
- #include <ipmid/api.hpp>
- #include <ipmid/utils.hpp>
- #include <nlohmann/json.hpp>
-@@ -22,11 +23,28 @@ using InternalFailure =
+ 
+ using namespace phosphor::logging;
+ using sdbusplus::xyz::openbmc_project::Network::server::EthernetInterface;
+@@ -25,6 +26,20 @@ using InternalFailure =
  
  void register_netfn_dcmi_functions() __attribute__((constructor));
  
@@ -69,22 +70,14 @@ index a7a3bf1..b95cf94 100644
 +constexpr auto DCMI_AVERAGE_POWER = "AverageValue";
 +constexpr auto DCMI_LAST_SAMPLE_TIME = "LastSampleTime";
 +constexpr auto DCMI_AVERAGE_COUNT = "AverageCount";
-+
-+
- constexpr auto PCAP_PATH = "/xyz/openbmc_project/control/host0/power_cap";
- constexpr auto PCAP_INTERFACE = "xyz.openbmc_project.Control.Power.Cap";
- 
- constexpr auto POWER_CAP_PROP = "PowerCap";
- constexpr auto POWER_CAP_ENABLE_PROP = "PowerCapEnable";
-+/* Bug 307 - [SW][Common][Power]Implement inventec-dcmi-power */
 +constexpr auto SAMPLINGPERIOD_PROP = "SamplingPeriod";
 +constexpr auto EXCEPTIONACTION_PROP = "ExceptionAction";
 +constexpr auto CORRECTIONTIME_PROP = "CorrectionTime";
 +
+ constexpr auto PCAP_PATH = "/xyz/openbmc_project/control/host0/power_cap";
+ constexpr auto PCAP_INTERFACE = "xyz.openbmc_project.Control.Power.Cap";
  
- constexpr auto DCMI_PARAMETER_REVISION = 2;
- constexpr auto DCMI_SPEC_MAJOR_VERSION = 1;
-@@ -149,6 +167,86 @@ void setPcapEnable(sdbusplus::bus::bus& bus, bool enabled)
+@@ -152,6 +167,86 @@ void setPcapEnable(sdbusplus::bus_t& bus, bool enabled)
      }
  }
  
@@ -171,7 +164,16 @@ index a7a3bf1..b95cf94 100644
  void readAssetTagObjectTree(dcmi::assettag::ObjectTree& objectTree)
  {
      static constexpr auto mapperBusName = "xyz.openbmc_project.ObjectMapper";
-@@ -1175,33 +1273,130 @@ ipmi_ret_t getPowerReading(ipmi_netfn_t netfn, ipmi_cmd_t cmd,
+@@ -1169,7 +1264,7 @@ ipmi_ret_t getDCMIConfParams(ipmi_netfn_t, ipmi_cmd_t, ipmi_request_t request,
+     return IPMI_CC_OK;
+ }
+ 
+-ipmi_ret_t getPowerReading(ipmi_netfn_t, ipmi_cmd_t, ipmi_request_t,
++ipmi_ret_t getPowerReading(ipmi_netfn_t, ipmi_cmd_t, ipmi_request_t request,
+                            ipmi_response_t response, ipmi_data_len_t data_len,
+                            ipmi_context_t)
+ {
+@@ -1180,33 +1275,130 @@ ipmi_ret_t getPowerReading(ipmi_netfn_t, ipmi_cmd_t, ipmi_request_t,
          return IPMI_CC_INVALID;
      }
  
@@ -219,7 +221,7 @@ index a7a3bf1..b95cf94 100644
      auto responseData =
          reinterpret_cast<dcmi::GetPowerReadingResponse*>(response);
  
--    sdbusplus::bus::bus bus{ipmid_get_sd_bus_connection()};
+-    sdbusplus::bus_t bus{ipmid_get_sd_bus_connection()};
 -    int64_t power = 0;
 +    /* Bug 307 - [SW][Common][Power]Implement inventec-dcmi-power */
 +    uint32_t timestamp;
@@ -316,7 +318,7 @@ index a7a3bf1..b95cf94 100644
      *data_len = sizeof(*responseData);
      return rc;
 diff --git a/dcmihandler.hpp b/dcmihandler.hpp
-index 4f35bc6..41d3171 100644
+index 303f6d0..0367c19 100644
 --- a/dcmihandler.hpp
 +++ b/dcmihandler.hpp
 @@ -487,6 +487,12 @@ struct GetPowerReadingRequest
@@ -333,5 +335,4 @@ index 4f35bc6..41d3171 100644
   *
   *  DCMI Get Power Reading command response.
 -- 
-2.33.0
-
+2.25.1

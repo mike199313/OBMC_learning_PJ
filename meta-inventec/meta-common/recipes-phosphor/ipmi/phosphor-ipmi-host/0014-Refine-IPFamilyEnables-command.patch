@@ -22,15 +22,16 @@ Entry Test:
         ipmitool raw 0x0c 0x01 0x01 0x33 0x01
     - Get current IP addressing mode
         ipmitool raw 0x0c 0x02 0x01 0x33 0x00 0x00
+
 ---
- transporthandler.cpp | 60 ++++++++++++++++++++++++++++++++++++++++++--
- 1 file changed, 58 insertions(+), 2 deletions(-)
+ transporthandler.cpp | 59 +++++++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 58 insertions(+), 1 deletion(-)
 
 diff --git a/transporthandler.cpp b/transporthandler.cpp
-index 9c551eb..f171f91 100644
+index 8f46886..48a2653 100644
 --- a/transporthandler.cpp
 +++ b/transporthandler.cpp
-@@ -624,6 +624,58 @@ void setVLANPriority(sdbusplus::bus::bus& bus, const ChannelParams& params, uint
+@@ -991,6 +991,58 @@ void setVLANPriority(sdbusplus::bus::bus& bus, const ChannelParams& params, uint
                      "Priority", priority);
  }
  
@@ -86,10 +87,10 @@ index 9c551eb..f171f91 100644
 +                    "IPFamily", newFamily);
 +}
 +
- /** @brief Deletes all of the possible configuration parameters for a channel
-  *
-  *  @param[in] bus    - The bus object used for lookups
-@@ -1338,6 +1390,7 @@ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
+ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
+                  uint8_t parameter, message::Payload& req)
+ {
+@@ -1230,6 +1282,7 @@ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
              {
                  return responseReqDataLenInvalid();
              }
@@ -97,18 +98,17 @@ index 9c551eb..f171f91 100644
              switch (static_cast<IPFamilyEnables>(enables))
              {
                  case IPFamilyEnables::DualStack:
-@@ -1346,7 +1399,9 @@ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
-                 case IPFamilyEnables::IPv6Only:
+@@ -1239,6 +1292,9 @@ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
                      return response(ccParamNotSupported);
              }
--            return response(ccParamNotSupported);
+             return response(ccParamNotSupported);
 +            */
 +            channelCall<setIPFamily>(channel, static_cast<IPFamilyEnables>(enables));
 +            return responseSuccess();
          }
          case LanParam::IPv6Status:
          {
-@@ -1788,7 +1843,8 @@ RspType<message::Payload> getLan(Context::ptr ctx, uint4_t channelBits,
+@@ -1701,7 +1757,8 @@ RspType<message::Payload> getLan(Context::ptr ctx, uint4_t channelBits,
          }
          case LanParam::IPFamilyEnables:
          {
@@ -119,5 +119,4 @@ index 9c551eb..f171f91 100644
          }
          case LanParam::IPv6Status:
 -- 
-2.33.0
-
+2.25.1

@@ -46,13 +46,14 @@ sysadmin@transformers:~# ipmitool dcmi power set_limit sample 2000
     Power Limit:         10 Watts
     Correction time:     100 milliseconds
     Sampling period:     2000 seconds
+
 ---
- dcmihandler.cpp | 100 +++++++++++++++++++++++++++++++++++++++++-------
- dcmihandler.hpp |  13 +++++++
- 2 files changed, 100 insertions(+), 13 deletions(-)
+ dcmihandler.cpp | 99 +++++++++++++++++++++++++++++++++++++++++++------
+ dcmihandler.hpp | 12 ++++++
+ 2 files changed, 99 insertions(+), 12 deletions(-)
 
 diff --git a/dcmihandler.cpp b/dcmihandler.cpp
-index b95cf94..143b6f7 100644
+index 41cd822..a7f68ae 100644
 --- a/dcmihandler.cpp
 +++ b/dcmihandler.cpp
 @@ -209,6 +209,28 @@ void setSamplingPeriod(sdbusplus::bus::bus& bus, uint32_t samplingPeriod)
@@ -113,28 +114,27 @@ index b95cf94..143b6f7 100644
  void setCorrectionTime(sdbusplus::bus::bus& bus, uint32_t correctionTime)
  {
      auto service = ipmi::getService(bus, PCAP_INTERFACE, PCAP_PATH);
-@@ -412,12 +456,20 @@ ipmi_ret_t getPowerLimit(ipmi_netfn_t netfn, ipmi_cmd_t cmd,
+@@ -413,11 +457,19 @@ ipmi_ret_t getPowerLimit(ipmi_netfn_t, ipmi_cmd_t, ipmi_request_t,
          reinterpret_cast<dcmi::GetPowerLimitResponse*>(outPayload.data());
  
-     sdbusplus::bus::bus sdbus{ipmid_get_sd_bus_connection()};
+     sdbusplus::bus_t sdbus{ipmid_get_sd_bus_connection()};
 +    /* Bug 309 - [SW][Common][DCMI] Set and Get power limit */
 +    std::string expectionAction = "";
-     uint32_t pcapValue = 0;
 +    uint32_t correctionTime = 0;
 +    uint32_t samplingPeriod = 0;
+     uint32_t pcapValue = 0;
      bool pcapEnable = false;
  
      try
      {
 +        /* Bug 309 - [SW][Common][DCMI] Set and Get power limit */
 +        expectionAction = dcmi::getExceptionAction(sdbus);
-         pcapValue = dcmi::getPcap(sdbus);
 +        correctionTime = dcmi::getCorrectionTime(sdbus);
 +        samplingPeriod = dcmi::getSamplingPeriod(sdbus);
+         pcapValue = dcmi::getPcap(sdbus);
          pcapEnable = dcmi::getPcapEnabled(sdbus);
      }
-     catch (const InternalFailure& e)
-@@ -426,20 +478,23 @@ ipmi_ret_t getPowerLimit(ipmi_netfn_t netfn, ipmi_cmd_t cmd,
+@@ -427,20 +479,24 @@ ipmi_ret_t getPowerLimit(ipmi_netfn_t, ipmi_cmd_t, ipmi_request_t,
          return IPMI_CC_UNSPECIFIED_ERROR;
      }
  
@@ -160,7 +160,7 @@ index b95cf94..143b6f7 100644
 +    }
  
      responseData->powerLimit = static_cast<uint16_t>(pcapValue);
--
+ 
 -    /*
 -     * Correction time limit and Statistics sampling period is currently not
 -     * populated.
@@ -170,9 +170,9 @@ index b95cf94..143b6f7 100644
  
      *data_len = outPayload.size();
      memcpy(response, outPayload.data(), *data_len);
-@@ -470,10 +525,29 @@ ipmi_ret_t setPowerLimit(ipmi_netfn_t netfn, ipmi_cmd_t cmd,
+@@ -471,9 +527,28 @@ ipmi_ret_t setPowerLimit(ipmi_netfn_t, ipmi_cmd_t, ipmi_request_t request,
  
-     sdbusplus::bus::bus sdbus{ipmid_get_sd_bus_connection()};
+     sdbusplus::bus_t sdbus{ipmid_get_sd_bus_connection()};
  
 -    // Only process the power limit requested in watts.
      try
@@ -195,17 +195,16 @@ index b95cf94..143b6f7 100644
 +            *data_len = 0;
 +            return IPMI_CC_PARM_OUT_OF_RANGE;
 +        }
-         dcmi::setPcap(sdbus, requestData->powerLimit);
 +        dcmi::setCorrectionTime(sdbus, requestData->correctionTime);
 +        dcmi::setSamplingPeriod(sdbus, requestData->samplingPeriod);
+         dcmi::setPcap(sdbus, requestData->powerLimit);
      }
      catch (const InternalFailure& e)
-     {
 diff --git a/dcmihandler.hpp b/dcmihandler.hpp
-index 41d3171..0c950de 100644
+index 0367c19..24d94df 100644
 --- a/dcmihandler.hpp
 +++ b/dcmihandler.hpp
-@@ -243,6 +243,19 @@ struct SetPowerLimitRequest
+@@ -243,6 +243,18 @@ struct SetPowerLimitRequest
      uint16_t samplingPeriod; //!< Statistics sampling period in seconds.
  } __attribute__((packed));
  
@@ -221,10 +220,8 @@ index 41d3171..0c950de 100644
 +    LOG = 0x11,
 +};
 +
-+
  /** @brief Enable or disable the power capping
   *
   *  @param[in] bus - dbus connection
 -- 
-2.33.0
-
+2.25.1

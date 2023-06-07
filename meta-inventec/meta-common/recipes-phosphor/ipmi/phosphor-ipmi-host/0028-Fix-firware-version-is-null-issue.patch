@@ -19,31 +19,32 @@ Entry Test:
   - ipmitool mc reset cold
 - Get device info
   - ipmitool mc info
+
 ---
  apphandler.cpp | 4 +++-
  1 file changed, 3 insertions(+), 1 deletion(-)
 
 diff --git a/apphandler.cpp b/apphandler.cpp
-index b641a17..c486d87 100644
+index 68e1580..ce72e5f 100644
 --- a/apphandler.cpp
 +++ b/apphandler.cpp
-@@ -594,6 +594,7 @@ ipmi::RspType<uint8_t,  // Device ID
+@@ -929,6 +929,7 @@ ipmi::RspType<uint8_t,  // Device ID
+     } devId;
      static bool dev_id_initialized = false;
-     static bool haveBMCVersion = false;
      static bool defaultActivationSetting = true;
 +    static bool get_version = false;
      const char* filename = "/usr/share/ipmi-providers/dev_id.json";
      constexpr auto ipmiDevIdStateShift = 7;
      constexpr auto ipmiDevIdFw1Mask = ~(1 << ipmiDevIdStateShift);
-@@ -623,6 +624,7 @@ ipmi::RspType<uint8_t,  // Device ID
+@@ -963,6 +964,7 @@ ipmi::RspType<uint8_t,  // Device ID
              devId.fw[1] = rev.minor % 10 + (rev.minor / 10) * 16;
-             std::memcpy(&devId.aux, rev.d, 4);
+             std::memcpy(&devId.aux, rev.aux, sizeof(rev.aux));
              haveBMCVersion = true;
 +            get_version = true;
          }
      }
-     if (!dev_id_initialized)
-@@ -647,7 +649,7 @@ ipmi::RspType<uint8_t,  // Device ID
+ #endif
+@@ -1001,7 +1003,7 @@ ipmi::RspType<uint8_t,  // Device ID
                  defaultActivationSetting = data.value("availability", true);
  
                  // Don't read the file every time if successful
@@ -53,5 +54,4 @@ index b641a17..c486d87 100644
              else
              {
 -- 
-2.33.0
-
+2.25.1

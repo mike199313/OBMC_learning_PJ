@@ -24,17 +24,18 @@ Entry Test:
         ipmitool raw 0x0c 0x01 0x01 0x34 0x2
     - Get IPv6 Header Traffic Class
         ipmitool raw 0x0c 0x02 0x01 0x34 0x00 0x00
+
 ---
  transporthandler.cpp | 20 ++++++++++++++++++++
  transporthandler.hpp |  2 ++
  2 files changed, 22 insertions(+)
 
 diff --git a/transporthandler.cpp b/transporthandler.cpp
-index 0232e0b..21abbbe 100644
+index 585c644..f397125 100644
 --- a/transporthandler.cpp
 +++ b/transporthandler.cpp
-@@ -1408,6 +1408,19 @@ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
-             channelCall<setIPFamily>(channel, static_cast<IPFamilyEnables>(enables));
+@@ -1570,6 +1570,19 @@ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
+             channelCall<setVLANPriority>(channel, (uint8_t)priority);
              return responseSuccess();
          }
 +        case LanParam::IPv6TrafficClass:
@@ -50,11 +51,11 @@ index 0232e0b..21abbbe 100644
 +            }
 +            return responseSuccess();
 +        }
-         case LanParam::IPv6Status:
-         {
-             req.trailingOk = true;
-@@ -1851,6 +1864,13 @@ RspType<message::Payload> getLan(Context::ptr ctx, uint4_t channelBits,
-             ret.pack(static_cast<uint8_t>(enables));
+     }
+ 
+     if ((parameter >= oemCmdStart) && (parameter <= oemCmdEnd))
+@@ -1943,6 +1956,13 @@ RspType<message::Payload> getLan(Context::ptr ctx, uint4_t channelBits,
+             ret.pack(priority);
              return responseSuccess(std::move(ret));
          }
 +        case LanParam::IPv6TrafficClass:
@@ -64,14 +65,14 @@ index 0232e0b..21abbbe 100644
 +            ret.pack(tClass);
 +            return responseSuccess(std::move(ret));
 +        }
-         case LanParam::IPv6Status:
-         {
-             ret.pack(MAX_IPV6_STATIC_ADDRESSES);
+     }
+ 
+     if ((parameter >= oemCmdStart) && (parameter <= oemCmdEnd))
 diff --git a/transporthandler.hpp b/transporthandler.hpp
-index add4d11..360364b 100644
+index 73fd927..9cf2a10 100644
 --- a/transporthandler.hpp
 +++ b/transporthandler.hpp
-@@ -92,6 +92,7 @@ enum class LanParam : uint8_t
+@@ -83,6 +83,7 @@ enum class LanParam : uint8_t
      cipherSuitePrivilegeLevels = 24,
      IPFamilySupport = 50,
      IPFamilyEnables = 51,
@@ -79,14 +80,13 @@ index add4d11..360364b 100644
      IPv6HopLimit = 53,
      IPv6Status = 55,
      IPv6StaticAddresses = 56,
-@@ -192,6 +193,7 @@ constexpr auto LAN_CFG_FILE = "/usr/share/ipmi-providers/lan_config.json";
- // Config name for LAN Config Parameters
+@@ -728,6 +729,7 @@ constexpr auto LAN_CFG_FILE = "/usr/share/ipmi-providers/lan_config.json";
  constexpr auto LAN_CONFIG_COMM_STR = "community_str";
  constexpr auto LAN_CONFIG_PRI_RMCP_PORT = "primary_rmcp_port";
+ constexpr uint8_t VLAN_PRIORITY_MASK = 0x07;
 +constexpr auto LAN_CONFIG_IPV6_TCLASS = "ipv6_traffic_class";
  
  /** @brief get config value from LAN configuration file.
   *  @param[in] name - config name.
 -- 
-2.33.0
-
+2.25.1

@@ -22,16 +22,17 @@ Entry Test:
         ipmitool raw 0x0c 0x02 0x01 0x35 0x00 0x00
     - Set Static Hop Limit
         ipmitool raw 0x0c 0x01 0x01 0x35 0x20
+
 ---
- transporthandler.cpp | 55 ++++++++++++++++++++++++++++++++++++++++++++
+ transporthandler.cpp | 50 ++++++++++++++++++++++++++++++++++++++++++++
  transporthandler.hpp |  1 +
- 2 files changed, 56 insertions(+)
+ 2 files changed, 51 insertions(+)
 
 diff --git a/transporthandler.cpp b/transporthandler.cpp
-index 0f9f8a3..b543bdd 100644
+index 1f8f353..dce3fc2 100644
 --- a/transporthandler.cpp
 +++ b/transporthandler.cpp
-@@ -267,6 +267,41 @@ void setDHCPv6Property(sdbusplus::bus::bus& bus, const ChannelParams& params,
+@@ -267,6 +267,36 @@ void setDHCPv6Property(sdbusplus::bus_t& bus, const ChannelParams& params,
                      "DHCPEnabled", newDhcp);
  }
  
@@ -65,15 +66,10 @@ index 0f9f8a3..b543bdd 100644
 +                    "IPv6HopLimit", limit);
 +}
 +
-+/** @brief Converts a human readable MAC string into MAC bytes
-+ *
-+ *  @param[in] mac - The MAC string
-+ *  @return MAC in bytes
-+ */
  ether_addr stringToMAC(const char* mac)
  {
      const ether_addr* ret = ether_aton(mac);
-@@ -1241,6 +1276,20 @@ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
+@@ -1239,6 +1269,20 @@ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
                  return response(resp);
              }
          }
@@ -94,7 +90,7 @@ index 0f9f8a3..b543bdd 100644
      }
  
      if ((parameter >= oemCmdStart) && (parameter <= oemCmdEnd))
-@@ -1528,6 +1577,12 @@ RspType<message::Payload> getLan(Context::ptr ctx, uint4_t channelBits,
+@@ -1526,6 +1570,12 @@ RspType<message::Payload> getLan(Context::ptr ctx, uint4_t channelBits,
                  return response(resp);
              }
          }
@@ -108,7 +104,7 @@ index 0f9f8a3..b543bdd 100644
  
      if ((parameter >= oemCmdStart) && (parameter <= oemCmdEnd))
 diff --git a/transporthandler.hpp b/transporthandler.hpp
-index c2940b4..fd585be 100644
+index 537ddc5..9175fab 100644
 --- a/transporthandler.hpp
 +++ b/transporthandler.hpp
 @@ -73,6 +73,7 @@ enum class LanParam : uint8_t
@@ -120,5 +116,4 @@ index c2940b4..fd585be 100644
      IPv6StaticAddresses = 56,
      IPv6DynamicAddresses = 59,
 -- 
-2.33.0
-
+2.25.1

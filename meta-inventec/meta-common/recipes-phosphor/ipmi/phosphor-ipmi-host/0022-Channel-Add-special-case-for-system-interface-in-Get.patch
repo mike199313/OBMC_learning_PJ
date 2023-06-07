@@ -55,12 +55,13 @@ Bug630 - Transformers][OpenBMC][IPMI] Active session count always zero
                     Per-message Auth    : enabled
                     User Level Auth     : enabled
                     Access Mode         : always available
+
 ---
- user_channel/channelcommands.cpp | 128 ++++++++++++++++++++++++++++++-
- 1 file changed, 127 insertions(+), 1 deletion(-)
+ user_channel/channelcommands.cpp | 127 ++++++++++++++++++++++++++++++-
+ 1 file changed, 126 insertions(+), 1 deletion(-)
 
 diff --git a/user_channel/channelcommands.cpp b/user_channel/channelcommands.cpp
-index 769f9ff..2a304b6 100644
+index 769f9ff..710288b 100644
 --- a/user_channel/channelcommands.cpp
 +++ b/user_channel/channelcommands.cpp
 @@ -18,6 +18,9 @@
@@ -137,7 +138,7 @@ index 769f9ff..2a304b6 100644
  /** @brief implements the get channel info command
   *  @ param ctx - context pointer
   *  @ param channel - channel number
-@@ -280,9 +340,75 @@ RspType<uint4_t,  // chNum
+@@ -280,9 +340,74 @@ RspType<uint4_t,  // chNum
      uint8_t protocolType = chInfo.protocolType;
      uint2_t sessionType = chInfo.sessionSupported;
      uint6_t activeSessionCount = getChannelActiveSessions(chNum);
@@ -173,7 +174,7 @@ index 769f9ff..2a304b6 100644
 +            {
 +                continue;
 +            }
-+            
++
 +            auto& serviceMap = objectTreeItr.second;
 +            auto itr = serviceMap.begin();
 +
@@ -210,10 +211,8 @@ index 769f9ff..2a304b6 100644
 +    {
 +        auxChInfo = 0xffff;
 +    }
-+
  
      return responseSuccess(chNum, reserved1, mediumType, reserved2,
                             protocolType, reserved3, activeSessionCount,
 -- 
-2.33.0
-
+2.25.1

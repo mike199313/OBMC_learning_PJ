@@ -23,15 +23,16 @@ Entry Test:
         ipmitool dcmi power deactivate
         curl -u root:0penBmc -k -X POST https://10.6.141.88/redfish/v1/Systems/system/Actions/ComputerSystem.Reset/ -d '{"ResetType": "On"}'
         ipmitool chassis status
+
 ---
  chassishandler.cpp | 18 ------------------
  1 file changed, 18 deletions(-)
 
 diff --git a/chassishandler.cpp b/chassishandler.cpp
-index 3bf67f5..bc840ea 100644
+index 0a51291..504c640 100644
 --- a/chassishandler.cpp
 +++ b/chassishandler.cpp
-@@ -1318,22 +1318,6 @@ ipmi::RspType<uint4_t, // Restart Cause
+@@ -1354,22 +1354,6 @@ ipmi::RspType<uint4_t, // Restart Cause
      return ipmi::responseSuccess(cause.value(), reserved, channel);
  }
  
@@ -54,7 +55,7 @@ index 3bf67f5..bc840ea 100644
  void setPowerControlReturnCode(sdbusplus::bus::bus& bus, int value)
  {
      try
-@@ -1366,7 +1350,6 @@ ipmi::RspType<> ipmiChassisControl(ipmi::Context::ptr& ctx,
+@@ -1402,7 +1386,6 @@ ipmi::RspType<> ipmiChassisControl(ipmi::Context::ptr& ctx,
      {
          case CMD_POWER_ON:
              rc = initiateHostStateTransition(ctx, State::Host::Transition::On);
@@ -62,7 +63,7 @@ index 3bf67f5..bc840ea 100644
              break;
          case CMD_POWER_OFF:
              rc = initiateChassisStateTransition(
-@@ -1379,7 +1362,6 @@ ipmi::RspType<> ipmiChassisControl(ipmi::Context::ptr& ctx,
+@@ -1415,7 +1398,6 @@ ipmi::RspType<> ipmiChassisControl(ipmi::Context::ptr& ctx,
          case CMD_POWER_CYCLE:
              rc = initiateHostStateTransition(ctx,
                                               State::Host::Transition::Reboot);
@@ -71,5 +72,4 @@ index 3bf67f5..bc840ea 100644
          case CMD_SOFT_OFF_VIA_OVER_TEMP:
              rc = initiateHostStateTransition(ctx, State::Host::Transition::Off);
 -- 
-2.33.0
-
+2.25.1

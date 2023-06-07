@@ -82,22 +82,23 @@ Entry Test:
         ipmitool raw 0x06 0x56 0x01 0x02 0x01
     - After set kg key and lock kgkey, build RMCP+ session with kgkey
         ipmitool -C17 -I lanplus -H 172.17.0.2 -p 2623 -U root -P 0penBmc -k helloworld shell
+
 ---
- app/channel.cpp                | 111 ++++++++++++++++++++++++
+ app/channel.cpp                | 110 +++++++++++++++++++++++
  app/channel.hpp                |   8 ++
  apphandler.cpp                 |   5 ++
- user_channel/channel_layer.cpp |  17 ++++
+ user_channel/channel_layer.cpp |  18 ++++
  user_channel/channel_layer.hpp |  35 ++++++++
- user_channel/channel_mgmt.cpp  | 153 +++++++++++++++++++++++++++++++++
- user_channel/channel_mgmt.hpp  |  45 ++++++++++
+ user_channel/channel_mgmt.cpp  | 158 +++++++++++++++++++++++++++++++++
+ user_channel/channel_mgmt.hpp  |  44 +++++++++
  user_channel/usercommands.cpp  |  17 +++-
- 8 files changed, 390 insertions(+), 1 deletion(-)
+ 8 files changed, 394 insertions(+), 1 deletion(-)
 
 diff --git a/app/channel.cpp b/app/channel.cpp
-index 7d51bfe..cd16efa 100644
+index 7d51bfe..26f6ec9 100644
 --- a/app/channel.cpp
 +++ b/app/channel.cpp
-@@ -177,3 +177,114 @@ ipmi::RspType<uint8_t,             // Channel Number
+@@ -177,3 +177,113 @@ ipmi::RspType<uint8_t,             // Channel Number
  
      return ipmi::responseSuccess(rspChannel, rspRecords);
  }
@@ -177,11 +178,13 @@ index 7d51bfe..cd16efa 100644
 +        {
 +            if (keyValue.size() > 20){
 +                return ipmi::response(ccTooManyKeyBytes);
-+            
-+            }else if(keyValue.size() == 0){
++            }
++            else if (keyValue.size() == 0)
++            {
 +                return ipmi::response(ccInsufficientKeyBytes);
-+            
-+            }else{
++            }
++            else
++            {
 +                ks = "unlocked";
 +                lockState = 2;
 +                kv.clear();
@@ -209,9 +212,6 @@ index 7d51bfe..cd16efa 100644
 +
 +    return ipmi::responseInvalidFieldRequest();
 +}
-+
-+
-+
 diff --git a/app/channel.hpp b/app/channel.hpp
 index 8e5accb..f35537e 100644
 --- a/app/channel.hpp
@@ -232,40 +232,33 @@ index 8e5accb..f35537e 100644
  {
  
 diff --git a/apphandler.cpp b/apphandler.cpp
-index 43c6429..c1921b5 100644
+index db4ceec..b6786b1 100644
 --- a/apphandler.cpp
 +++ b/apphandler.cpp
-@@ -1823,6 +1823,11 @@ void register_netfn_app_functions()
-                           ipmi::app::cmdGetChannelCipherSuites,
-                           ipmi::Privilege::None, getChannelCipherSuites);
- 
+@@ -1860,5 +1860,10 @@ void register_netfn_app_functions()
+     ipmi::registerHandler(ipmi::prioOpenBmcBase, ipmi::netFnApp,
+                           ipmi::app::cmdSetSystemInfoParameters,
+                           ipmi::Privilege::Admin, ipmiAppSetSystemInfo);
 +    // <Set Channel Security Keys Command>
 +    ipmi::registerHandler(ipmi::prioOpenBmcBase, ipmi::netFnApp,
 +                          ipmi::app::cmdSetChannelSecurityKeys,
 +                          ipmi::Privilege::Admin, setChannelSecurityKeys);
 +
-     // <Get System Info Command>
-     ipmi::registerHandler(ipmi::prioOpenBmcBase, ipmi::netFnApp,
-                           ipmi::app::cmdGetSystemInfoParameters,
+     return;
+ }
 diff --git a/user_channel/channel_layer.cpp b/user_channel/channel_layer.cpp
-index f461671..b62af9c 100644
+index 073c313..0195074 100644
 --- a/user_channel/channel_layer.cpp
 +++ b/user_channel/channel_layer.cpp
-@@ -141,6 +141,10 @@ Cc getChannelEnabledAuthType(const uint8_t chNum, const uint8_t priv,
-                                                               authType);
+@@ -173,4 +173,22 @@ bool isValidPayloadType(const PayloadType payloadType)
+         payloadType == PayloadType::RAKP2 ||
+         payloadType == PayloadType::RAKP3 || payloadType == PayloadType::RAKP4);
  }
- 
++
 +int writeBMCKey(uint8_t chNum)
 +{
 +    return getChannelConfigObject().writeBMCKey(chNum);
 +}
- 
- int writeChannelEnabledAuthTypeData(uint8_t chNum)
- {
-@@ -174,4 +178,17 @@ bool isValidPayloadType(const PayloadType payloadType)
-         payloadType == PayloadType::RAKP2 ||
-         payloadType == PayloadType::RAKP3 || payloadType == PayloadType::RAKP4);
- }
 +
 +Cc setBMCKey(const uint8_t chNum, const std::string keyState,
 +                            const std::string keyValue)
@@ -281,12 +274,12 @@ index f461671..b62af9c 100644
 +
  } // namespace ipmi
 diff --git a/user_channel/channel_layer.hpp b/user_channel/channel_layer.hpp
-index 8d4b648..1278e79 100644
+index a4fafb0..3a2c6c0 100644
 --- a/user_channel/channel_layer.hpp
 +++ b/user_channel/channel_layer.hpp
-@@ -368,6 +368,14 @@ Cc getChannelEnabledAuthType(const uint8_t chNum, const uint8_t priv,
- Cc setChannelEnabledAuthType(const uint8_t chNum, const uint8_t priv,
-                              EAuthType& authType);
+@@ -398,4 +398,39 @@ Cc setChannelEnabledAuthType(const uint8_t chNum, const uint8_t priv,
+  */
+ int writeChannelEnabledAuthTypeData(uint8_t chNum);
  
 +/** @brief write channel security key for the channel to channel config
 + * file
@@ -296,13 +289,6 @@ index 8d4b648..1278e79 100644
 + */
 +int writeBMCKey(uint8_t chNum);
 +
- /** @brief write enabled authentication type for the channel to channel config file
-  *
-  *  @param[in] chNum - channel number
-@@ -400,4 +408,31 @@ uint8_t getChannelByName(const std::string& chName);
-  */
- bool isValidPayloadType(const PayloadType payloadType);
- 
 +/** @brief set bmc key
 + *
 + *  @param[in] chNum - channel number
@@ -332,7 +318,7 @@ index 8d4b648..1278e79 100644
 +
  } // namespace ipmi
 diff --git a/user_channel/channel_mgmt.cpp b/user_channel/channel_mgmt.cpp
-index 1499485..bb7645a 100644
+index 80d387c..265b6e2 100644
 --- a/user_channel/channel_mgmt.cpp
 +++ b/user_channel/channel_mgmt.cpp
 @@ -47,6 +47,8 @@ static constexpr const char* channelNvDataFilename =
@@ -344,26 +330,18 @@ index 1499485..bb7645a 100644
  
  // TODO: Get the service name dynamically..
  static constexpr const char* networkIntfServiceName =
-@@ -80,6 +82,7 @@ static constexpr const char* perMsgAuthDisabledString = "per_msg_auth_disabled";
- static constexpr const char* alertingDisabledString = "alerting_disabled";
- static constexpr const char* privLimitString = "priv_limit";
- static constexpr const char* authTypeEnabledString = "auth_type_enabled";
-+static constexpr const char* bmcKeyString = "bmc_key";
- 
- static constexpr const char* authTypeEnabledCallbackString = "callback";
- static constexpr const char* authTypeEnabledUserString = "user";
-@@ -87,6 +90,9 @@ static constexpr const char* authTypeEnabledOperatorString = "operator";
+@@ -85,6 +87,9 @@ static constexpr const char* authTypeEnabledUserString = "user";
+ static constexpr const char* authTypeEnabledOperatorString = "operator";
  static constexpr const char* authTypeEnabledAdministratorString = "administrator";
  static constexpr const char* authTypeEnabledOemString = "oem";
- 
++static constexpr const char* bmcKeyString = "bmc_key";
 +static constexpr const char* bmcKeyStateString = "keystate";
 +static constexpr const char* bmcKeyValueString = "keyvalue";
-+
  
  // Default values
  static constexpr const char* defaultChannelName = "RESERVED";
-@@ -823,6 +829,97 @@ Cc ChannelConfig::setChannelEnabledAuthType(const uint8_t chNum,
-     return ccSuccess;
+@@ -1681,4 +1686,157 @@ int ChannelConfig::writeChannelEnabledAuthTypeData(uint8_t chNum)
+     return 0;
  }
  
 +Cc ChannelConfig::setBMCKey(const uint8_t chNum,
@@ -416,7 +394,7 @@ index 1499485..bb7645a 100644
 +
 +    keyState = channelData[chNum].bmcKey.keyState;
 +    keyValue = channelData[chNum].bmcKey.keyValue;
-+    
++
 +    return ccSuccess;
 +}
 +
@@ -457,13 +435,6 @@ index 1499485..bb7645a 100644
 +    return 0;
 +}
 +
- int ChannelConfig::writeChannelEnabledAuthTypeData(uint8_t chNum)
- {
-     boost::interprocess::scoped_lock<boost::interprocess::named_recursive_mutex>
-@@ -1080,6 +1177,62 @@ uint8_t ChannelConfig::getManagementNICID()
-     return id;
- }
- 
 +int ChannelConfig::loadKeyConfig()
 +{
 +    boost::interprocess::scoped_lock<boost::interprocess::named_recursive_mutex>
@@ -475,36 +446,42 @@ index 1499485..bb7645a 100644
 +        log<level::DEBUG>("No kgkey is configed \n");
 +        fprintf(stderr, "No kgkey is configed \n");
 +    }
-+    
++
 +    for (int chNum = 0; chNum < maxIpmiChannels; chNum++)
 +    {
 +        try
 +        {
 +            ChannelProperties& chData = channelData[chNum];
 +            std::string chKey = std::to_string(chNum);
-+            if( ! keyData.empty())
-+            { 
++            if (!keyData.empty())
++            {
 +                Json jsonChKeyData = keyData[chKey].get<Json>();
-+                if(jsonChKeyData.is_null())
++                if (jsonChKeyData.is_null())
 +                {
 +                    chData.bmcKey.keyState = "unlock";
 +                    chData.bmcKey.keyValue = "";
-+                }else{
++                }
++                else
++                {
 +                    Json jBMCKey = jsonChKeyData[bmcKeyString].get<Json>();
-+                    if(jBMCKey.is_null()){
++                    if (jBMCKey.is_null())
++                    {
 +                        chData.bmcKey.keyState = "unlock";
 +                        chData.bmcKey.keyValue = "";
-+                    }else{
++                    }
++                    else
++                    {
 +                        chData.bmcKey.keyState = jBMCKey[bmcKeyStateString].get<std::string>();
 +                        chData.bmcKey.keyValue = jBMCKey[bmcKeyValueString].get<std::string>();
 +                    }
 +                }
-+            }else{
++            }
++            else
++            {
 +                    chData.bmcKey.keyState = "unlock";
 +                    chData.bmcKey.keyValue = "";
 +            }
 +        }
-+        
 +        catch (const Json::exception& e)
 +        {
 +            log<level::DEBUG>("Json Exception caught.",
@@ -520,14 +497,12 @@ index 1499485..bb7645a 100644
 +    return 0;
 +}
 +
- int ChannelConfig::loadChannelConfig()
- {
-     boost::interprocess::scoped_lock<boost::interprocess::named_recursive_mutex>
+ } // namespace ipmi
 diff --git a/user_channel/channel_mgmt.hpp b/user_channel/channel_mgmt.hpp
-index 3cd1a34..01855f6 100644
+index 887ee53..d65359e 100644
 --- a/user_channel/channel_mgmt.hpp
 +++ b/user_channel/channel_mgmt.hpp
-@@ -59,6 +59,13 @@ struct AuthTypeEnable
+@@ -59,6 +59,12 @@ struct AuthTypeEnable
      EAuthType _oem;
  };
  
@@ -537,11 +512,10 @@ index 3cd1a34..01855f6 100644
 +    std::string keyValue;
 +};
 +
-+
  /** @struct ChannelProperties
   *
   *  Structure for channel information - base structure to get all information
-@@ -75,6 +82,7 @@ struct ChannelProperties
+@@ -75,6 +81,7 @@ struct ChannelProperties
      size_t maxTransferSize;
      bool isManagementNIC;
      AuthTypeEnable authTypeEnable;
@@ -549,7 +523,7 @@ index 3cd1a34..01855f6 100644
  };
  
  class ChannelConfig;
-@@ -274,6 +282,43 @@ class ChannelConfig
+@@ -281,6 +288,43 @@ class ChannelConfig
       */
      int writeChannelEnabledAuthTypeData(uint8_t  chNum);
  
@@ -559,7 +533,7 @@ index 3cd1a34..01855f6 100644
 +     */
 +
 +    int loadKeyConfig(void);
-+    
++
 +    /** @brief set BMCkey with key state and key value
 +     *
 +     *  @param[in] chNum - channel number
@@ -590,14 +564,14 @@ index 3cd1a34..01855f6 100644
 +     */
 +    int writeBMCKey(uint8_t chNum);
 +
-     /** @brief Returns the IPMI channel ID authorized to push IPMI privilege
-      * changes to phosphor-user-manager. Any channel access changes made on
-      * any other channel are ignored.
+   private:
+     uint32_t signalFlag = 0;
+     std::unique_ptr<boost::interprocess::named_recursive_mutex> channelMutex{
 diff --git a/user_channel/usercommands.cpp b/user_channel/usercommands.cpp
-index d8d5209..8517e35 100644
+index 5d2f43b..4017248 100644
 --- a/user_channel/usercommands.cpp
 +++ b/user_channel/usercommands.cpp
-@@ -434,7 +434,7 @@ ipmi::RspType<uint8_t,  // channel number
+@@ -437,7 +437,7 @@ ipmi::RspType<uint8_t,  // channel number
      }
  
      constexpr uint2_t reserved4 = 0;
@@ -606,7 +580,7 @@ index d8d5209..8517e35 100644
      constexpr bool perMessageAuth = false; // Per message auth - enabled
      constexpr bool userAuth = false;       // User authentication - enabled
      constexpr bool nullUsers = false;      // Null user names - not supported
-@@ -450,6 +450,21 @@ ipmi::RspType<uint8_t,  // channel number
+@@ -453,6 +453,21 @@ ipmi::RspType<uint8_t,  // channel number
      ipmi::ipmiUserGetAllCounts(maxChUsers, enabledUsers, fixedUsers);
      nonNullUsers = enabledUsers > 0;
  
@@ -621,7 +595,7 @@ index d8d5209..8517e35 100644
 +    if (kv.size() > 0)
 +    {
 +        //KGKey does not support locked state
-+        //only check if the length is larger then 0, treated as kgkey enabled 
++        //only check if the length is larger then 0, treated as kgkey enabled
 +        KGStatus = true;
 +    }
 +
@@ -629,5 +603,4 @@ index d8d5209..8517e35 100644
          channel, rmcpAuthTypes, reserved3, extDataSupport, anonymousLogin,
          nullUsers, nonNullUsers, userAuth, perMessageAuth, KGStatus, reserved4,
 -- 
-2.33.0
-
+2.25.1

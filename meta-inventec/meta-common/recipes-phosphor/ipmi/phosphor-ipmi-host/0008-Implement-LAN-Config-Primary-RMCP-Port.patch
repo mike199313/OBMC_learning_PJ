@@ -24,16 +24,17 @@ Entry Test:
         ipmitool raw 0x0c 0x02 0x01 0x08 0x00 0x00
     - Set RMCP port
         ipmitool raw 0x0c 0x01 0x01 0x08 0x50 0x02
+
 ---
  transporthandler.cpp | 61 ++++++++++++++++++++++++++++++++++++++++++++
- transporthandler.hpp |  8 +++++-
- 2 files changed, 68 insertions(+), 1 deletion(-)
+ transporthandler.hpp |  6 +++++
+ 2 files changed, 67 insertions(+)
 
 diff --git a/transporthandler.cpp b/transporthandler.cpp
-index 7002df5..b1748ba 100644
+index 5bb06d3..885eea0 100644
 --- a/transporthandler.cpp
 +++ b/transporthandler.cpp
-@@ -873,6 +873,42 @@ bool isValidMACAddress(const ether_addr& mac)
+@@ -866,6 +866,42 @@ bool isValidMACAddress(const ether_addr& mac)
      return true;
  }
  
@@ -76,8 +77,8 @@ index 7002df5..b1748ba 100644
  RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
                   uint8_t parameter, message::Payload& req)
  {
-@@ -1035,6 +1071,24 @@ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
-             channelCall<reconfigureIfAddr4>(channel, std::nullopt, prefix);
+@@ -1299,6 +1335,24 @@ RspType<> setLan(Context::ptr ctx, uint4_t channelBits, uint4_t reserved1,
+             }
              return responseSuccess();
          }
 +        case LanParam::PrimaryRMCPPort:
@@ -98,11 +99,11 @@ index 7002df5..b1748ba 100644
 +            asyncRestartService(NETIPMID_SERVICE + interface, true);
 +            return responseSuccess();
 +        }
-         case LanParam::Gateway1:
-         {
-             EthernetInterface::DHCPConf dhcp =
-@@ -1426,6 +1480,13 @@ RspType<message::Payload> getLan(Context::ptr ctx, uint4_t channelBits,
-             ret.pack(dataRef(netmask));
+     }
+ 
+     if ((parameter >= oemCmdStart) && (parameter <= oemCmdEnd))
+@@ -1601,6 +1655,13 @@ RspType<message::Payload> getLan(Context::ptr ctx, uint4_t channelBits,
+             ret.pack(dataRef(resp));
              return responseSuccess(std::move(ret));
          }
 +        case LanParam::PrimaryRMCPPort:
@@ -112,30 +113,23 @@ index 7002df5..b1748ba 100644
 +            ret.pack(dataRef(port));
 +            return responseSuccess(std::move(ret));
 +        }
-         case LanParam::Gateway1:
-         {
-             auto gateway =
+     }
+ 
+     if ((parameter >= oemCmdStart) && (parameter <= oemCmdEnd))
 diff --git a/transporthandler.hpp b/transporthandler.hpp
-index e19b54e..c645f24 100644
+index 01fabbc..e8a9a0c 100644
 --- a/transporthandler.hpp
 +++ b/transporthandler.hpp
-@@ -2,6 +2,7 @@
- 
- #include "app/channel.hpp"
- #include "user_channel/cipher_mgmt.hpp"
+@@ -39,6 +39,8 @@
+ #include <xyz/openbmc_project/Network/Neighbor/server.hpp>
+ #include <iomanip>
+ #include <nlohmann/json.hpp>
 +#include "storagehandler.hpp"
- 
- #include <arpa/inet.h>
- #include <netinet/ether.h>
-@@ -33,6 +34,7 @@
- #include <user_channel/channel_layer.hpp>
- #include <utility>
- #include <vector>
 +#include <boost/process.hpp>
- #include <xyz/openbmc_project/Common/error.hpp>
- #include <xyz/openbmc_project/Network/EthernetInterface/server.hpp>
- #include <xyz/openbmc_project/Network/IP/server.hpp>
-@@ -70,6 +72,7 @@ enum class LanParam : uint8_t
+ 
+ namespace ipmi
+ {
+@@ -68,6 +70,7 @@ enum class LanParam : uint8_t
      IPSrc = 4,
      MAC = 5,
      SubnetMask = 6,
@@ -143,9 +137,9 @@ index e19b54e..c645f24 100644
      Gateway1 = 12,
      Gateway1MAC = 13,
      CommunityStr = 16,
-@@ -171,10 +174,13 @@ constexpr uint8_t MAX_IPV4_PREFIX_LENGTH = 32;
- constexpr uint8_t MIN_IPV6_PREFIX_LENGTH = 1;
- constexpr uint8_t MAX_IPV6_PREFIX_LENGTH = 128;
+@@ -710,10 +713,13 @@ enum class SolConfParam : uint8_t
+ constexpr uint8_t ipmiCCParamNotSupported = 0x80;
+ constexpr uint8_t ipmiCCWriteReadParameter = 0x82;
  
 +// Systemd service for netipmid
 +constexpr auto NETIPMID_SERVICE = "phosphor-ipmi-net@";
@@ -157,15 +151,5 @@ index e19b54e..c645f24 100644
  
  /** @brief get config value from LAN configuration file.
   *  @param[in] name - config name.
-@@ -199,7 +205,7 @@ template <typename T> int loadConfigValue(const std::string& name, T& val)
- 
-     if (data.contains(name))
-     {
--        val = data[name];
-+        val = (T)data[name];
-         return 0;
-     }
- 
 -- 
-2.33.0
-
+2.25.1

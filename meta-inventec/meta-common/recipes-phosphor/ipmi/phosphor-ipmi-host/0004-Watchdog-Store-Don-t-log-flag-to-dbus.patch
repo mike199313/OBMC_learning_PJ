@@ -24,21 +24,21 @@ xyz.openbmc_project.State.Watchdog  interface -         -                       
 .ResetTimeRemaining                 method    b         -                                        -
 .CurrentTimerUse                    property  s         "xyz.openbmc_project.State.Watchdog.T... emits-change writable
 .DontLog                            property  b         true                                     emits-change writable
+
 ---
- app/watchdog.cpp         | 25 ++++++++++++++++++++++---
- app/watchdog_service.cpp | 14 +++++++++++++-
- app/watchdog_service.hpp | 15 +++++++++++++++
- 3 files changed, 50 insertions(+), 4 deletions(-)
+ app/watchdog.cpp         | 24 ++++++++++++++++++++++--
+ app/watchdog_service.cpp | 12 ++++++++++++
+ app/watchdog_service.hpp | 14 ++++++++++++++
+ 3 files changed, 48 insertions(+), 2 deletions(-)
 
 diff --git a/app/watchdog.cpp b/app/watchdog.cpp
-index 1d12220..a78c422 100644
+index f6165de..e8c61fe 100644
 --- a/app/watchdog.cpp
 +++ b/app/watchdog.cpp
-@@ -211,8 +211,12 @@ WatchdogService::TimerUse ipmiTimerUseToWdTimerUse(IpmiTimerUse ipmiTimerUse)
-         }
+@@ -213,7 +213,12 @@ WatchdogService::TimerUse ipmiTimerUseToWdTimerUse(IpmiTimerUse ipmiTimerUse)
      }
  }
--
+ 
 +/*
 +    Inventec - Store Don't log flag to dbus
 +*/
@@ -48,7 +48,7 @@ index 1d12220..a78c422 100644
  static std::bitset<8> timerUseExpirationFlags = 0;
  static uint3_t timerPreTimeoutInterrupt = 0;
  static constexpr uint8_t wdExpirationFlagReservedBit0 = 0x0;
-@@ -257,7 +261,12 @@ ipmi::RspType<>
+@@ -258,7 +263,12 @@ ipmi::RspType<>
          return ipmi::responseInvalidFieldRequest();
      }
  
@@ -61,7 +61,7 @@ index 1d12220..a78c422 100644
      timerPreTimeoutInterrupt = preTimeoutInterrupt;
  
      try
-@@ -296,6 +305,11 @@ ipmi::RspType<>
+@@ -297,6 +307,11 @@ ipmi::RspType<>
          wd_service.setPreTimeoutInterrupt(
              ipmiPreTimeoutInterruptToWdAction(ipmiPreTimeoutInterrupt));
  
@@ -73,7 +73,7 @@ index 1d12220..a78c422 100644
          lastCallSuccessful = true;
          return ipmi::responseSuccess();
      }
-@@ -450,9 +464,14 @@ ipmi::RspType<uint3_t, // timerUse - timer use
+@@ -451,9 +466,14 @@ ipmi::RspType<uint3_t, // timerUse - timer use
              }
              else
              {
@@ -89,7 +89,7 @@ index 1d12220..a78c422 100644
              }
          }
  
-@@ -463,7 +482,7 @@ ipmi::RspType<uint3_t, // timerUse - timer use
+@@ -464,7 +484,7 @@ ipmi::RspType<uint3_t, // timerUse - timer use
          return ipmi::responseSuccess(
              types::enum_cast<uint3_t>(
                  wdTimerUseToIpmiTimerUse(wd_prop.timerUse)),
@@ -99,7 +99,7 @@ index 1d12220..a78c422 100644
                  wdActionToIpmiAction(wd_prop.expireAction)),
              0, timerPreTimeoutInterrupt, 0, pretimeout, timerUseExpirationFlags,
 diff --git a/app/watchdog_service.cpp b/app/watchdog_service.cpp
-index 4df1ab6..4d80c54 100644
+index a103491..4d80c54 100644
 --- a/app/watchdog_service.cpp
 +++ b/app/watchdog_service.cpp
 @@ -86,6 +86,10 @@ WatchdogService::Properties WatchdogService::getProperties()
@@ -113,13 +113,10 @@ index 4df1ab6..4d80c54 100644
          return wd_prop;
      }
      catch (const std::exception& e)
-@@ -203,4 +207,12 @@ void WatchdogService::setPreTimeoutInterrupt(
-     PreTimeoutInterruptAction preTimeoutInterrupt)
+@@ -204,3 +208,11 @@ void WatchdogService::setPreTimeoutInterrupt(
  {
      setProperty("PreTimeoutInterrupt", convertForMessage(preTimeoutInterrupt));
--}
-\ No newline at end of file
-+}
+ }
 +
 +/*
 +    Inventec - Store Don't log flag to dbus
@@ -129,7 +126,7 @@ index 4df1ab6..4d80c54 100644
 +    setProperty("DontLog", dontlog);
 +}
 diff --git a/app/watchdog_service.hpp b/app/watchdog_service.hpp
-index 32b7461..78a9439 100644
+index 2670ead..ad19823 100644
 --- a/app/watchdog_service.hpp
 +++ b/app/watchdog_service.hpp
 @@ -40,6 +40,10 @@ class WatchdogService
@@ -143,7 +140,7 @@ index 32b7461..78a9439 100644
      };
  
      /** @brief Retrieves a copy of the currently set properties on the
-@@ -101,6 +105,17 @@ class WatchdogService
+@@ -101,6 +105,16 @@ class WatchdogService
       */
      void setPreTimeoutInterrupt(PreTimeoutInterruptAction preTimeoutInterrupt);
  
@@ -157,10 +154,8 @@ index 32b7461..78a9439 100644
 +     */
 +    void setDontLog(bool dontLog);
 +
-+
    private:
      /** @brief sdbusplus handle */
-     sdbusplus::bus::bus bus;
+     sdbusplus::bus_t bus;
 -- 
-2.33.0
-
+2.25.1
