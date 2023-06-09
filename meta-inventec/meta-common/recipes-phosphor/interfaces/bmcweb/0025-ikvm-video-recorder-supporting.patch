@@ -1,0 +1,427 @@
+From b1fc9f9e9ecd7f639d82dd0e638dac4e8ea1e904 Mon Sep 17 00:00:00 2001
+From: Vic Ye <ye.vic@inventec.com>
+Date: Tue, 23 May 2023 16:33:28 +0800
+Subject: [PATCH 25/27] fix api useage error. spelling word error kvm recording
+ support
+
+---
+ include/kvm_websocket.hpp | 358 ++++++++++++++++++++++++++++++++++++++
+ src/webserver_main.cpp    |  11 +-
+ 2 files changed, 368 insertions(+), 1 deletion(-)
+
+diff --git a/include/kvm_websocket.hpp b/include/kvm_websocket.hpp
+index 942e9c60..8fe5444a 100644
+--- a/include/kvm_websocket.hpp
++++ b/include/kvm_websocket.hpp
+@@ -6,11 +6,24 @@
+ 
+ #include <boost/container/flat_map.hpp>
+ #include <websocket.hpp>
++#include <utils/json_utils.hpp>
++
++//#define SNIK_DEB_OUT_KVM(str) std::cout << str << std::endl
++#define SNIK_DEB_OUT_KVM(str)
+ 
+ namespace crow
+ {
+ namespace obmc_kvm
+ {
++extern std::mutex videoFileListLock;
++struct VideoFileRecorderData
++{
++    bool present;
++    pid_t pid;
++
++    VideoFileRecorderData() : present( false ) {};
++};
++extern VideoFileRecorderData videoFileRecorderData;
+ 
+ static constexpr const uint maxSessions = 4;
+ 
+@@ -156,6 +169,13 @@ using SessionMap = boost::container::flat_map<crow::websocket::Connection*,
+ // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+ static SessionMap sessions;
+ 
++static const char *video_dir = "/tmp/video";
++
++inline void initVideoFileRecorderData()
++{
++    mkdir( video_dir, 0755 );
++}
++
+ inline void requestRoutes(App& app)
+ {
+     sessions.reserve(maxSessions);
+@@ -184,6 +204,344 @@ inline void requestRoutes(App& app)
+                 sessions[&conn]->onMessage(data);
+             }
+         });
++
++    BMCWEB_ROUTE(app, "/kvm/video/list/")
++        .privileges({{"ConfigureManager"}})
++        .methods(boost::beast::http::verb::get)(
++            [](const crow::Request& ,//req,
++               const std::shared_ptr<bmcweb::AsyncResp>& asyncResp) {
++SNIK_DEB_OUT_KVM( "videoFile Collection 1" ); 
++
++                // Collections don't include the static data added by SubRoute
++                // because it has a duplicate entry for members
++                asyncResp->res.jsonValue["@odata.type"] =
++                    "#videoFileEntryCollection.VideoFileEntryCollection";
++                asyncResp->res.jsonValue["@odata.id"] =
++                    "/kvm/video/list";
++                asyncResp->res.jsonValue["Name"] = "System Video File Entries";
++                asyncResp->res.jsonValue["Description"] =
++                    "Collection of System Video File Entries";
++
++                nlohmann::json& videoFileEntryArray =
++                    asyncResp->res.jsonValue["Members"];
++                videoFileEntryArray = nlohmann::json::array();
++
++                videoFileListLock.lock();
++
++                std::filesystem::path loc(video_dir);
++
++                size_t entryCount = 0;
++                std::filesystem::directory_iterator files(loc);
++                for (auto& file : files)
++                {
++SNIK_DEB_OUT_KVM( "File " << file );
++                    entryCount++;
++                    const auto &item_val = file.path().filename();
++                    videoFileEntryArray.push_back({});
++                    nlohmann::json& videoFileEntry = videoFileEntryArray.back();
++
++                    videoFileEntry = {
++                        //{"@odata.id", std::to_string(entryCount)},
++                        {"Name", "System Video File Entry"},
++                        //{"Id", entryCount},
++                        {"File", item_val.c_str()},
++                    };
++                }
++
++                asyncResp->res.jsonValue["Members@odata.count"] = entryCount;
++SNIK_DEB_OUT_KVM( "videoFile Collection 2" ); 
++
++                videoFileListLock.unlock();
++            });
++
++    BMCWEB_ROUTE(app, "/kvm/video/list/clear/")
++        .privileges({{"ConfigureManager"}})
++        .methods(boost::beast::http::verb::post)(
++            [](const crow::Request&,
++               const std::shared_ptr<bmcweb::AsyncResp>&) {
++SNIK_DEB_OUT_KVM( "videoFile Collection clear 1" ); 
++                videoFileListLock.lock();
++
++                if( videoFileRecorderData.present )
++                {
++                    int status;
++SNIK_DEB_OUT_KVM( "kill recorder 1 " << static_cast<int>(videoFileRecorderData.pid) );
++                    kill( videoFileRecorderData.pid, SIGTERM ); 
++                    waitpid( videoFileRecorderData.pid, &status, 0 );
++SNIK_DEB_OUT_KVM( "kill recorder 2 " << status  );
++                }
++
++                videoFileRecorderData.present = false;
++
++                std::filesystem::path loc(video_dir);
++                std::filesystem::directory_iterator files(loc);
++                for (auto& file : files)
++                {
++SNIK_DEB_OUT_KVM( "File " << file );
++                    const auto &item_val = file.path().filename();
++                    unlink( item_val.c_str() );
++                }
++
++SNIK_DEB_OUT_KVM( "videoFile Collection clear 2" ); 
++
++                videoFileListLock.unlock();
++            });
++
++    BMCWEB_ROUTE(app, "/kvm/remove/video/<str>/")
++        .privileges({{"ConfigureManager"}})
++        .methods(boost::beast::http::verb::delete_)(
++            [](const crow::Request&,
++               const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
++               const std::string& videoId) {
++SNIK_DEB_OUT_KVM( "videoFile remove 1 " << videoId ); 
++                videoFileListLock.lock();
++
++                std::filesystem::path loc1(video_dir);
++                loc1 /= videoId;
++SNIK_DEB_OUT_KVM( "videoFile remove 2 " << loc1.c_str() ); 
++                if( !unlink( loc1.c_str() ))
++                {
++SNIK_DEB_OUT_KVM( "videoFile remove 3 " << videoId ); 
++                    videoFileListLock.unlock();
++                }
++                else
++                {
++SNIK_DEB_OUT_KVM( "videoFile remove failed" ); 
++
++                    videoFileListLock.unlock();
++
++                    asyncResp->res.result(
++                        boost::beast::http::status::not_found);
++                }
++            });
++
++    BMCWEB_ROUTE(app, "/kvm/download/video/<str>/")
++        .privileges({{"ConfigureManager"}})
++        .methods(boost::beast::http::verb::get)(
++            [](const crow::Request&,
++               const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
++               const std::string& videoId) {
++SNIK_DEB_OUT_KVM( "/download/video " << videoId );
++#if 0
++                std::regex validFilename(R"(^[\w\- ]+(\.?[\w\- ]*)$)");
++                if (!std::regex_match(videoId, validFilename))
++                {
++                    asyncResp->res.result(
++                        boost::beast::http::status::bad_request);
++                    return;
++                }
++#endif
++                std::filesystem::path loc(
++                    //"/var/lib/phosphor-debug-collector/dumps");
++                    video_dir );
++
++                loc /= videoId;
++
++                if (!std::filesystem::exists(loc))
++//                if (!std::filesystem::exists(loc) ||
++//                    !std::filesystem::is_directory(loc))
++                {
++SNIK_DEB_OUT_KVM( "File " << loc << " is not found" );
++                    BMCWEB_LOG_ERROR << loc << "Not found";
++                    asyncResp->res.result(
++                        boost::beast::http::status::not_found);
++                    return;
++                }
++
++//                std::filesystem::directory_iterator files(loc);
++//                for (auto& file : files)
++                std::filesystem::path file = loc;
++                {
++SNIK_DEB_OUT_KVM( "File " << file );
++//                    std::ifstream readFile(file.path());
++                    std::ifstream readFile(file);
++                    if (!readFile.good())
++                    {
++SNIK_DEB_OUT_KVM( "File " << file << " cannot open" );
++                        asyncResp->res.result(
++                            boost::beast::http::status::not_found);
++                        return;
++//                        continue;
++                    }
++
++#if 1
++                    asyncResp->res.addHeader("Content-Type",
++                                             "application/octet-stream");
++
++                    // Assuming only one dump file will be present in the dump
++                    // id directory
++//                    std::string dumpFileName = file.path().filename().string();
++                    std::string videoFileName = file.filename().string();
++
++                    // Filename should be in alphanumeric, dot and underscore
++                    // Its based on phosphor-debug-collector application
++                    // dumpfile format
++#if 0
++                    std::regex dumpFileRegex("[a-zA-Z0-9\\._]+");
++                    if (!std::regex_match(dumpFileName, dumpFileRegex))
++                    {
++                        BMCWEB_LOG_ERROR << "Invalid dump filename "
++                                         << dumpFileName;
++                        asyncResp->res.result(
++                            boost::beast::http::status::not_found);
++                        return;
++                    }
++#endif
++                    std::string contentDispositionParam =
++                        "attachment; filename=\"" + videoFileName + "\"";
++
++                    asyncResp->res.addHeader("Content-Disposition",
++                                             contentDispositionParam);
++
++                    asyncResp->res.body() = {
++                        std::istreambuf_iterator<char>(readFile),
++                        std::istreambuf_iterator<char>()};
++                    return;
++#endif
++                }
++                asyncResp->res.result(boost::beast::http::status::not_found);
++                return;
++            });
++
++    BMCWEB_ROUTE(
++        app, "/kvm/video/start/")
++        .privileges({{"ConfigureManager"}})
++        .methods(boost::beast::http::verb::patch)(
++            [](const crow::Request& req,
++               const std::shared_ptr<bmcweb::AsyncResp>& asyncResp) {
++SNIK_DEB_OUT_KVM( "start video " );
++                std::optional<int> fps;
++                std::optional<bool> high_quality;
++                std::optional<int> len_in_sec;
++
++                if (!redfish::json_util::readJsonPatch(req, asyncResp->res, 
++                                         "FPS", fps,
++                                         "HighQuality", high_quality,
++                                         "TimeOfPart", len_in_sec ))
++                {
++                    asyncResp->res.result(
++                        boost::beast::http::status::bad_request);
++                    return;
++                }
++
++SNIK_DEB_OUT_KVM( "start video "  << *fps << " " << *high_quality << " " << *len_in_sec );
++
++                if( *fps < 1 || *fps > 30 || *high_quality == true || len_in_sec < 10 || len_in_sec > 3600 )
++                {
++                    asyncResp->res.result(
++                        boost::beast::http::status::bad_request);
++                    return;
++                }
++
++SNIK_DEB_OUT_KVM( "start video valid" );
++
++                videoFileListLock.lock();
++
++                if( videoFileRecorderData.present )
++                {
++#if 0
++                    asyncResp->res.result(
++                        boost::beast::http::status::service_unavailable);
++                    videoFileListLock.unlock();
++                    return;
++#else
++                    int status;
++SNIK_DEB_OUT_KVM( "kill recorder 1 " << static_cast<int>(videoFileRecorderData.pid) );
++                    kill( videoFileRecorderData.pid, SIGTERM ); 
++                    waitpid( videoFileRecorderData.pid, &status, 0 );
++SNIK_DEB_OUT_KVM( "kill recorder 2 " << status  );
++                    videoFileRecorderData.present = false;
++#endif
++                }
++
++                pid_t pid = 0;
++                int inpipefd[2];
++                int outpipefd[2];
++
++                if( pipe(inpipefd) || pipe(outpipefd))
++                {
++                    videoFileListLock.unlock();
++                    SNIK_DEB_OUT_KVM( "start video cannot create pipe" );
++                    asyncResp->res.result(
++                        boost::beast::http::status::internal_server_error);
++                    return;
++                }
++
++                pid = fork();
++                if (pid == 0)
++                {
++                    close(outpipefd[1]);
++                    close(inpipefd[0]);
++                    dup2(outpipefd[0], STDIN_FILENO);
++                    dup2(inpipefd[1], STDOUT_FILENO);
++                    dup2(inpipefd[1], STDERR_FILENO);
++                    close(outpipefd[0]);
++                    close(inpipefd[1]);
++
++                    //const char *argv_vnc2mpg_name = "/tmp/vnc2mpg";
++                    const char *argv_vnc2mpg_name = "/usr/bin/vnc2mpg";
++                    const std::string argv_vnc2mpg[] = {
++                        "-t", std::to_string( *len_in_sec ),
++                        "-f", std::to_string( *fps )
++                    };
++
++                    const int argv_number = sizeof( argv_vnc2mpg )/sizeof( argv_vnc2mpg[ 0] );
++                    const char **argv_vnc2mpg_c = new const char* [ argv_number+2 ];
++                    argv_vnc2mpg_c[ 0] = argv_vnc2mpg_name;
++                    for (int i = 0;  i < argv_number;  ++i)
++                        argv_vnc2mpg_c[ i+1 ] = argv_vnc2mpg[ i] .c_str();
++
++                    argv_vnc2mpg_c[ argv_number+1 ] = NULL;
++                    execv (argv_vnc2mpg_name, const_cast<char **>(argv_vnc2mpg_c));
++                    exit(1);
++                }
++                else
++                if (pid < 0)
++                {
++                    videoFileListLock.unlock();
++                    SNIK_DEB_OUT_KVM( "start video cannot fork " );
++                    asyncResp->res.result(
++                        boost::beast::http::status::internal_server_error);
++                    return;
++                }
++
++                close(outpipefd[0]);
++                close(inpipefd[1]);
++                close(outpipefd[1]);
++                close(inpipefd[0]);
++
++                videoFileRecorderData.present = true;
++                videoFileRecorderData.pid = pid;
++
++                videoFileListLock.unlock();
++SNIK_DEB_OUT_KVM( "start video done" );
++            });
++
++    BMCWEB_ROUTE(
++        app, "/kvm/video/stop/")
++        .privileges({{"ConfigureManager"}})
++        .methods(boost::beast::http::verb::post)(
++            [](const crow::Request&,
++               const std::shared_ptr<bmcweb::AsyncResp>& ) {
++SNIK_DEB_OUT_KVM( "stop video " );
++
++                videoFileListLock.lock();
++
++                if( videoFileRecorderData.present )
++                {
++                    int status;
++SNIK_DEB_OUT_KVM( "stop video 1 " << static_cast<int>(videoFileRecorderData.pid) );
++                    kill( videoFileRecorderData.pid, SIGTERM ); 
++                    waitpid( videoFileRecorderData.pid, &status, 0 );
++SNIK_DEB_OUT_KVM( "stop video 2 " << status  );
++                }
++
++                videoFileRecorderData.present = false;
++
++                videoFileListLock.unlock();
++SNIK_DEB_OUT_KVM( "stop video done" );
++            });
++
+ }
+ 
+ } // namespace obmc_kvm
+diff --git a/src/webserver_main.cpp b/src/webserver_main.cpp
+index b13ab270..048dd578 100644
+--- a/src/webserver_main.cpp
++++ b/src/webserver_main.cpp
+@@ -62,10 +62,19 @@ inline void setupSocket(crow::App& app)
+     }
+ }
+ 
++namespace crow
++{
++namespace obmc_kvm
++{
++std::mutex videoFileListLock;
++VideoFileRecorderData videoFileRecorderData;
++}
++}
++
+ static int run()
+ {
+     crow::Logger::setLogLevel(crow::LogLevel::Debug);
+-
++    crow::obmc_kvm::initVideoFileRecorderData();
+     auto io = std::make_shared<boost::asio::io_context>();
+     App app(io);
+ 
+-- 
+2.34.1
+

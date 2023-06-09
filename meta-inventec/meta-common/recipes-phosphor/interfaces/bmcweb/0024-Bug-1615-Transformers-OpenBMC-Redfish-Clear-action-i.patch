@@ -1,8 +1,8 @@
-From ee5d07657638f35819d427d3786c0a73432ddcaf Mon Sep 17 00:00:00 2001
+From 9020e936c1a5eef4427c8232805e3bb0427536a8 Mon Sep 17 00:00:00 2001
 From: Jason Lin <lin.jasonyy@inventec.com>
 Date: Thu, 16 Mar 2023 14:35:52 +0800
-Subject: [PATCH] Bug 1615 - [Transformers][OpenBMC][Redfish] Clear action in
- PostCodes does not response complete information
+Subject: [PATCH 24/27] Bug 1615 - [Transformers][OpenBMC][Redfish] Clear
+ action in PostCodes does not response complete information
 
 Symptom/Reason:
 	Not responding Success response.
@@ -15,15 +15,16 @@ Solution/Change:
 
 Entry Test:
 	curl -basic -u root:0penBmc -X POST https://{$ip}/redfish/v1/Systems/system/LogServices/PostCodes/Actions/LogService.ClearLog -k
+
 ---
  redfish-core/lib/log_services.hpp | 1 +
  1 file changed, 1 insertion(+)
 
 diff --git a/redfish-core/lib/log_services.hpp b/redfish-core/lib/log_services.hpp
-index 5b357b65..50bf2eb0 100644
+index 235de8bd..9b4b35c0 100644
 --- a/redfish-core/lib/log_services.hpp
 +++ b/redfish-core/lib/log_services.hpp
-@@ -3296,6 +3296,7 @@ inline void requestRoutesPostCodesClear(App& app)
+@@ -3709,6 +3709,7 @@ inline void requestRoutesPostCodesClear(App& app)
                  messages::internalError(asyncResp->res);
                  return;
              }
@@ -31,3 +32,6 @@ index 5b357b65..50bf2eb0 100644
              },
              "xyz.openbmc_project.State.Boot.PostCode0",
              "/xyz/openbmc_project/State/Boot/PostCode0",
+-- 
+2.34.1
+

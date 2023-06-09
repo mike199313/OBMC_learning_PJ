@@ -1,17 +1,17 @@
-From 21d09c69e8aa8f35a4fb9aaece260aafaebbdedb Mon Sep 17 00:00:00 2001
+From e629ca953f042f6ca8f8478ca78b287254bb5e1a Mon Sep 17 00:00:00 2001
 From: Tommy Lin <lin.tommysc@inventec.com>
 Date: Tue, 11 Jan 2022 06:46:08 +0000
-Subject: [PATCH] Boot flag
+Subject: [PATCH 07/27] Boot flag
 
 ---
  redfish-core/lib/systems.hpp | 20 +++++++++++++++++++-
  1 file changed, 19 insertions(+), 1 deletion(-)
 
 diff --git a/redfish-core/lib/systems.hpp b/redfish-core/lib/systems.hpp
-index 81403370..34f0ad3f 100644
+index c9d31d17..2632aa05 100644
 --- a/redfish-core/lib/systems.hpp
 +++ b/redfish-core/lib/systems.hpp
-@@ -602,6 +602,11 @@ inline std::string dbusToRfBootSource(const std::string& dbusSource)
+@@ -634,6 +634,11 @@ inline std::string dbusToRfBootSource(const std::string& dbusSource)
      {
          return "Cd";
      }
@@ -23,7 +23,7 @@ index 81403370..34f0ad3f 100644
      if (dbusSource == "xyz.openbmc_project.Control.Boot.Source.Sources.Network")
      {
          return "Pxe";
-@@ -771,7 +776,7 @@ inline int assignBootParameters(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
+@@ -803,7 +808,7 @@ inline int assignBootParameters(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
      }
      else if (rfSource == "Diags")
      {
@@ -32,7 +32,7 @@ index 81403370..34f0ad3f 100644
      }
      else if (rfSource == "Cd")
      {
-@@ -1609,6 +1614,19 @@ inline void setBootProperties(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
+@@ -1743,6 +1748,19 @@ inline void setBootProperties(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
      setBootModeOrSource(aResp, bootSource);
      setBootType(aResp, bootType);
      setBootEnable(aResp, bootEnable);
@@ -53,5 +53,5 @@ index 81403370..34f0ad3f 100644
  
  /**
 -- 
-2.33.0
+2.34.1
 

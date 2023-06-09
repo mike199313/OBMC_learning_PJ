@@ -1,7 +1,7 @@
-From 99cd302b540c2a432a2c7baa3175497595bc8936 Mon Sep 17 00:00:00 2001
+From e31dc5c4d2c27c7c58cda3f869ae8eac2c1e5d25 Mon Sep 17 00:00:00 2001
 From: Tommy Lin <lin.tommysc@inventec.com>
 Date: Tue, 11 Jan 2022 06:21:36 +0000
-Subject: [PATCH 05/17] Add redfish managers serialInterfaces
+Subject: [PATCH 05/27] Add redfish managers serialInterfaces
 
 ---
  redfish-core/include/redfish.hpp |  1 +
@@ -9,10 +9,10 @@ Subject: [PATCH 05/17] Add redfish managers serialInterfaces
  2 files changed, 25 insertions(+)
 
 diff --git a/redfish-core/include/redfish.hpp b/redfish-core/include/redfish.hpp
-index ed42b89a..beb22754 100644
+index ce09531c..b6a9cce8 100644
 --- a/redfish-core/include/redfish.hpp
 +++ b/redfish-core/include/redfish.hpp
-@@ -86,6 +86,7 @@ class RedfishService
+@@ -100,6 +100,7 @@ class RedfishService
          requestRoutesManagerResetActionInfo(app);
          requestRoutesManagerResetToDefaultsAction(app);
          requestRoutesManagerDiagnosticData(app);
@@ -21,10 +21,10 @@ index ed42b89a..beb22754 100644
          requestRoutesChassis(app);
          requestRoutesChassisResetAction(app);
 diff --git a/redfish-core/lib/managers.hpp b/redfish-core/lib/managers.hpp
-index d1e43fb4..645b8e8c 100644
+index ba63dc4c..aea450a5 100644
 --- a/redfish-core/lib/managers.hpp
 +++ b/redfish-core/lib/managers.hpp
-@@ -1971,6 +1971,9 @@ inline void requestRoutesManager(App& app)
+@@ -1926,6 +1926,9 @@ inline void requestRoutesManager(App& app)
          asyncResp->res.jsonValue["ServiceEntryPointUUID"] = uuid;
          asyncResp->res.jsonValue["Model"] = "OpenBmc"; // TODO(ed), get model
  
@@ -34,7 +34,7 @@ index d1e43fb4..645b8e8c 100644
          asyncResp->res.jsonValue["LogServices"]["@odata.id"] =
              "/redfish/v1/Managers/bmc/LogServices";
          asyncResp->res.jsonValue["NetworkProtocol"]["@odata.id"] =
-@@ -2300,4 +2303,25 @@ inline void requestRoutesManagerCollection(App& app)
+@@ -2277,4 +2280,25 @@ inline void requestRoutesManagerCollection(App& app)
          asyncResp->res.jsonValue["Members"] = std::move(members);
          });
  }
@@ -61,5 +61,5 @@ index d1e43fb4..645b8e8c 100644
 +}
  } // namespace redfish
 -- 
-2.33.0
+2.34.1
 

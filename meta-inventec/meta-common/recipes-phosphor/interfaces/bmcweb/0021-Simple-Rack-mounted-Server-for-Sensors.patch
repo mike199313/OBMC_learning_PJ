@@ -1,7 +1,7 @@
-From 76d7ab2752d0489efded61a68353fee2e86f6d41 Mon Sep 17 00:00:00 2001
+From 4f25b85b8a7798609c2c74badad82cc56c5adff3 Mon Sep 17 00:00:00 2001
 From: Tommy Lin <lin.tommysc@inventec.com>
 Date: Thu, 16 Feb 2023 05:29:30 +0000
-Subject: [PATCH] Simple Rack-mounted Server for Sensors
+Subject: [PATCH 21/27] Simple Rack-mounted Server for Sensors
 
 Symptom/Reason:
 - N/A
@@ -20,15 +20,16 @@ Entry Test:
   - curl -u root:0penBmc -X GET https://${bmc}/redfish/v1/Chassis/${chassis_id}/Sensors/${sensor_id}
 - Get bootloader version
   - curl -u root:0penBmc -X GET https://${bmc}/redfish/v1/Managers/bmc
+
 ---
  redfish-core/lib/sensors.hpp | 39 ++++++++++++++++++++++++++++++++++++
  1 file changed, 39 insertions(+)
 
 diff --git a/redfish-core/lib/sensors.hpp b/redfish-core/lib/sensors.hpp
-index cb1f5dac..121af692 100644
+index ff764aad..c6e83ee2 100644
 --- a/redfish-core/lib/sensors.hpp
 +++ b/redfish-core/lib/sensors.hpp
-@@ -176,6 +176,34 @@ inline const char* toReadingUnits(const std::string& sensorType)
+@@ -187,6 +187,34 @@ inline std::string_view toReadingUnits(std::string_view sensorType)
      }
      return "";
  }
@@ -63,12 +64,12 @@ index cb1f5dac..121af692 100644
  } // namespace sensors
  
  /**
-@@ -900,6 +928,17 @@ inline void objectInterfacesToJson(
+@@ -800,6 +828,17 @@ inline void objectPropertiesToJson(
          {
              sensorJson["ReadingUnits"] = readingUnits;
          }
 +
-+        const std::string& physicalContext = sensors::toPhysicalContext(sensorName);
++        const std::string& physicalContext = sensors::toPhysicalContext(std::string(sensorName));
 +        if (physicalContext.empty())
 +        {
 +            BMCWEB_LOG_ERROR << "Redfish cannot map physical context for "
@@ -82,5 +83,5 @@ index cb1f5dac..121af692 100644
      else if (sensorType == "temperature")
      {
 -- 
-2.17.1
+2.34.1
 

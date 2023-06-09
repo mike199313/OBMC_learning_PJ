@@ -1,7 +1,7 @@
-From 4d0a058502d3662ffbfeda077d4cfe8a1067717d Mon Sep 17 00:00:00 2001
+From ec435b512e3698098b47e1281e8b278db094579b Mon Sep 17 00:00:00 2001
 From: Tommy Lin <lin.tommysc@inventec.com>
 Date: Wed, 23 Mar 2022 08:37:11 +0000
-Subject: [PATCH 13/17] Fix no PowerSupplies under chassis power URI
+Subject: [PATCH 12/27] Fix no PowerSupplies under chassis power URI
 
 Symptom/Reason:
     No "PowerSupplies" data in "/redfish/v1/Chassis/Transformers_MotherBoard/Power
@@ -20,58 +20,60 @@ Solution/Change:
 
 Entry Test:
     curl -X GET https://${bmc}/redfish/v1/Chassis/Transformers_MotherBoard/Power
+
 ---
  meson.build                  | 1 +
- meson_options.txt            | 6 ++++++
+ meson_options.txt            | 7 +++++++
  redfish-core/lib/sensors.hpp | 5 +++++
- 3 files changed, 12 insertions(+)
+ 3 files changed, 13 insertions(+)
 
 diff --git a/meson.build b/meson.build
-index 325a546c..06520ff1 100644
+index cf4c658a..689f7dc5 100644
 --- a/meson.build
 +++ b/meson.build
-@@ -90,6 +90,7 @@ feature_map = {
+@@ -91,6 +91,7 @@ feature_map = {
+   'vm-websocket'                                : '-DBMCWEB_ENABLE_VM_WEBSOCKET',
    'xtoken-auth'                                 : '-DBMCWEB_ENABLE_XTOKEN_AUTHENTICATION',
    #'vm-nbdproxy'                                : '-DBMCWEB_ENABLE_VM_NBDPROXY',
-   'redfish-enable-etag'                         : '-DBMCWEB_ENABLE_REDFISH_ETAG',
 +  'redfish-enable-inv-psu'                      : '-DBMCWEB_ENABLE_INV_PSU'
  }
  
  # Get the options status and build a project summary to show which flags are
 diff --git a/meson_options.txt b/meson_options.txt
-index a849fb64..c8e75415 100644
+index 57fb8ce0..6774db0c 100644
 --- a/meson_options.txt
 +++ b/meson_options.txt
-@@ -246,6 +246,12 @@ option(
-     value : 'disabled', 
-     description : 'Enable ETag feature support for Redfish.'
+@@ -248,6 +248,13 @@ option(
+     description: 'Allows this BMC to aggregate resources from satellite BMCs'
  )
+ 
 +option(
 +    'redfish-enable-inv-psu', 
 +    type : 'feature', 
 +    value : 'disabled', 
 +    description : 'Enable PSU from Inventory Manager.'
 +)
- 
++
  # Insecure options. Every option that starts with a `insecure` flag should
  # not be enabled by default for any platform, unless the author fully comprehends
+ # the implications of doing so.In general, enabling these options will cause security
 diff --git a/redfish-core/lib/sensors.hpp b/redfish-core/lib/sensors.hpp
-index 9da84a74..cb1f5dac 100644
+index 47fbde98..ff764aad 100644
 --- a/redfish-core/lib/sensors.hpp
 +++ b/redfish-core/lib/sensors.hpp
-@@ -486,7 +486,12 @@ void getChassis(const std::shared_ptr<SensorsAsyncResp>& sensorsAsyncResp,
+@@ -522,7 +522,12 @@ void getChassis(const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
                  Callback&& callback)
  {
      BMCWEB_LOG_DEBUG << "getChassis enter";
 +#ifdef BMCWEB_ENABLE_INV_PSU
-+    const std::array<const char*, 3> interfaces = {
++    constexpr std::array<std::string_view, 3> interfaces = {
 +        "xyz.openbmc_project.Inventory.Item.System",
 +#else
-     const std::array<const char*, 2> interfaces = {
+     constexpr std::array<std::string_view, 2> interfaces = {
 +#endif
          "xyz.openbmc_project.Inventory.Item.Board",
          "xyz.openbmc_project.Inventory.Item.Chassis"};
-     auto respHandler =
+ 
 -- 
-2.33.0
+2.34.1
 

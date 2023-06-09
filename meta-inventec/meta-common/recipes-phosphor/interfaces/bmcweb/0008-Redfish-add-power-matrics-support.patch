@@ -1,7 +1,7 @@
-From cd6b2ba0367fee0d1dcedcdbabca6f6f73423634 Mon Sep 17 00:00:00 2001
+From bdc35d95a8c98359c9018e10d247fcb555d8bf44 Mon Sep 17 00:00:00 2001
 From: Tommy Lin <lin.tommysc@inventec.com>
 Date: Tue, 11 Jan 2022 07:01:22 +0000
-Subject: [PATCH] Redfish add power matrics support
+Subject: [PATCH 08/27] Redfish add power matrics support
 
 Symptom/Reason:
     - "PowerMetrics" is missing in Power URI.
@@ -18,17 +18,18 @@ Entry Test:
     ipmitool dcmi power set_limit sample 2000
     - Get power status from Redfish
     curl -X GET https://${bmc_ip}/redfish/v1/Chassis/{chassis_id}/Power
+
 ---
  redfish-core/lib/power.hpp | 74 ++++++++++++++++++++++++++++++++++++++
  1 file changed, 74 insertions(+)
 
 diff --git a/redfish-core/lib/power.hpp b/redfish-core/lib/power.hpp
-index cecaeab4..1a2ca764 100644
+index 5d7bbb7d..58c64535 100644
 --- a/redfish-core/lib/power.hpp
 +++ b/redfish-core/lib/power.hpp
-@@ -286,6 +286,80 @@ inline void requestRoutesPower(App& app)
-                     // be null if the limit is not enabled.
-                     value = powerCap * std::pow(10, scale);
+@@ -288,6 +288,80 @@ inline void requestRoutesPower(App& app)
+                     sensorJson["PowerLimit"]["LimitInWatts"] =
+                         powerCap * std::pow(10, scale);
                  }
 +
 +                auto powerMetricHandler =
@@ -106,7 +107,7 @@ index cecaeab4..1a2ca764 100644
 +                    "xyz.openbmc_project.DCMI.Value");
              };
  
-             crow::connections::systemBus->async_method_call(
+             sdbusplus::asio::getAllProperties(
 -- 
-2.33.0
+2.34.1
 

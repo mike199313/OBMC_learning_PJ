@@ -1,7 +1,7 @@
-From c0b8e6e64bc6bffecc0cc34fc18fed80689f8cda Mon Sep 17 00:00:00 2001
+From 7f4c00497f9a85794fad795569e5551ae1d97971 Mon Sep 17 00:00:00 2001
 From: Ashwini Udupa <udupa.ashwini@inventec.com>
 Date: Fri, 4 Feb 2022 16:47:06 -0800
-Subject: [PATCH 11/17] CollectionCapabilities
+Subject: [PATCH 10/27] CollectionCapabilities
 
 ---
  redfish-core/include/redfish.hpp              |   1 +
@@ -12,10 +12,10 @@ Subject: [PATCH 11/17] CollectionCapabilities
  create mode 100644 static/redfish/v1/schema/CollectionCapabilities_v1.xml
 
 diff --git a/redfish-core/include/redfish.hpp b/redfish-core/include/redfish.hpp
-index beb22754..90b17668 100644
+index b6a9cce8..14c75bd4 100644
 --- a/redfish-core/include/redfish.hpp
 +++ b/redfish-core/include/redfish.hpp
-@@ -163,6 +163,7 @@ class RedfishService
+@@ -177,6 +177,7 @@ class RedfishService
          requestRoutesMemory(app);
  
          requestRoutesSystemsCollection(app);
@@ -24,10 +24,10 @@ index beb22754..90b17668 100644
          requestRoutesSystemActionsReset(app);
          requestRoutesSystemResetActionInfo(app);
 diff --git a/redfish-core/lib/systems.hpp b/redfish-core/lib/systems.hpp
-index 3ac81aba..97d956ad 100644
+index 2632aa05..07bf62e2 100644
 --- a/redfish-core/lib/systems.hpp
 +++ b/redfish-core/lib/systems.hpp
-@@ -2652,6 +2652,9 @@ inline void requestRoutesSystemsCollection(App& app)
+@@ -2778,6 +2778,9 @@ inline void requestRoutesSystemsCollection(App& app)
              "#ComputerSystemCollection.ComputerSystemCollection";
          asyncResp->res.jsonValue["@odata.id"] = "/redfish/v1/Systems";
          asyncResp->res.jsonValue["Name"] = "Computer System Collection";
@@ -37,7 +37,7 @@ index 3ac81aba..97d956ad 100644
  
          sdbusplus::asio::getProperty<std::string>(
              *crow::connections::systemBus, "xyz.openbmc_project.Settings",
-@@ -2679,6 +2682,45 @@ inline void requestRoutesSystemsCollection(App& app)
+@@ -2805,6 +2808,45 @@ inline void requestRoutesSystemsCollection(App& app)
          });
  }
  
@@ -84,17 +84,17 @@ index 3ac81aba..97d956ad 100644
   * Function transceives data with dbus directly.
   */
 diff --git a/scripts/update_schemas.py b/scripts/update_schemas.py
-index d1c93bc7..26f51098 100755
+index 794ec0cd..bd1a3bab 100755
 --- a/scripts/update_schemas.py
 +++ b/scripts/update_schemas.py
-@@ -37,6 +37,7 @@ include_list = [
-     'CertificateService',
-     'Chassis',
-     'ChassisCollection',
-+    'CollectionCapabilities',
-     'ComputerSystem',
-     'ComputerSystemCollection',
-     'Drive',
+@@ -41,6 +41,7 @@ include_list = [
+     "CertificateService",
+     "Chassis",
+     "ChassisCollection",
++    "CollectionCapabilities",
+     "ComputerSystem",
+     "ComputerSystemCollection",
+     "ComponentIntegrity",
 diff --git a/static/redfish/v1/schema/CollectionCapabilities_v1.xml b/static/redfish/v1/schema/CollectionCapabilities_v1.xml
 new file mode 100644
 index 00000000..ec116b9d
@@ -295,5 +295,5 @@ index 00000000..ec116b9d
 +  </edmx:DataServices>
 +</edmx:Edmx>
 -- 
-2.33.0
+2.34.1
 

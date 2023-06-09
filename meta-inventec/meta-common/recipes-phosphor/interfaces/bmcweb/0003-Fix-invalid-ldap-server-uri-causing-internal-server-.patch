@@ -1,7 +1,7 @@
-From 9d367e8b12c593cd371e7c8e492ca6ed7d7fdb8e Mon Sep 17 00:00:00 2001
+From 40ff766ded8ca33584f7c766e327921bfb2e2174 Mon Sep 17 00:00:00 2001
 From: Tommy Lin <lin.tommysc@inventec.com>
 Date: Tue, 11 Jan 2022 05:40:17 +0000
-Subject: [PATCH 03/17] Fix invalid ldap server uri causing internal server
+Subject: [PATCH 03/27] Fix invalid ldap server uri causing internal server
  error
 
 ---
@@ -9,12 +9,12 @@ Subject: [PATCH 03/17] Fix invalid ldap server uri causing internal server
  1 file changed, 16 insertions(+)
 
 diff --git a/redfish-core/lib/account_service.hpp b/redfish-core/lib/account_service.hpp
-index 0e15f31e..c2b2dc12 100644
+index 9d4f5131..79d19b21 100644
 --- a/redfish-core/lib/account_service.hpp
 +++ b/redfish-core/lib/account_service.hpp
-@@ -25,6 +25,14 @@
- #include <sdbusplus/asio/property.hpp>
- #include <utils/json_utils.hpp>
+@@ -35,6 +35,14 @@
+ #include <string_view>
+ #include <vector>
  
 +#include <variant>
 +
@@ -27,7 +27,7 @@ index 0e15f31e..c2b2dc12 100644
  namespace redfish
  {
  
-@@ -632,6 +640,14 @@ inline void handleServiceAddressPatch(
+@@ -679,6 +687,14 @@ inline void handleServiceAddressPatch(
      const std::string& ldapServerElementName,
      const std::string& ldapConfigObject)
  {
@@ -41,7 +41,7 @@ index 0e15f31e..c2b2dc12 100644
 +
      crow::connections::systemBus->async_method_call(
          [asyncResp, ldapServerElementName,
-          serviceAddressList](const boost::system::error_code ec) {
+          serviceAddressList](const boost::system::error_code& ec) {
 -- 
-2.33.0
+2.34.1
 

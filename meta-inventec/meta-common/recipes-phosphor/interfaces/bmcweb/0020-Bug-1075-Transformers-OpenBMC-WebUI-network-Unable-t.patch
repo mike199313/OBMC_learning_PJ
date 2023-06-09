@@ -1,8 +1,8 @@
-From 741a1154382d666e9d14aede7c2ee90be2451384 Mon Sep 17 00:00:00 2001
+From 342e0a7fb7f5c03fa07d62214ab4c43d181eb19b Mon Sep 17 00:00:00 2001
 From: Jason Lin <lin.jasonyy@inventec.com>
 Date: Thu, 22 Dec 2022 09:47:24 +0800
-Subject: [PATCH] Bug 1075 - [Transformers][OpenBMC][WebUI][network] Unable to
- delete static ipv4 address.
+Subject: [PATCH 20/27] Bug 1075 - [Transformers][OpenBMC][WebUI][network]
+ Unable to delete static ipv4 address.
 
 Symptom/Reason:
         The error has two main reasons: one is from the 400 bad request occurred by the ipv4 link-local which will abort the deleting action, the other is from when creating the ipv4 static IP, the old one has not been deleted which cause the d-bus object path duplication.
@@ -15,33 +15,25 @@ Solution/Change:
 
 Entry Test:
         https://{ip}/#/settings/network
+
 ---
- redfish-core/lib/ethernet.hpp | 45 +++++++++++++++++++----------------
- 1 file changed, 25 insertions(+), 20 deletions(-)
+ redfish-core/lib/ethernet.hpp | 43 +++++++++++++++++++----------------
+ 1 file changed, 24 insertions(+), 19 deletions(-)
 
 diff --git a/redfish-core/lib/ethernet.hpp b/redfish-core/lib/ethernet.hpp
-index 126a68d2..4b3186d9 100644
+index d948a51a..ec83addd 100644
 --- a/redfish-core/lib/ethernet.hpp
 +++ b/redfish-core/lib/ethernet.hpp
-@@ -29,6 +29,8 @@
- #include <optional>
+@@ -34,6 +34,8 @@
  #include <regex>
+ #include <string_view>
  
 +#include <errno.h>
 +
  namespace redfish
  {
  
-@@ -776,7 +778,7 @@ inline void
- 
-         crow::connections::systemBus->async_method_call(
-             [asyncResp, ifaceId, gateway](const boost::system::error_code ec2) {
--            if (ec2)
-+            if (ec2 != boost::system::errc::file_exists)
-             {
-                 messages::internalError(asyncResp->res);
-                 return;
-@@ -1473,33 +1475,36 @@ inline void handleIPv4StaticPatch(
+@@ -1384,33 +1386,36 @@ inline void handleIPv4StaticPatch(
                  {
                      gw = &(*gateway);
                      BMCWEB_LOG_DEBUG << "IPv4 Gateway - " << *gw;
@@ -98,5 +90,5 @@ index 126a68d2..4b3186d9 100644
                      }
                  }
 -- 
-2.25.1
+2.34.1
 

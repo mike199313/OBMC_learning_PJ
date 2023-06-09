@@ -1,0 +1,195 @@
+From 7395472262e5a57f8fc742c13c3c6bf0a0ee330a Mon Sep 17 00:00:00 2001
+From: Jason Lin <lin.jasonyy@inventec.com>
+Date: Tue, 16 May 2023 15:17:06 +0800
+Subject: [PATCH 27/27] Redfish log & session schema enhancements
+
+---
+ redfish-core/lib/log_services.hpp     | 69 +++++++++++++++++++++++++++
+ redfish-core/lib/redfish_sessions.hpp |  2 +
+ 2 files changed, 71 insertions(+)
+
+diff --git a/redfish-core/lib/log_services.hpp b/redfish-core/lib/log_services.hpp
+index 9b4b35c0..0a498b35 100644
+--- a/redfish-core/lib/log_services.hpp
++++ b/redfish-core/lib/log_services.hpp
+@@ -52,6 +52,7 @@
+ #include <span>
+ #include <string_view>
+ #include <variant>
++#include <regex>
+ 
+ namespace redfish
+ {
+@@ -644,6 +645,11 @@ inline void
+                 asyncResp->res.jsonValue["OriginatorType"] = originatorType;
+             }
+ 
++            asyncResp->res.jsonValue["Status"]["State"] = "Enabled";
++            asyncResp->res.jsonValue["Status"]["Health"] = "OK";
++            asyncResp->res.jsonValue["MessageId"] =
++                "ResourceEvent.1.0.3.ResourceCreated";
++
+             if (dumpType == "BMC")
+             {
+                 asyncResp->res.jsonValue["DiagnosticDataType"] = "Manager";
+@@ -1194,6 +1200,10 @@ inline void requestRoutesEventLogService(App& app)
+         asyncResp->res.jsonValue["DateTimeLocalOffset"] =
+             redfishDateTimeOffset.second;
+ 
++        asyncResp->res.jsonValue["Status"]["State"] = "Enabled";
++        asyncResp->res.jsonValue["Status"]["Health"] = "OK";
++        asyncResp->res.jsonValue["ServiceEnabled"] = true;
++
+         asyncResp->res.jsonValue["Entries"]["@odata.id"] =
+             "/redfish/v1/Systems/system/LogServices/EventLog/Entries";
+         asyncResp->res.jsonValue["Actions"]["#LogService.ClearLog"] = {
+@@ -1351,6 +1361,8 @@ static LogParseError
+     logEntryJson["EntryType"] = "Event";
+     logEntryJson["Severity"] = message->messageSeverity;
+     logEntryJson["Created"] = std::move(timestamp);
++    logEntryJson["Status"]["State"] = "Enabled";
++    logEntryJson["Status"]["Health"] = "OK";
+     return LogParseError::success;
+ }
+ 
+@@ -2200,6 +2212,16 @@ inline void requestRoutesSystemHostLogger(App& app)
+         asyncResp->res.jsonValue["Id"] = "HostLogger";
+         asyncResp->res.jsonValue["Entries"]["@odata.id"] =
+             "/redfish/v1/Systems/system/LogServices/HostLogger/Entries";
++
++        std::pair<std::string, std::string> redfishDateTimeOffset =
++            redfish::time_utils::getDateTimeOffsetNow();
++
++        asyncResp->res.jsonValue["DateTime"] = redfishDateTimeOffset.first;
++        asyncResp->res.jsonValue["DateTimeLocalOffset"] =
++            redfishDateTimeOffset.second;
++        asyncResp->res.jsonValue["Status"]["State"] = "Enabled";
++        asyncResp->res.jsonValue["Status"]["Health"] = "OK";
++        asyncResp->res.jsonValue["ServiceEnabled"] = true;
+         });
+ }
+ 
+@@ -2459,12 +2481,40 @@ inline void requestRoutesBMCJournalLogService(App& app)
+         asyncResp->res.jsonValue["DateTime"] = redfishDateTimeOffset.first;
+         asyncResp->res.jsonValue["DateTimeLocalOffset"] =
+             redfishDateTimeOffset.second;
++        asyncResp->res.jsonValue["Status"]["State"] = "Enabled";
++        asyncResp->res.jsonValue["Status"]["Health"] = "OK";
++        asyncResp->res.jsonValue["ServiceEnabled"] = true;
+ 
+         asyncResp->res.jsonValue["Entries"]["@odata.id"] =
+             "/redfish/v1/Managers/bmc/LogServices/Journal/Entries";
+         });
+ }
+ 
++std::string pascalCase(std::string str)
++{
++    std::regex separator("[^a-zA-Z0-9]");
++    std::string temp;
++    bool upper = true;
++    for (std::string::iterator i = str.begin(); i != str.end(); ++i)
++    {
++        if (!std::regex_match(std::string(1, *i), separator))
++        {
++            if (upper)
++            {
++                temp += static_cast<char>(toupper(*i));
++                upper = false;
++            }
++            else
++                temp += static_cast<char>(tolower(*i));
++        }
++        else
++        {
++            upper = true;
++        }
++    }
++    return temp;
++}
++
+ static int
+     fillBMCJournalLogEntryJson(const std::string& bmcJournalLogEntryID,
+                                sd_journal* journal,
+@@ -2510,6 +2560,10 @@ static int
+         return 1;
+     }
+ 
++    static const std::string openBMCMessageRegistryVersion("0.4");
++    std::string messageID = "OpenBMC." + openBMCMessageRegistryVersion + "." +
++                            pascalCase(std::string(syslogID));
++
+     // Fill in the log entry with the gathered data
+     bmcJournalLogEntryJson["@odata.type"] = "#LogEntry.v1_9_0.LogEntry";
+     bmcJournalLogEntryJson["@odata.id"] = crow::utility::urlFromPieces(
+@@ -2518,12 +2572,15 @@ static int
+     bmcJournalLogEntryJson["Name"] = "BMC Journal Entry";
+     bmcJournalLogEntryJson["Id"] = bmcJournalLogEntryID;
+     bmcJournalLogEntryJson["Message"] = std::move(message);
++    bmcJournalLogEntryJson["MessageId"] = std::move(messageID);
+     bmcJournalLogEntryJson["EntryType"] = "Oem";
+     bmcJournalLogEntryJson["Severity"] = severity <= 2   ? "Critical"
+                                          : severity <= 4 ? "Warning"
+                                                          : "OK";
+     bmcJournalLogEntryJson["OemRecordFormat"] = "BMC Journal Entry";
+     bmcJournalLogEntryJson["Created"] = std::move(entryTimeStr);
++    bmcJournalLogEntryJson["Status"]["State"] = "Enabled";
++    bmcJournalLogEntryJson["Status"]["Health"] = "OK";
+     return 0;
+ }
+ 
+@@ -2730,6 +2787,10 @@ inline void
+     asyncResp->res.jsonValue["DateTime"] = redfishDateTimeOffset.first;
+     asyncResp->res.jsonValue["DateTimeLocalOffset"] =
+         redfishDateTimeOffset.second;
++    
++    asyncResp->res.jsonValue["ServiceEnabled"] = true;
++    asyncResp->res.jsonValue["Status"]["State"] = "Enabled";
++    asyncResp->res.jsonValue["Status"]["Health"] = "OK";
+ 
+     asyncResp->res.jsonValue["Entries"]["@odata.id"] = dumpPath + "/Entries";
+ 
+@@ -3131,6 +3192,9 @@ inline void requestRoutesCrashdumpService(App& app)
+         asyncResp->res.jsonValue["DateTime"] = redfishDateTimeOffset.first;
+         asyncResp->res.jsonValue["DateTimeLocalOffset"] =
+             redfishDateTimeOffset.second;
++        asyncResp->res.jsonValue["Status"]["State"] = "Enabled";
++        asyncResp->res.jsonValue["Status"]["Health"] = "OK";
++        asyncResp->res.jsonValue["ServiceEnabled"] = true;
+ 
+         asyncResp->res.jsonValue["Entries"]["@odata.id"] =
+             crow::utility::urlFromPieces("redfish", "v1", "Systems", "system",
+@@ -3665,6 +3729,9 @@ inline void requestRoutesPostCodesLogService(App& app)
+         asyncResp->res.jsonValue["DateTime"] = redfishDateTimeOffset.first;
+         asyncResp->res.jsonValue["DateTimeLocalOffset"] =
+             redfishDateTimeOffset.second;
++        asyncResp->res.jsonValue["Status"]["State"] = "Enabled";
++        asyncResp->res.jsonValue["Status"]["Health"] = "OK";
++        asyncResp->res.jsonValue["ServiceEnabled"] = true;
+ 
+         asyncResp->res.jsonValue["Actions"]["#LogService.ClearLog"] = {
+             {"target",
+@@ -3869,6 +3936,8 @@ static bool fillPostCodeEntry(
+         bmcLogEntry["EntryType"] = "Event";
+         bmcLogEntry["Severity"] = std::move(severity);
+         bmcLogEntry["Created"] = entryTimeStr;
++        bmcLogEntry["Status"]["State"] = "Enabled";
++        bmcLogEntry["Status"]["Health"] = "OK";
+         if (!std::get<std::vector<uint8_t>>(code.second).empty())
+         {
+             bmcLogEntry["AdditionalDataURI"] =
+diff --git a/redfish-core/lib/redfish_sessions.hpp b/redfish-core/lib/redfish_sessions.hpp
+index 35d5d5cf..87ded600 100644
+--- a/redfish-core/lib/redfish_sessions.hpp
++++ b/redfish-core/lib/redfish_sessions.hpp
+@@ -162,6 +162,8 @@ inline void handleSessionCollectionGet(
+         "/redfish/v1/SessionService/Sessions/";
+     asyncResp->res.jsonValue["Name"] = "Session Collection";
+     asyncResp->res.jsonValue["Description"] = "Session Collection";
++    asyncResp->res.jsonValue["Status"]["State"] = "Enabled";
++    asyncResp->res.jsonValue["Status"]["Health"] = "OK";
+ }
+ 
+ inline void handleSessionCollectionMembersGet(
+-- 
+2.34.1
+

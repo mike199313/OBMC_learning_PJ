@@ -1,19 +1,20 @@
-From b2fb239c8a04279df37025571e4073731a0e70ed Mon Sep 17 00:00:00 2001
+From adf0fd94936022db2e88b5724e99df15a7841d52 Mon Sep 17 00:00:00 2001
 From: Tommy Lin <lin.tommysc@inventec.com>
 Date: Tue, 11 Jan 2022 05:52:47 +0000
-Subject: [PATCH 04/17] Ip fix
+Subject: [PATCH 04/27] Ip fix
 
 gateway ip fix
+
 ---
  redfish-core/lib/ethernet.hpp | 60 +++++++++++++++++++++++++++++++++++
  1 file changed, 60 insertions(+)
 
 diff --git a/redfish-core/lib/ethernet.hpp b/redfish-core/lib/ethernet.hpp
-index 5ccc25fe..126a68d2 100644
+index 95632901..ac9cff6e 100644
 --- a/redfish-core/lib/ethernet.hpp
 +++ b/redfish-core/lib/ethernet.hpp
-@@ -1390,6 +1390,36 @@ inline void handleIPv4StaticPatch(
-                 if (ipv4VerifyIpAndGetBitcount(*address))
+@@ -1297,6 +1297,36 @@ inline void handleIPv4StaticPatch(
+                 if (ip_util::ipv4VerifyIpAndGetBitcount(*address))
                  {
                      addr = &(*address);
 +                    BMCWEB_LOG_DEBUG << "IPv4 address - " << *addr;
@@ -49,8 +50,8 @@ index 5ccc25fe..126a68d2 100644
                  }
                  else
                  {
-@@ -1442,6 +1472,36 @@ inline void handleIPv4StaticPatch(
-                 if (ipv4VerifyIpAndGetBitcount(*gateway))
+@@ -1350,6 +1380,36 @@ inline void handleIPv4StaticPatch(
+                 if (ip_util::ipv4VerifyIpAndGetBitcount(*gateway))
                  {
                      gw = &(*gateway);
 +                    BMCWEB_LOG_DEBUG << "IPv4 Gateway - " << *gw;
@@ -87,5 +88,5 @@ index 5ccc25fe..126a68d2 100644
                  else
                  {
 -- 
-2.33.0
+2.34.1
 

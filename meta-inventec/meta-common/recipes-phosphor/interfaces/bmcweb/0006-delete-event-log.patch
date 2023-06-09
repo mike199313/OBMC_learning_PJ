@@ -1,19 +1,19 @@
-From 76a5133377ba9b51352a7cad08423b4b91032f85 Mon Sep 17 00:00:00 2001
+From 04f1af75e7d9692e616ed5663e0a93ba93ad5781 Mon Sep 17 00:00:00 2001
 From: Ashwini Udupa <udupa.ashwini@inventec.com>
 Date: Mon, 28 Feb 2022 15:02:09 -0800
-Subject: [PATCH] delete-event-log
+Subject: [PATCH 06/27] delete-event-log
 
 ---
  redfish-core/lib/log_services.hpp | 68 +++++++++++++++++++++++++++++++
  1 file changed, 68 insertions(+)
 
 diff --git a/redfish-core/lib/log_services.hpp b/redfish-core/lib/log_services.hpp
-index 3b1da0ec..e8409dee 100644
+index 5159ae1a..235de8bd 100644
 --- a/redfish-core/lib/log_services.hpp
 +++ b/redfish-core/lib/log_services.hpp
-@@ -1310,6 +1310,74 @@ inline void requestRoutesJournalEventLogEntry(App& app)
-         messages::resourceMissingAtURI(asyncResp->res,
-                                        crow::utility::urlFromPieces(targetID));
+@@ -1526,6 +1526,74 @@ inline void requestRoutesJournalEventLogEntry(App& app)
+         // Requested ID was not found
+         messages::resourceNotFound(asyncResp->res, "LogEntry", targetID);
          });
 +
 +
@@ -87,5 +87,5 @@ index 3b1da0ec..e8409dee 100644
  
  inline void requestRoutesDBusEventLogEntryCollection(App& app)
 -- 
-2.33.0
+2.34.1
 

@@ -1,0 +1,30 @@
+From 4dd7acfc40c30c1ceb71f70459d5cfd24a49b738 Mon Sep 17 00:00:00 2001
+From: Jason Lin <lin.jasonyy@inventec.com>
+Date: Fri, 24 Feb 2023 07:44:02 +0000
+Subject: [PATCH 23/27] Bug 1488 - [Starscream-ast][OpenBMC][Redfish]Should
+ contain attribute of "ProcessorArchitecture" in
+ /Systems/system/Processors/${cpu} uri
+
+---
+ redfish-core/lib/processor.hpp | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/redfish-core/lib/processor.hpp b/redfish-core/lib/processor.hpp
+index 2af6b94e..85e9c5d1 100644
+--- a/redfish-core/lib/processor.hpp
++++ b/redfish-core/lib/processor.hpp
+@@ -352,6 +352,11 @@ inline void getCpuAssetData(std::shared_ptr<bmcweb::AsyncResp> aResp,
+                 aResp->res.jsonValue["ProcessorArchitecture"] = "Power";
+                 aResp->res.jsonValue["InstructionSet"] = "PowerISA";
+             }
++            else if (manufacturer->find("Advanced Micro Devices") != std::string::npos)
++            {
++                aResp->res.jsonValue["ProcessorArchitecture"] = "amd";
++                aResp->res.jsonValue["InstructionSet"] = "amd-64";
++            }
+         }
+ 
+         if (partNumber != nullptr)
+-- 
+2.34.1
+

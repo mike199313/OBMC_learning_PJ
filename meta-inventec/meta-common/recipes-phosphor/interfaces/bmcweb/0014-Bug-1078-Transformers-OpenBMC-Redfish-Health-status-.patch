@@ -1,7 +1,7 @@
-From 39de136e7a5dff3155172d2efedbc2afc00a5ff5 Mon Sep 17 00:00:00 2001
+From 2c5c3f7b7035fa21191daa4fcf1b8cab5351b0d5 Mon Sep 17 00:00:00 2001
 From: "Fred.Chang" <chang.fredys@inventec.com>
 Date: Tue, 14 Jun 2022 20:33:42 +0800
-Subject: [PATCH 15/17] Bug 1078 - [Transformers][OpenBMC][Redfish]Health
+Subject: [PATCH 14/27] Bug 1078 - [Transformers][OpenBMC][Redfish]Health
  status is different between CPU and DIMM's empty slot
 
 Sympton/Reason:
@@ -50,54 +50,56 @@ Entry Test:
 [comment for 2.12 upgrade]
 Some code in getDimmDataByService() is moved to assembleDimmProperties()
 Move the related code in this patch as well
+
 ---
- redfish-core/lib/memory.hpp | 23 ++++++++++++++++-------
- 1 file changed, 16 insertions(+), 7 deletions(-)
+ redfish-core/lib/memory.hpp | 16 +++++++++++-----
+ 1 file changed, 11 insertions(+), 5 deletions(-)
 
 diff --git a/redfish-core/lib/memory.hpp b/redfish-core/lib/memory.hpp
-index e741a676..b2a29ab9 100644
+index fdb01790..35307a7d 100644
 --- a/redfish-core/lib/memory.hpp
 +++ b/redfish-core/lib/memory.hpp
-@@ -15,8 +15,6 @@
- */
- #pragma once
- 
--#include "health.hpp"
--
- #include <app.hpp>
- #include <dbus_utility.hpp>
- #include <nlohmann/json.hpp>
-@@ -449,6 +447,7 @@ inline void
+@@ -404,6 +404,7 @@ inline void
      aResp->res.jsonValue[jsonPtr]["Name"] = "DIMM Slot";
      aResp->res.jsonValue[jsonPtr]["Status"]["State"] = "Enabled";
      aResp->res.jsonValue[jsonPtr]["Status"]["Health"] = "OK";
 +    aResp->res.jsonValue[jsonPtr]["Status"]["HealthRollup"] = "OK";
  
-     for (const auto& property : properties)
+     const uint16_t* memoryDataWidth = nullptr;
+     const size_t* memorySizeInKB = nullptr;
+@@ -426,6 +427,7 @@ inline void
+     const std::string* sparePartNumber = nullptr;
+     const std::string* model = nullptr;
+     const std::string* locationCode = nullptr;
++    const bool* memFunctional = nullptr;
+ 
+     const bool success = sdbusplus::unpackPropertiesNoThrow(
+         dbus_utils::UnpackErrorPrinter(), properties, "MemoryDataWidth",
+@@ -438,7 +440,7 @@ inline void
+         memoryConfiguredSpeedInMhz, "MemoryType", memoryType, "Channel",
+         channel, "MemoryController", memoryController, "Slot", slot, "Socket",
+         socket, "SparePartNumber", sparePartNumber, "Model", model,
+-        "LocationCode", locationCode);
++        "LocationCode", locationCode, "Functional", memFunctional);
+ 
+     if (!success)
      {
-@@ -529,6 +528,21 @@ inline void
-                 aResp->res.jsonValue[jsonPtr]["Status"]["State"] = "Absent";
-             }
-         }
-+        else if (property.first == "Functional")
+@@ -487,6 +489,14 @@ inline void
+         aResp->res.jsonValue[jsonPtr]["BusWidthBits"] = *memoryTotalWidth;
+     }
+ 
++    if (memFunctional != nullptr)
++    {
++        if (*memFunctional == false)
 +        {
-+            const bool* memFunctional = std::get_if<bool>(&property.second);
-+            if (memFunctional == nullptr)
-+            {
-+                messages::internalError(aResp->res);
-+                BMCWEB_LOG_DEBUG
-+                    << "Invalid property type for Dimm Functional";
-+                return;
-+            }
-+            if (*memFunctional == false)
-+            {
-+                aResp->res.jsonValue["Status"]["Health"] = "Critical";
-+            }
++            aResp->res.jsonValue["Status"]["Health"] = "Critical";
 +        }
-         else if (property.first == "MemoryTotalWidth")
-         {
-             const uint16_t* value = std::get_if<uint16_t>(&property.second);
-@@ -708,10 +722,6 @@ inline void getDimmDataByService(std::shared_ptr<bmcweb::AsyncResp> aResp,
++    }
++
+     if (ecc != nullptr)
+     {
+         constexpr const std::array<const char*, 4> values{
+@@ -609,10 +619,6 @@ inline void getDimmDataByService(std::shared_ptr<bmcweb::AsyncResp> aResp,
                                   const std::string& service,
                                   const std::string& objPath)
  {
@@ -106,16 +108,8 @@ index e741a676..b2a29ab9 100644
 -    health->populate();
 -
      BMCWEB_LOG_DEBUG << "Get available system components.";
-     crow::connections::systemBus->async_method_call(
-         [dimmId, aResp{std::move(aResp)}](
-@@ -754,7 +764,6 @@ inline void assembleDimmPartitionData(
-                 messages::internalError(aResp->res);
-                 return;
-             }
--
-             partition["OffsetMiB"] = (*value >> 10);
-         }
-         else if (key == "PartitionId")
+     sdbusplus::asio::getAllProperties(
+         *crow::connections::systemBus, service, objPath, "",
 -- 
-2.33.0
+2.34.1
 

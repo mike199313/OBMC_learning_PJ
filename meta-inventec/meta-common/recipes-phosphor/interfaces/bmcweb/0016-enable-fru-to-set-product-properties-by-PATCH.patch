@@ -1,7 +1,7 @@
-From 6a426062c053b6ba196a7866de680135bbb7879f Mon Sep 17 00:00:00 2001
+From 6010d1282102771319c0303fff22ee76aa93d2a2 Mon Sep 17 00:00:00 2001
 From: Jason Lin <lin.jasonyy@inventec.com>
 Date: Thu, 25 Aug 2022 15:07:23 +0800
-Subject: [PATCH] Bug 1231 - [Common][OpenBmc][Redfish] Enable FRU to set
+Subject: [PATCH 16/27] Bug 1231 - [Common][OpenBmc][Redfish] Enable FRU to set
  product properties by PATCH
 
 Symptom/Reason:
@@ -25,27 +25,20 @@ Entry Test:
    handleChassisGet() accordingly
 3. patch function under requestRoutesChassis is implemented in official code,
    remove the related parts in this patch
+
 ---
- redfish-core/lib/chassis.hpp | 392 +++++++++++++++++++++++++++++++++++
- 1 file changed, 392 insertions(+)
+ redfish-core/lib/chassis.hpp | 390 +++++++++++++++++++++++++++++++++++
+ 1 file changed, 390 insertions(+)
 
 diff --git a/redfish-core/lib/chassis.hpp b/redfish-core/lib/chassis.hpp
-index f1de38c8..eb2d8f0d 100644
+index 31b38c31..5b1a064c 100644
 --- a/redfish-core/lib/chassis.hpp
 +++ b/redfish-core/lib/chassis.hpp
-@@ -19,6 +19,8 @@
- #include "led.hpp"
- #include "utils/json_utils.hpp"
+@@ -32,9 +32,152 @@
+ #include <array>
+ #include <string_view>
  
 +#include <stdlib.h>
-+
- #include <app.hpp>
- #include <dbus_utility.hpp>
- #include <query.hpp>
-@@ -26,9 +28,151 @@
- #include <sdbusplus/asio/property.hpp>
- #include <utils/collection.hpp>
- 
 +#include <algorithm>
 +#include <string>
 +#include <variant>
@@ -194,25 +187,17 @@ index f1de38c8..eb2d8f0d 100644
  /**
   * @brief Retrieves chassis state properties over dbus
   *
-@@ -270,6 +414,9 @@ inline void
-             asyncResp->res.jsonValue["@odata.id"] =
-                 "/redfish/v1/Chassis/" + chassisId;
+@@ -275,6 +418,9 @@ inline void
+                 crow::utility::urlFromPieces("redfish", "v1", "Chassis",
+                                              chassisId);
              asyncResp->res.jsonValue["Name"] = "Chassis Collection";
 +            asyncResp->res.jsonValue["FRU"] = {
 +                            {"@odata.id", "/redfish/v1/Chassis/" + chassisId +
 +                                              "/FRU/MainBoard/"}};
              asyncResp->res.jsonValue["ChassisType"] = "RackMount";
              asyncResp->res.jsonValue["Actions"]["#Chassis.Reset"]["target"] =
-                 "/redfish/v1/Chassis/" + chassisId + "/Actions/Chassis.Reset";
-@@ -375,6 +522,7 @@ inline void
-                         asyncResp->res.jsonValue[propertyName] = *value;
-                     }
-                 }
-+
-                 asyncResp->res.jsonValue["Name"] = chassisId;
-                 asyncResp->res.jsonValue["Id"] = chassisId;
- #ifdef BMCWEB_ALLOW_DEPRECATED_POWER_THERMAL
-@@ -440,6 +588,66 @@ inline void
+                 crow::utility::urlFromPieces("redfish", "v1", "Chassis",
+@@ -488,6 +634,66 @@ inline void
      getPhysicalSecurityData(asyncResp);
  }
  
@@ -279,7 +264,7 @@ index f1de38c8..eb2d8f0d 100644
  inline void
      handleChassisPatch(App& app, const crow::Request& req,
                         const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
-@@ -581,6 +789,190 @@ inline void requestRoutesChassis(App& app)
+@@ -625,6 +831,190 @@ inline void requestRoutesChassis(App& app)
          .privileges(redfish::privileges::patchChassis)
          .methods(boost::beast::http::verb::patch)(
              std::bind_front(handleChassisPatch, std::ref(app)));
@@ -471,5 +456,5 @@ index f1de38c8..eb2d8f0d 100644
  
  inline void
 -- 
-2.33.0
+2.34.1
 

@@ -1,28 +1,27 @@
-From 0a2ee86c5fe8bd0ac7f6f7509dc983d81908268e Mon Sep 17 00:00:00 2001
+From 186014cc2b581a81818400ea8892c68fc57a7712 Mon Sep 17 00:00:00 2001
 From: Tommy Lin <lin.tommysc@inventec.com>
 Date: Tue, 11 Jan 2022 07:11:36 +0000
-Subject: [PATCH 09/17] Add system airflow sensor support
+Subject: [PATCH 09/27] Add system airflow sensor support
 
 Add units for system airflow sensor
+
 ---
- redfish-core/lib/sensors.hpp | 7 ++++++-
- 1 file changed, 6 insertions(+), 1 deletion(-)
+ redfish-core/lib/sensors.hpp | 5 +++++
+ 1 file changed, 5 insertions(+)
 
 diff --git a/redfish-core/lib/sensors.hpp b/redfish-core/lib/sensors.hpp
-index 44faca67..9da84a74 100644
+index ef3354d9..47fbde98 100644
 --- a/redfish-core/lib/sensors.hpp
 +++ b/redfish-core/lib/sensors.hpp
-@@ -58,7 +58,8 @@ static auto sensorPaths = std::to_array<std::string_view>({
-     "/xyz/openbmc_project/sensors/power",
+@@ -69,6 +69,7 @@ constexpr auto sensorPaths = std::to_array<std::string_view>({
      "/xyz/openbmc_project/sensors/current",
      "/xyz/openbmc_project/sensors/airflow",
--               "/xyz/openbmc_project/sensors/humidity",
-+    "/xyz/openbmc_project/sensors/humidity",
+     "/xyz/openbmc_project/sensors/humidity",
 +    "/xyz/openbmc_project/sensors/cfm",
  #ifdef BMCWEB_NEW_POWERSUBSYSTEM_THERMALSUBSYSTEM
      "/xyz/openbmc_project/sensors/voltage",
      "/xyz/openbmc_project/sensors/fan_tach",
-@@ -144,6 +145,10 @@ inline const char* toReadingUnits(const std::string& sensorType)
+@@ -155,6 +156,10 @@ inline std::string_view toReadingUnits(std::string_view sensorType)
      {
          return "A";
      }
@@ -34,5 +33,5 @@ index 44faca67..9da84a74 100644
      {
          return "RPM";
 -- 
-2.33.0
+2.34.1
 

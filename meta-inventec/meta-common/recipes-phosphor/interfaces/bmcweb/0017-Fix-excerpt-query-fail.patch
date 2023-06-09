@@ -1,7 +1,7 @@
-From 2c743b3d18c2889039c5b6f6ccead546559b1eba Mon Sep 17 00:00:00 2001
+From f83f0a96b2a31f1b3700755fec7ba06753e7be5b Mon Sep 17 00:00:00 2001
 From: Tommy Lin <lin.tommysc@inventec.com>
 Date: Mon, 5 Dec 2022 07:19:45 +0000
-Subject: [PATCH] Fix excerpt query fail
+Subject: [PATCH 17/27] Fix excerpt query fail
 
 Symptom/Reason:
 - The excerpt query fail
@@ -15,19 +15,20 @@ Solution/Change:
 
 Entry Test:
 - curl -X GET https://${bmc}/redfish/v1/Managers/bmc/EthernetInterfaces/eth0/ -G -d '$excerpt'
+
 ---
  redfish-core/include/utils/query_param.hpp | 4 ++++
  1 file changed, 4 insertions(+)
 
 diff --git a/redfish-core/include/utils/query_param.hpp b/redfish-core/include/utils/query_param.hpp
-index 868f5e7c..4790d639 100644
+index 96885ebb..70ed0992 100644
 --- a/redfish-core/include/utils/query_param.hpp
 +++ b/redfish-core/include/utils/query_param.hpp
-@@ -372,6 +372,10 @@ inline std::optional<Query>
+@@ -436,6 +436,10 @@ inline std::optional<Query> parseParameters(boost::urls::params_view urlParams,
                  return std::nullopt;
              }
          }
-+        else if (key == "$excerpt")
++        else if (it.key == "$excerpt")
 +        {
 +            // do nothing
 +        }
@@ -35,5 +36,5 @@ index 868f5e7c..4790d639 100644
          {
              // Intentionally ignore other errors Redfish spec, 7.3.1
 -- 
-2.17.1
+2.34.1
 
