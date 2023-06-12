@@ -1,4 +1,4 @@
-From e2d964d0e5557affc9cae6d230700d05aab06508 Mon Sep 17 00:00:00 2001
+From 38f583a5dd9ff96d03362c56a74cdfeb7962500e Mon Sep 17 00:00:00 2001
 From: Tommy Lin <lin.tommysc@inventec.com>
 Date: Wed, 9 Mar 2022 02:16:03 +0000
 Subject: [PATCH 3/4] Add MAC address support for destination address
@@ -23,24 +23,23 @@ Entry Test:
     - Get destination address
         ipmitool raw 0x0c 0x02 0x01 0x13 0x00 0x00
 ---
- snmp_client.cpp       | 16 +++++++++++++++-
+ snmp_client.cpp       | 15 ++++++++++++++-
  snmp_client.hpp       | 12 +++++++++++-
  snmp_conf_manager.cpp |  4 ++--
  snmp_conf_manager.hpp |  2 +-
  snmp_serialize.cpp    |  6 ++++--
- 5 files changed, 33 insertions(+), 7 deletions(-)
+ 5 files changed, 32 insertions(+), 7 deletions(-)
 
 diff --git a/snmp_client.cpp b/snmp_client.cpp
-index c084ea4..a9c23c7 100644
+index 4dc3d57..9b40399 100644
 --- a/snmp_client.cpp
 +++ b/snmp_client.cpp
-@@ -11,12 +11,14 @@ namespace snmp
+@@ -11,12 +11,13 @@ namespace snmp
  {
  
- Client::Client(sdbusplus::bus::bus& bus, const char* objPath,
--               ConfManager& parent, const std::string& address, uint16_t port) :
-+               ConfManager& parent, const std::string& address, uint16_t port,
-+               const std::string& mac) :
+ Client::Client(sdbusplus::bus_t& bus, const char* objPath, ConfManager& parent,
+-               const std::string& address, uint16_t port) :
++               const std::string& address, uint16_t port, const std::string& mac) :
      Ifaces(bus, objPath, Ifaces::action::defer_emit),
      id(std::stol(std::filesystem::path(objPath).filename())), parent(parent)
  {
@@ -50,7 +49,7 @@ index c084ea4..a9c23c7 100644
  
      // Emit deferred signal.
      emit_object_added();
-@@ -50,6 +52,18 @@ uint16_t Client::port(uint16_t value)
+@@ -50,6 +51,18 @@ uint16_t Client::port(uint16_t value)
      return port;
  }
  
@@ -70,13 +69,13 @@ index c084ea4..a9c23c7 100644
  {
      parent.deleteSNMPClient(id);
 diff --git a/snmp_client.hpp b/snmp_client.hpp
-index d6206ff..9dbfc1c 100644
+index 766bed5..4f4c9b4 100644
 --- a/snmp_client.hpp
 +++ b/snmp_client.hpp
 @@ -46,7 +46,7 @@ class Client : public Ifaces
       *  @param[in] port - network port.
       */
-     Client(sdbusplus::bus::bus& bus, const char* objPath, ConfManager& parent,
+     Client(sdbusplus::bus_t& bus, const char* objPath, ConfManager& parent,
 -           const std::string& address, uint16_t port);
 +           const std::string& address, uint16_t port, const std::string &mac);
  
@@ -104,10 +103,10 @@ index d6206ff..9dbfc1c 100644
       */
      void delete_() override;
 diff --git a/snmp_conf_manager.cpp b/snmp_conf_manager.cpp
-index d85037d..f0a1060 100644
+index 07b7ef6..4718c78 100644
 --- a/snmp_conf_manager.cpp
 +++ b/snmp_conf_manager.cpp
-@@ -31,7 +31,7 @@ ConfManager::ConfManager(sdbusplus::bus::bus& bus, const char* objPath) :
+@@ -31,7 +31,7 @@ ConfManager::ConfManager(sdbusplus::bus_t& bus, const char* objPath) :
      objectPath(objPath)
  {}
  
@@ -116,7 +115,7 @@ index d85037d..f0a1060 100644
  {
      // will throw exception if it is already configured.
      checkClientConfigured(address, port);
-@@ -56,7 +56,7 @@ std::string ConfManager::client(std::string address, uint16_t port, uint8_t id)
+@@ -55,7 +55,7 @@ std::string ConfManager::client(std::string address, uint16_t port, uint8_t id)
      objPath /= std::to_string(lastClientId);
  
      auto client = std::make_unique<phosphor::network::snmp::Client>(
@@ -126,7 +125,7 @@ index d85037d..f0a1060 100644
      // save the D-Bus object
      serialize(lastClientId, *client, dbusPersistentLocation);
 diff --git a/snmp_conf_manager.hpp b/snmp_conf_manager.hpp
-index afd06fd..71615ca 100644
+index bc9eb20..c552975 100644
 --- a/snmp_conf_manager.hpp
 +++ b/snmp_conf_manager.hpp
 @@ -50,7 +50,7 @@ class ConfManager : public details::CreateIface
@@ -139,10 +138,10 @@ index afd06fd..71615ca 100644
      /* @brief delete the D-Bus object of the given ID.
       * @param[in] id - client identifier.
 diff --git a/snmp_serialize.cpp b/snmp_serialize.cpp
-index 90b4b83..7874bbc 100644
+index 0f12dd9..1928b51 100644
 --- a/snmp_serialize.cpp
 +++ b/snmp_serialize.cpp
-@@ -36,7 +36,7 @@ template <class Archive>
+@@ -34,7 +34,7 @@ template <class Archive>
  void save(Archive& archive, const Client& manager,
            const std::uint32_t /*version*/)
  {
@@ -151,7 +150,7 @@ index 90b4b83..7874bbc 100644
  }
  
  /** @brief Function required by Cereal to perform deserialization.
-@@ -51,11 +51,13 @@ void load(Archive& archive, Client& manager, const std::uint32_t /*version*/)
+@@ -49,11 +49,13 @@ void load(Archive& archive, Client& manager, const std::uint32_t /*version*/)
  {
      std::string ipaddress{};
      uint16_t port{};
@@ -167,5 +166,5 @@ index 90b4b83..7874bbc 100644
  
  fs::path serialize(Id id, const Client& manager, const fs::path& dir)
 -- 
-2.33.0
+2.34.1
 

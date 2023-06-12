@@ -1,4 +1,4 @@
-From f68e9dc42119385bbef7827515359c22696144fd Mon Sep 17 00:00:00 2001
+From 36e0e83954f37f0fca671f8a42a84cbab97fd16d Mon Sep 17 00:00:00 2001
 From: Tommy Lin <lin.tommysc@inventec.com>
 Date: Wed, 9 Mar 2022 01:41:24 +0000
 Subject: [PATCH 2/4] Implement LAN Config Destination Addresses
@@ -24,49 +24,37 @@ Entry Test:
         ipmitool raw 0x0c 0x02 0x01 0x13 0x01 0x00
     - Set Destination Addresses
         ipmitool raw 0x0c 0x01 0x01 0x13 0x00 0x00 0x00 0x0a 0x6 0x8d 0x21 0x7c 0xd3 0x0a 0xc4 0x90 0xe4
+
 ---
- snmp_conf_manager.cpp | 6 ++++--
+ snmp_conf_manager.cpp | 4 ++--
  snmp_conf_manager.hpp | 2 +-
  snmp_serialize.cpp    | 5 +++++
- 3 files changed, 10 insertions(+), 3 deletions(-)
+ 3 files changed, 8 insertions(+), 3 deletions(-)
 
 diff --git a/snmp_conf_manager.cpp b/snmp_conf_manager.cpp
-index d77f8b7..d85037d 100644
+index dab7317..c93d6a7 100644
 --- a/snmp_conf_manager.cpp
 +++ b/snmp_conf_manager.cpp
-@@ -31,12 +31,12 @@ ConfManager::ConfManager(sdbusplus::bus::bus& bus, const char* objPath) :
+@@ -31,7 +31,7 @@ ConfManager::ConfManager(sdbusplus::bus_t& bus, const char* objPath) :
      objectPath(objPath)
  {}
- 
+
 -std::string ConfManager::client(std::string address, uint16_t port)
 +std::string ConfManager::client(std::string address, uint16_t port, uint8_t id)
  {
      // will throw exception if it is already configured.
      checkClientConfigured(address, port);
- 
+@@ -48,7 +48,7 @@ std::string ConfManager::client(std::string address, uint16_t port)
+                               Argument::ARGUMENT_VALUE(address.c_str()));
+     }
+
 -    lastClientId++;
 +    lastClientId = id;
-     try
-     {
-         // just to check whether given address is valid or not.
-@@ -68,6 +68,7 @@ std::string ConfManager::client(std::string address, uint16_t port)
- void ConfManager::checkClientConfigured(const std::string& address,
-                                         uint16_t port)
- {
-+    /* By Tommy. Skip checking and force update.
-     if (address.empty())
-     {
-         log<level::ERR>("Invalid address");
-@@ -88,6 +89,7 @@ void ConfManager::checkClientConfigured(const std::string& address,
-                 Argument::ARGUMENT_VALUE("Client already exist."));
-         }
-     }
-+    */
- }
- 
- void ConfManager::deleteSNMPClient(Id id)
+     // create the D-Bus object
+     std::filesystem::path objPath;
+     objPath /= objectPath;
 diff --git a/snmp_conf_manager.hpp b/snmp_conf_manager.hpp
-index afbfad8..afd06fd 100644
+index d8823f3..bc9eb20 100644
 --- a/snmp_conf_manager.hpp
 +++ b/snmp_conf_manager.hpp
 @@ -50,7 +50,7 @@ class ConfManager : public details::CreateIface
@@ -75,15 +63,15 @@ index afbfad8..afd06fd 100644
       */
 -    std::string client(std::string address, uint16_t port) override;
 +    std::string client(std::string address, uint16_t port, uint8_t id) override;
- 
+
      /* @brief delete the D-Bus object of the given ID.
       * @param[in] id - client identifier.
 diff --git a/snmp_serialize.cpp b/snmp_serialize.cpp
-index 6f4e4bf..90b4b83 100644
+index 684c55f..0f12dd9 100644
 --- a/snmp_serialize.cpp
 +++ b/snmp_serialize.cpp
-@@ -60,6 +60,11 @@ void load(Archive& archive, Client& manager, const std::uint32_t /*version*/)
- 
+@@ -58,6 +58,11 @@ void load(Archive& archive, Client& manager, const std::uint32_t /*version*/)
+
  fs::path serialize(Id id, const Client& manager, const fs::path& dir)
  {
 +    // By Tommy. Do not serialize id 0 since it's volatile defined by spec.
@@ -94,6 +82,5 @@ index 6f4e4bf..90b4b83 100644
      fs::path fileName = dir;
      fs::create_directories(dir);
      fileName /= std::to_string(id);
--- 
-2.33.0
-
+--
+2.25.1

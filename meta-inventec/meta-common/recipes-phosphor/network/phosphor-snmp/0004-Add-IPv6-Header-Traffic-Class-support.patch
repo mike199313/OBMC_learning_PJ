@@ -1,4 +1,4 @@
-From 385089554e6091ca39afd50b1a48dbbecfcab17f Mon Sep 17 00:00:00 2001
+From 5c76cf513c32c737632b98ccd2651da2a4a57bc7 Mon Sep 17 00:00:00 2001
 From: "Lin.TommySC" <lin.tommysc@inventec.com>
 Date: Mon, 26 Jul 2021 02:20:40 +0000
 Subject: [PATCH 4/4] Add IPv6 Header Traffic Class support
@@ -24,13 +24,15 @@ Entry Test:
         ipmitool raw 0x0c 0x01 0x01 0x34 0x2
     - Get IPv6 Header Traffic Class
         ipmitool raw 0x0c 0x02 0x01 0x34 0x00 0x00
+
+%% original patch: 0004-Add-IPv6-Header-Traffic-Class-support.patch
 ---
  snmp_notification.cpp | 31 ++++++++++++++++++++++++++++++-
  snmp_util.hpp         |  1 +
  2 files changed, 31 insertions(+), 1 deletion(-)
 
 diff --git a/snmp_notification.cpp b/snmp_notification.cpp
-index 181b713..3d3a73b 100644
+index bbc4b23..adabbb3 100644
 --- a/snmp_notification.cpp
 +++ b/snmp_notification.cpp
 @@ -57,6 +57,23 @@ bool Notification::addPDUVar(netsnmp_pdu& pdu, const OID& objID,
@@ -39,7 +41,7 @@ index 181b713..3d3a73b 100644
  
 +bool isIPv6Address(std::string& target)
 +{
-+    addrinfo hints{0};
++    addrinfo hints{};
 +    addrinfo* addr = nullptr;
 +    hints.ai_family = AF_UNSPEC;
 +    hints.ai_socktype = SOCK_STREAM;
@@ -95,7 +97,7 @@ index 181b713..3d3a73b 100644
          auto pdu = snmp_pdu_create(SNMP_MSG_TRAP2);
          if (!pdu)
 diff --git a/snmp_util.hpp b/snmp_util.hpp
-index c208ad3..2a65541 100644
+index 868ede5..a38e39c 100644
 --- a/snmp_util.hpp
 +++ b/snmp_util.hpp
 @@ -60,6 +60,7 @@ namespace network
@@ -107,5 +109,5 @@ index c208ad3..2a65541 100644
  /** @brief Resolves the given address to IP address.
   *         Given address could be hostname or IP address.
 -- 
-2.33.0
+2.34.1
 
