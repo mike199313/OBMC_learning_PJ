@@ -1,4 +1,4 @@
-From 65e21622929bcefde1337be7f3b97b538876e660 Mon Sep 17 00:00:00 2001
+From c20fa706a455802fc83c230648ca546faf867c38 Mon Sep 17 00:00:00 2001
 From: Tommy Lin <lin.tommysc@inventec.com>
 Date: Wed, 9 Mar 2022 09:33:14 +0000
 Subject: [PATCH 1/5] Fix session handle not change issue
@@ -16,16 +16,17 @@ Solution/Change:
 Entry Test:
     - Get session info
         ipmitool -I lanplus -C 17 -U root -P 0penBmc -H 10.6.141.65 session info active
+
 ---
  sessions_manager.cpp | 24 ++++++++++++++++++++++++
  sessions_manager.hpp |  2 ++
  2 files changed, 26 insertions(+)
 
 diff --git a/sessions_manager.cpp b/sessions_manager.cpp
-index ace75c3..8fb4430 100644
+index c18bf80..57d9bc6 100644
 --- a/sessions_manager.cpp
 +++ b/sessions_manager.cpp
-@@ -293,6 +293,7 @@ uint8_t Manager::storeSessionHandle(SessionID bmcSessionID)
+@@ -288,6 +288,7 @@ uint8_t Manager::storeSessionHandle(SessionID bmcSessionID)
  {
      // Handler index 0 is  reserved for invalid session.
      // index starts with 1, for direct usage. Index 0 reserved
@@ -33,7 +34,7 @@ index ace75c3..8fb4430 100644
      for (size_t i = 1; i < session::maxSessionHandles; i++)
      {
          if (sessionHandleMap[i] == 0)
-@@ -302,6 +303,10 @@ uint8_t Manager::storeSessionHandle(SessionID bmcSessionID)
+@@ -297,6 +298,10 @@ uint8_t Manager::storeSessionHandle(SessionID bmcSessionID)
          }
      }
      return 0;
@@ -44,7 +45,7 @@ index ace75c3..8fb4430 100644
  }
  
  uint32_t Manager::getSessionIDbyHandle(uint8_t sessionHandle) const
-@@ -358,4 +363,23 @@ void Manager::scheduleSessionCleaner(const std::chrono::microseconds& when)
+@@ -351,4 +356,23 @@ void Manager::scheduleSessionCleaner(const std::chrono::microseconds& when)
      });
  }
  
@@ -69,11 +70,11 @@ index ace75c3..8fb4430 100644
 +}
  } // namespace session
 diff --git a/sessions_manager.hpp b/sessions_manager.hpp
-index 5fefbcc..1d0bc7a 100644
+index 512b17c..0889f54 100644
 --- a/sessions_manager.hpp
 +++ b/sessions_manager.hpp
 @@ -161,7 +161,9 @@ class Manager
-     std::unique_ptr<sdbusplus::server::manager::manager> objManager = nullptr;
+     std::unique_ptr<sdbusplus::server::manager_t> objManager = nullptr;
      std::string chName{}; // Channel Name
      uint8_t ipmiNetworkInstance = 0;
 +    uint8_t lastSessionHandle = 0; // last session handle assigned
@@ -83,5 +84,5 @@ index 5fefbcc..1d0bc7a 100644
  
  } // namespace session
 -- 
-2.33.0
+2.34.1
 

@@ -1,4 +1,4 @@
-From 6cd0986995a6d86c7112477f5fd4e880cc8c7ba8 Mon Sep 17 00:00:00 2001
+From 81a40b5d886d8a7e26dcc2a2227227c0decdc907 Mon Sep 17 00:00:00 2001
 From: Tommy Lin <lin.tommysc@inventec.com>
 Date: Wed, 9 Mar 2022 09:50:32 +0000
 Subject: [PATCH 2/5] Implement LAN Config Primary RMCP Port
@@ -28,17 +28,18 @@ Entry Test:
 [command for 2.12 upgrade]
 remvoe modifiication in getConfParams in original patch
 for it is removed in official code
+
 ---
  command/payload_cmds.cpp |  2 +-
- main.cpp                 | 11 +++++++++-
- main.hpp                 | 43 ++++++++++++++++++++++++++++++++++++++++
- 3 files changed, 54 insertions(+), 2 deletions(-)
+ main.cpp                 | 11 ++++++++++-
+ main.hpp                 | 41 ++++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 52 insertions(+), 2 deletions(-)
 
 diff --git a/command/payload_cmds.cpp b/command/payload_cmds.cpp
-index 01e1117..bfcb755 100644
+index b3bcca2..58df269 100644
 --- a/command/payload_cmds.cpp
 +++ b/command/payload_cmds.cpp
-@@ -101,7 +101,7 @@ std::vector<uint8_t> activatePayload(const std::vector<uint8_t>& inPayload,
+@@ -99,7 +99,7 @@ std::vector<uint8_t> activatePayload(const std::vector<uint8_t>& inPayload,
  
      response->inPayloadSize = endian::to_ipmi<uint16_t>(MAX_PAYLOAD_SIZE);
      response->outPayloadSize = endian::to_ipmi<uint16_t>(MAX_PAYLOAD_SIZE);
@@ -48,18 +49,18 @@ index 01e1117..bfcb755 100644
      // VLAN addressing is not used
      response->vlanNum = 0xFFFF;
 diff --git a/main.cpp b/main.cpp
-index 17fecfa..b92d6cf 100644
+index b66c6f5..0c233e0 100644
 --- a/main.cpp
 +++ b/main.cpp
-@@ -26,6 +26,7 @@
+@@ -25,6 +25,7 @@
  
- using namespace phosphor::logging;
+ #include <tuple>
  
 +static uint16_t rmcp_port = IPMI_STD_PORT;
  static auto io = std::make_shared<boost::asio::io_context>();
  std::shared_ptr<boost::asio::io_context> getIo()
  {
-@@ -72,6 +73,11 @@ EInterfaceIndex getInterfaceIndex(void)
+@@ -70,6 +71,11 @@ EInterfaceIndex getInterfaceIndex(void)
      return currentInterfaceIndex;
  }
  
@@ -71,7 +72,7 @@ index 17fecfa..b92d6cf 100644
  int main(int argc, char* argv[])
  {
      CLI::App app("KCS RMCP+ bridge");
-@@ -114,7 +120,10 @@ int main(int argc, char* argv[])
+@@ -112,7 +118,10 @@ int main(int argc, char* argv[])
      sol::command::registerCommands();
  
      auto& loop = eventloop::EventLoop::get();
@@ -84,16 +85,16 @@ index 17fecfa..b92d6cf 100644
          return EXIT_FAILURE;
      }
 diff --git a/main.hpp b/main.hpp
-index fa7584b..2e87521 100644
+index a5be04c..d7cd85c 100644
 --- a/main.hpp
 +++ b/main.hpp
-@@ -4,12 +4,55 @@
+@@ -5,12 +5,53 @@
+ 
  #include <cstddef>
  #include <memory>
- #include <sdbusplus/asio/connection.hpp>
 +#include <fstream>
 +#include <nlohmann/json.hpp>
-+#include <phosphor-logging/log.hpp>
++#include <phosphor-logging/lg2.hpp>
  
  // Select call timeout is set arbitrarily set to 30 sec
  static constexpr size_t SELECT_CALL_TIMEOUT = 30;
@@ -109,8 +110,6 @@ index fa7584b..2e87521 100644
  std::shared_ptr<sdbusplus::asio::connection> getSdBus();
  std::shared_ptr<boost::asio::io_context> getIo();
 +
-+using namespace phosphor::logging;
-+
 +/** @brief get config value from LAN configuration file.
 + *  @param[in] name - config name.
 + *  @param[in] val - value of the given config name.
@@ -120,7 +119,7 @@ index fa7584b..2e87521 100644
 +    std::ifstream configFile(LAN_CFG_FILE);
 +    if (!configFile.is_open())
 +    {
-+        log<level::ERR>("loadConfigValue : Cannot open config path");
++        lg2::error("loadConfigValue : Cannot open config path");
 +        return;
 +    }
 +
@@ -128,7 +127,7 @@ index fa7584b..2e87521 100644
 +
 +    if (data.is_discarded())
 +    {
-+        log<level::ERR>("loadConfigValue JSON parser failure");
++        lg2::error("loadConfigValue JSON parser failure");
 +        return;
 +    }
 +
@@ -144,5 +143,4 @@ index fa7584b..2e87521 100644
 + */
 +uint16_t getRmcpPort(void);
 -- 
-2.33.0
-
+2.25.1

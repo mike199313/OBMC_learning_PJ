@@ -1,7 +1,7 @@
-From a4839bec29279d5153c38a0650cae114d941ac9e Mon Sep 17 00:00:00 2001
+From 00df21703d0e0484d904a2145f4a111f8efa314c Mon Sep 17 00:00:00 2001
 From: Tommy Lin <lin.tommysc@inventec.com>
 Date: Thu, 10 Mar 2022 05:26:04 +0000
-Subject: [PATCH] Migrate RMCP session implemenation to OpenSSL v3.x
+Subject: [PATCH 3/5] Migrate RMCP session implemenation to OpenSSL v3.x
 
 Symptom/Reason :
      - The IPMI command Get Session Challenge using invaled authentication type still return
@@ -27,22 +27,22 @@ Entry Test:
           >> 1e c3 d9 0d cc 70 04 a1 52 bb da ca 1d 28 e9 b3 af e6 db 82
 
 ---
- Makefile.am                       |   6 +
- authcode.cpp                      | 147 ++++++++++++++++++++++++
+ authcode.cpp                      | 145 +++++++++++++++++++++++
  authcode.hpp                      |  37 ++++++
  comm_module.cpp                   |  14 +++
- command/active_session.cpp        |  70 ++++++++++++
+ command/active_session.cpp        |  67 +++++++++++
  command/active_session.hpp        |  62 ++++++++++
  command/channel_auth.cpp          |   9 +-
- command/get_session_challenge.cpp |  77 +++++++++++++
+ command/get_session_challenge.cpp |  76 ++++++++++++
  command/get_session_challenge.hpp |  53 +++++++++
- message_handler.cpp               |  19 +++-
- message_parsers.cpp               | 183 +++++++++++++++++++++++++-----
+ meson.build                       |   3 +
+ message_handler.cpp               |  19 ++-
+ message_parsers.cpp               | 186 +++++++++++++++++++++++++-----
  message_parsers.hpp               |  26 ++++-
  session.hpp                       |   8 ++
  sessions_manager.cpp              |  77 +++++++++++++
  sessions_manager.hpp              |   8 ++
- 15 files changed, 761 insertions(+), 35 deletions(-)
+ 15 files changed, 754 insertions(+), 36 deletions(-)
  create mode 100644 authcode.cpp
  create mode 100644 authcode.hpp
  create mode 100644 command/active_session.cpp
@@ -50,36 +50,12 @@ Entry Test:
  create mode 100644 command/get_session_challenge.cpp
  create mode 100644 command/get_session_challenge.hpp
 
-diff --git a/Makefile.am b/Makefile.am
-index 65f16ba..4526d13 100644
---- a/Makefile.am
-+++ b/Makefile.am
-@@ -9,6 +9,8 @@ bin_PROGRAMS = \
- 	netipmid
- 
- netipmid_SOURCES = \
-+	authcode.hpp \
-+	authcode.cpp \
- 	endian.hpp \
- 	socket_channel.hpp \
- 	message.hpp \
-@@ -25,6 +27,10 @@ netipmid_SOURCES = \
- 	command_table.cpp \
- 	command/channel_auth.hpp \
- 	command/channel_auth.cpp \
-+	command/get_session_challenge.hpp \
-+	command/get_session_challenge.cpp \
-+	command/active_session.hpp \
-+	command/active_session.cpp \
- 	command/guid.hpp \
- 	command/guid.cpp \
- 	command/open_session.hpp \
 diff --git a/authcode.cpp b/authcode.cpp
 new file mode 100644
-index 0000000..b3f592b
+index 0000000..4b238a9
 --- /dev/null
 +++ b/authcode.cpp
-@@ -0,0 +1,147 @@
+@@ -0,0 +1,145 @@
 +#include "authcode.hpp"
 +
 +#include "comm_module.hpp"
@@ -92,7 +68,6 @@ index 0000000..b3f592b
 +#include <cstddef>
 +#include <cstring>
 +#include <iomanip>
-+#include <phosphor-logging/log.hpp>
 +#include <session.hpp>
 +
 +namespace ipmi15authcode
@@ -195,7 +170,6 @@ index 0000000..b3f592b
 +                                        const size_t datalen,
 +                                        uint8_t* authcode)
 +{
-+
 +    int retv = 0;
 +
 +    uint8_t _sessionid[4] = {0};
@@ -213,7 +187,7 @@ index 0000000..b3f592b
 +    if(mdctx == NULL){
 +        return -1;
 +    }
-+    
++
 +    retv = EVP_DigestInit_ex(mdctx, EVP_md5(), NULL);
 +    retv &= EVP_DigestUpdate(mdctx, _password, 16);
 +    retv &= EVP_DigestUpdate(mdctx, _sessionid, 4);
@@ -304,10 +278,10 @@ index e34ab26..e255e33 100644
             << 16)},
 diff --git a/command/active_session.cpp b/command/active_session.cpp
 new file mode 100644
-index 0000000..671fad9
+index 0000000..873c347
 --- /dev/null
 +++ b/command/active_session.cpp
-@@ -0,0 +1,70 @@
+@@ -0,0 +1,67 @@
 +#include "active_session.hpp"
 +
 +#include "authcode.hpp"
@@ -320,10 +294,8 @@ index 0000000..671fad9
 +#include <algorithm>
 +#include <cstring>
 +#include <iomanip>
-+#include <phosphor-logging/log.hpp>
 +#include <session.hpp>
 +
-+using namespace phosphor::logging;
 +using namespace session;
 +
 +namespace command
@@ -353,8 +325,7 @@ index 0000000..671fad9
 +    }
 +    catch (std::exception& e)
 +    {
-+        log<level::ERR>("ActiveSession : session not found",
-+                        entry("EXCEPTION=%s", e.what()));
++        lg2::error("ActiveSession : session not found: {EXCEPTION}", "EXCEPTION", e.what());
 +        response->completionCode =
 +            static_cast<uint8_t>(ActiveSessionCompleteCode::INVALID_SESSION_ID);
 +        return outPayload;
@@ -447,10 +418,10 @@ index 0000000..3824851
 +
 +} // namespace command
 diff --git a/command/channel_auth.cpp b/command/channel_auth.cpp
-index fd1fa5b..168dd99 100644
+index 44d5cad..7e788e9 100644
 --- a/command/channel_auth.cpp
 +++ b/command/channel_auth.cpp
-@@ -57,10 +57,11 @@ std::vector<uint8_t>
+@@ -59,10 +59,11 @@ std::vector<uint8_t>
      response->ipmiVersion = 1; // IPMI v2.0 extended capabilities available.
      response->reserved1 = 0;
      response->oem = 0;
@@ -464,7 +435,7 @@ index fd1fa5b..168dd99 100644
  
      response->reserved3 = 0;
      response->KGStatus = 0;       // KG is set to default
-@@ -71,12 +72,12 @@ std::vector<uint8_t>
+@@ -73,12 +74,12 @@ std::vector<uint8_t>
      uint8_t fixedUsers = 0;
      ipmi::ipmiUserGetAllCounts(maxChUsers, enabledUsers, fixedUsers);
  
@@ -481,10 +452,10 @@ index fd1fa5b..168dd99 100644
      response->oemID[1] = 0;
 diff --git a/command/get_session_challenge.cpp b/command/get_session_challenge.cpp
 new file mode 100644
-index 0000000..b75cfa8
+index 0000000..e9db50e
 --- /dev/null
 +++ b/command/get_session_challenge.cpp
-@@ -0,0 +1,77 @@
+@@ -0,0 +1,76 @@
 +#include "get_session_challenge.hpp"
 +
 +#include "comm_module.hpp"
@@ -494,7 +465,6 @@ index 0000000..b75cfa8
 +
 +#include <cstring>
 +#include <iostream>
-+#include <phosphor-logging/log.hpp>
 +#include <authcode.hpp>
 +
 +namespace command
@@ -502,7 +472,7 @@ index 0000000..b75cfa8
 +
 +std::vector<uint8_t>
 +    GetSessionChallenge(const std::vector<uint8_t>& inPayload,
-+                           std::shared_ptr<message::Handler>& handler)
++                           std::shared_ptr<message::Handler>& /*handler*/)
 +{
 +    auto request =
 +        reinterpret_cast<const GetSessionChallengeReq*>(inPayload.data());
@@ -621,11 +591,25 @@ index 0000000..3721733
 +                           std::shared_ptr<message::Handler>& handler);
 +
 +} // namespace command
+diff --git a/meson.build b/meson.build
+index b36917b..149d9bd 100644
+--- a/meson.build
++++ b/meson.build
+@@ -74,6 +74,9 @@ sources = [
+     'command/sol_cmds.cpp',
+     'command/payload_cmds.cpp',
+     'sol_module.cpp',
++    'authcode.cpp',
++    'command/active_session.cpp',
++    'command/get_session_challenge.cpp',
+ ]
+ 
+ executable(
 diff --git a/message_handler.cpp b/message_handler.cpp
-index 33bb195..02dc033 100644
+index b7314b8..a2b49e0 100644
 --- a/message_handler.cpp
 +++ b/message_handler.cpp
-@@ -35,7 +35,11 @@ bool Handler::receive()
+@@ -33,7 +33,11 @@ bool Handler::receive()
      }
  
      // Unflatten the packet
@@ -638,7 +622,7 @@ index 33bb195..02dc033 100644
  
      return true;
  }
-@@ -59,6 +63,16 @@ Handler::~Handler()
+@@ -57,6 +61,16 @@ Handler::~Handler()
      try
      {
  #ifdef RMCP_PING
@@ -648,35 +632,35 @@ index 33bb195..02dc033 100644
 +             * receive unvaild RMCP payload. It will make parser::unflatten() throws std::runtime_error()
 +             * and not call make_shared<Message> to create inMessage object properly.
 +            */
-+            log<level::ERR>("inMessage is nullptr drop the inMessage object");
++            lg2::error("inMessage is nullptr drop the inMessage object");
 +            return;
 +        }
 +
          if (ClassOfMsg::ASF == inMessage->rmcpMsgClass)
          {
              sendASF();
-@@ -81,7 +95,7 @@ Handler::~Handler()
+@@ -79,7 +93,7 @@ Handler::~Handler()
      catch (const std::exception& e)
      {
          // send failed, most likely due to a session closure
--        log<level::INFO>("Async RMCP+ reply failed",
-+        log<level::INFO>("Async RMCP/RMCP+ reply failed",
-                          entry("EXCEPTION=%s", e.what()));
+-        lg2::info("Async RMCP+ reply failed: {ERROR}", "ERROR", e);
++        lg2::info("Async RMCP/RMCP+ reply failed: {ERROR}", "ERROR", e);
      }
  }
-@@ -150,6 +164,7 @@ void Handler::writeData(const std::vector<uint8_t>& packet)
+ 
+@@ -145,6 +159,7 @@ void Handler::writeData(const std::vector<uint8_t>& packet)
      auto writeStatus = channel->write(packet);
      if (writeStatus < 0)
      {
-+        log<level::ERR>("Error in writing data to socket");
++        lg2::error("Error in writing data to socket");
          throw std::runtime_error("Error in writing to socket");
      }
  }
 diff --git a/message_parsers.cpp b/message_parsers.cpp
-index 4271c13..1e4a92b 100644
+index c6dd4f8..2cd4476 100644
 --- a/message_parsers.cpp
 +++ b/message_parsers.cpp
-@@ -1,12 +1,19 @@
+@@ -1,12 +1,18 @@
  #include "message_parsers.hpp"
  
 +#include "authcode.hpp"
@@ -690,29 +674,28 @@ index 4271c13..1e4a92b 100644
 +#include <iostream>
  #include <memory>
  
-+using namespace phosphor::logging;
 +using namespace session;
 +
  namespace message
  {
  
-@@ -19,6 +26,7 @@ std::tuple<std::shared_ptr<Message>, SessionHeader>
+@@ -19,6 +25,7 @@ std::tuple<std::shared_ptr<Message>, SessionHeader>
      // Check if the packet has atleast the size of the RMCP Header
      if (inPacket.size() < sizeof(RmcpHeader_t))
      {
-+        log<level::ERR>("RMCP Header missing");
++        lg2::error("RMCP Header missing");
          throw std::runtime_error("RMCP Header missing");
      }
  
-@@ -30,6 +38,7 @@ std::tuple<std::shared_ptr<Message>, SessionHeader>
+@@ -30,6 +37,7 @@ std::tuple<std::shared_ptr<Message>, SessionHeader>
          (rmcpHeaderPtr->classOfMsg < static_cast<uint8_t>(ClassOfMsg::ASF) &&
           rmcpHeaderPtr->classOfMsg > static_cast<uint8_t>(ClassOfMsg::OEM)))
      {
-+        log<level::ERR>("RMCP Header is invalid");
++        lg2::error("RMCP Header is invalid");
          throw std::runtime_error("RMCP Header is invalid");
      }
  
-@@ -50,6 +59,8 @@ std::tuple<std::shared_ptr<Message>, SessionHeader>
+@@ -50,6 +58,8 @@ std::tuple<std::shared_ptr<Message>, SessionHeader>
      switch (static_cast<SessionHeader>(sessionHeaderPtr->format.formatType))
      {
          case SessionHeader::IPMI15:
@@ -721,15 +704,15 @@ index 4271c13..1e4a92b 100644
          {
              return std::make_tuple(ipmi15parser::unflatten(inPacket),
                                     SessionHeader::IPMI15);
-@@ -61,6 +72,7 @@ std::tuple<std::shared_ptr<Message>, SessionHeader>
+@@ -61,6 +71,7 @@ std::tuple<std::shared_ptr<Message>, SessionHeader>
          }
          default:
          {
-+            log<level::ERR>("Invalid Session Header");
++            lg2::error("Invalid Session Header");
              throw std::runtime_error("Invalid Session Header");
          }
      }
-@@ -93,42 +105,101 @@ std::vector<uint8_t> flatten(std::shared_ptr<Message> outMessage,
+@@ -93,64 +104,179 @@ std::vector<uint8_t> flatten(const std::shared_ptr<Message>& outMessage,
  namespace ipmi15parser
  {
  
@@ -747,7 +730,7 @@ index 4271c13..1e4a92b 100644
 +    const uint32_t SESSION_HEADER_SIZE = 14;
 +    if (inPacket.size() < SESSION_HEADER_SIZE)
      {
-+        log<level::ERR>("IPMI1.5 Session Header Missing");
++        lg2::error("IPMI1.5 Session Header Missing");
          throw std::runtime_error("IPMI1.5 Session Header Missing");
      }
  
@@ -816,14 +799,15 @@ index 4271c13..1e4a92b 100644
 -    if ((payloadLen == 0) || (inPacket.size() < (sizeof(*header) + payloadLen)))
 +    if ((payloadLen == 0) || (inPacket.size() < (SESSION_HEADER_SIZE + payloadLen)))
      {
-+        log<level::ERR>("Invalid data length");
++        lg2::error("Invalid data length");
          throw std::runtime_error("Invalid data length");
      }
  
 -    (message->payload)
 -        .assign(inPacket.data() + sizeof(SessionHeader_t),
 -                inPacket.data() + sizeof(SessionHeader_t) + payloadLen);
-+    if (authType != 0x00){
++    if (authType != 0x00)
++    {
 +        (message->payload)
 +            .assign(inPacket.data() + sizeof(SessionHeader2_t),
 +                      inPacket.data() + sizeof(SessionHeader2_t) + payloadLen);
@@ -833,7 +817,8 @@ index 4271c13..1e4a92b 100644
 +                    inPacket.data() + sizeof(SessionHeader_t) + payloadLen);
 +    }
 +
-+    if (authType != 0x00){
++    if (authType != 0x00)
++    {
 +        ipmi::SecureString passwd = ipmi::ipmiUserGetPassword(session->userName);
 +        auto retv = ipmi15authcode::compare_authcode(
 +            authType, passwd, message->bmcSessionID, message->sessionSeqNum,
@@ -841,16 +826,18 @@ index 4271c13..1e4a92b 100644
 +            authCode.authCode);
 +        if (retv != 0)
 +        {
-+            log<level::ERR>("IPMI1.5 Request AuthCode is invalid");
++            lg2::error("IPMI1.5 Request AuthCode is invalid");
 +            throw std::runtime_error("IPMI1.5 Request AuthCode is invalid");
 +        }
 +    }
  
      return message;
  }
-@@ -136,20 +207,74 @@ std::shared_ptr<Message> unflatten(std::vector<uint8_t>& inPacket)
- std::vector<uint8_t> flatten(std::shared_ptr<Message> outMessage,
-                              std::shared_ptr<session::Session> session)
+ 
+ std::vector<uint8_t>
+     flatten(const std::shared_ptr<Message>& outMessage,
+-            const std::shared_ptr<session::Session>& /* session */)
++            const std::shared_ptr<session::Session>& session)
  {
 -    std::vector<uint8_t> packet(sizeof(SessionHeader_t));
 +    std::vector<uint8_t> packet;
@@ -916,7 +903,7 @@ index 4271c13..1e4a92b 100644
 +
 +        if (retv > 0)
 +        {
-+            log<level::ERR>("IPMI1.5 Response Authcode generation failed");
++            lg2::error("IPMI1.5 Response Authcode generation failed");
 +            throw std::runtime_error(
 +                "IPMI1.5 Response Authcode generation failed");
 +        }
@@ -934,24 +921,24 @@ index 4271c13..1e4a92b 100644
  
      // Insert the Payload into the Packet
      packet.insert(packet.end(), outMessage->payload.begin(),
-@@ -174,6 +299,7 @@ std::shared_ptr<Message> unflatten(std::vector<uint8_t>& inPacket)
+@@ -175,6 +301,7 @@ std::shared_ptr<Message> unflatten(std::vector<uint8_t>& inPacket)
      // Check if the packet has atleast the Session Header
      if (inPacket.size() < sizeof(SessionHeader_t))
      {
-+        log<level::ERR>("IPMI 2.0 session header missing");
++        lg2::error("IPMI 2.0 session header missing");
          throw std::runtime_error("IPMI2.0 Session Header Missing");
      }
  
-@@ -222,6 +348,7 @@ std::shared_ptr<Message> unflatten(std::vector<uint8_t>& inPacket)
-     {
-         if (!(internal::verifyPacketIntegrity(inPacket, message, payloadLen)))
+@@ -224,6 +351,7 @@ std::shared_ptr<Message> unflatten(std::vector<uint8_t>& inPacket)
+         if (!(internal::verifyPacketIntegrity(inPacket, message, payloadLen,
+                                               session)))
          {
-+            log<level::ERR>("Packet Integrity check failed");
++            lg2::error("Packet Integrity check failed");
              throw std::runtime_error("Packet Integrity check failed");
          }
      }
 diff --git a/message_parsers.hpp b/message_parsers.hpp
-index b26f9a3..61bfab4 100644
+index d6069cc..f660972 100644
 --- a/message_parsers.hpp
 +++ b/message_parsers.hpp
 @@ -18,9 +18,15 @@ constexpr size_t RMCP_VERSION = 6;
@@ -1005,10 +992,10 @@ index b26f9a3..61bfab4 100644
  {
      uint8_t legacyPad;
 diff --git a/session.hpp b/session.hpp
-index a01d478..e36f18e 100644
+index 5ddf2f7..0c24f0a 100644
 --- a/session.hpp
 +++ b/session.hpp
-@@ -288,6 +288,14 @@ class Session : public SessionIface
+@@ -289,6 +289,14 @@ class Session : public SessionIface
      SequenceNumbers sequenceNums; // Session Sequence Numbers
      std::string userName{};       // User Name
  
@@ -1024,18 +1011,18 @@ index a01d478..e36f18e 100644
      std::shared_ptr<udpsocket::Channel> channelPtr;
  
 diff --git a/sessions_manager.cpp b/sessions_manager.cpp
-index 8fb4430..7165447 100644
+index 57d9bc6..ecf0fa2 100644
 --- a/sessions_manager.cpp
 +++ b/sessions_manager.cpp
-@@ -6,6 +6,7 @@
+@@ -10,6 +10,7 @@
  #include <algorithm>
  #include <cstdlib>
  #include <iomanip>
 +#include <iostream>
  #include <memory>
- #include <phosphor-logging/log.hpp>
- #include <sdbusplus/asio/connection.hpp>
-@@ -78,6 +79,81 @@ void Manager::managerInit(const std::string& channel)
+ 
+ namespace session
+@@ -74,6 +75,81 @@ void Manager::managerInit(const std::string& channel)
      scheduleSessionCleaner(std::chrono::microseconds(3 * 1000 * 1000));
  }
  
@@ -1100,7 +1087,7 @@ index 8fb4430..7165447 100644
 +                        static_cast<uint8_t>(session::Privilege::USER) ); // as USER privilege default by spec.
 +
 +        session->userName = userName;
-+        log<level::INFO>("session objPath ", entry("%s", objPath.c_str()));
++        lg2::error("session objPath {PATH}", "PATH", objPath.c_str());
 +
 +        sessionsMap.emplace(bmcSessionID, session);
 +        session->sessionHandle(sessionHandle);
@@ -1110,14 +1097,14 @@ index 8fb4430..7165447 100644
 +        return session;
 +    }
 +
-+    log<level::INFO>("No free RMCP sessions left");
++    lg2::error("No free RMCP sessions left");
 +    throw std::runtime_error("No free sessions left");
 +}
 +
  std::shared_ptr<Session>
      Manager::startSession(SessionID remoteConsoleSessID, Privilege priv,
                            cipher::rakp_auth::Algorithms authAlgo,
-@@ -169,6 +245,7 @@ std::shared_ptr<Session>
+@@ -165,6 +241,7 @@ std::shared_ptr<Session>
  
          sessionsMap.emplace(bmcSessionID, session);
          session->sessionHandle(sessionHandle);
@@ -1126,7 +1113,7 @@ index 8fb4430..7165447 100644
          return session;
      }
 diff --git a/sessions_manager.hpp b/sessions_manager.hpp
-index 1d0bc7a..e9f2aa6 100644
+index 0889f54..09c2ffe 100644
 --- a/sessions_manager.hpp
 +++ b/sessions_manager.hpp
 @@ -71,6 +71,14 @@ class Manager
@@ -1144,3 +1131,5 @@ index 1d0bc7a..e9f2aa6 100644
      /**
       * @brief Start an IPMI session
       *
+-- 
+2.25.1

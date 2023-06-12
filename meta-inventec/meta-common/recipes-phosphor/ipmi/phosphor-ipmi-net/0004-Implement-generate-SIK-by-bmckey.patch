@@ -1,4 +1,4 @@
-From 007cd39520b0db2c4cf258dd76f91ebfaef48b95 Mon Sep 17 00:00:00 2001
+From 64befc0515cd5f99518f96cc77cc7729c89d6eb4 Mon Sep 17 00:00:00 2001
 From: Tommy Lin <lin.tommysc@inventec.com>
 Date: Thu, 10 Mar 2022 06:04:37 +0000
 Subject: [PATCH 4/5] Bug 726 - [Transformers][OpenBMC][IPMI]KG status is
@@ -50,18 +50,19 @@ Entry Test:
         ipmitool raw 0x06 0x56 0x01 0x02 0x01
     - After set kg key and lock kgkey, build RMCP+ session with kgkey
         ipmitool -C17 -I lanplus -H 172.17.0.2 -p 2623 -U root -P 0penBmc -k helloworld shell
+
 ---
  auth_algo.cpp            | 32 ++++++++++++++++++++++++++++++++
  auth_algo.hpp            | 10 ++++++++++
- command/channel_auth.cpp | 13 ++++++++++++-
+ command/channel_auth.cpp | 11 +++++++++++
  command/rakp34.cpp       | 16 +++++++++++++++-
- 4 files changed, 69 insertions(+), 2 deletions(-)
+ 4 files changed, 68 insertions(+), 1 deletion(-)
 
 diff --git a/auth_algo.cpp b/auth_algo.cpp
-index 4572831..0219b30 100644
+index 40d277f..731036e 100644
 --- a/auth_algo.cpp
 +++ b/auth_algo.cpp
-@@ -49,6 +49,22 @@ std::vector<uint8_t>
+@@ -50,6 +50,22 @@ std::vector<uint8_t>
      return output;
  }
  
@@ -74,7 +75,7 @@ index 4572831..0219b30 100644
 +    if (HMAC(EVP_sha1(), kgKey.data(), kgKey.size(), input.data(),
 +             input.size(), output.data(), &mdLen) == NULL)
 +    {
-+        log<level::ERR>("Generate SIK failed");
++        lg2::error("Generate SIK failed");
 +        output.resize(0);
 +    }
 +
@@ -84,7 +85,7 @@ index 4572831..0219b30 100644
  std::vector<uint8_t>
      AlgoSHA256::generateHMAC(const std::vector<uint8_t>& input) const
  {
-@@ -84,6 +100,22 @@ std::vector<uint8_t>
+@@ -87,6 +103,22 @@ std::vector<uint8_t>
      return output;
  }
  
@@ -97,7 +98,7 @@ index 4572831..0219b30 100644
 +    if (HMAC(EVP_sha256(), kgKey.data(), kgKey.size(), input.data(),
 +             input.size(), output.data(), &mdLen) == NULL)
 +    {
-+        log<level::ERR>("Generate HMAC_SHA256 failed");
++        lg2::error("Generate HMAC_SHA256 failed");
 +        output.resize(0);
 +    }
 +
@@ -108,10 +109,10 @@ index 4572831..0219b30 100644
  
  } // namespace cipher
 diff --git a/auth_algo.hpp b/auth_algo.hpp
-index 894a853..c883690 100644
+index f940370..9245a69 100644
 --- a/auth_algo.hpp
 +++ b/auth_algo.hpp
-@@ -97,6 +97,9 @@ class Interface
+@@ -96,6 +96,9 @@ class Interface
      std::vector<uint8_t> virtual generateICV(
          const std::vector<uint8_t>& input) const = 0;
  
@@ -121,7 +122,7 @@ index 894a853..c883690 100644
      /**
       * @brief Check if the Authentication algorithm is supported
       *
-@@ -120,6 +123,7 @@ class Interface
+@@ -119,6 +122,7 @@ class Interface
      // User Key is hardcoded to PASSW0RD till the IPMI User account
      // management is in place.
      std::array<uint8_t, USER_KEY_MAX_LENGTH> userKey = {"0penBmc"};
@@ -129,7 +130,7 @@ index 894a853..c883690 100644
  
      // Managed System Random Number
      std::array<uint8_t, BMC_RANDOM_NUMBER_LEN> bmcRandomNum;
-@@ -182,6 +186,9 @@ class AlgoSHA1 : public Interface
+@@ -180,6 +184,9 @@ class AlgoSHA1 : public Interface
  
      std::vector<uint8_t>
          generateICV(const std::vector<uint8_t>& input) const override;
@@ -139,7 +140,7 @@ index 894a853..c883690 100644
  };
  
  /**
-@@ -217,6 +224,9 @@ class AlgoSHA256 : public Interface
+@@ -214,6 +221,9 @@ class AlgoSHA256 : public Interface
  
      std::vector<uint8_t>
          generateICV(const std::vector<uint8_t>& input) const override;
@@ -150,15 +151,13 @@ index 894a853..c883690 100644
  
  } // namespace rakp_auth
 diff --git a/command/channel_auth.cpp b/command/channel_auth.cpp
-index 168dd99..8b26ca6 100644
+index 7e788e9..d09a870 100644
 --- a/command/channel_auth.cpp
 +++ b/command/channel_auth.cpp
-@@ -64,7 +64,18 @@ std::vector<uint8_t>
-     response->none = 0;
+@@ -67,6 +67,17 @@ std::vector<uint8_t>
  
      response->reserved3 = 0;
--    response->KGStatus = 0;       // KG is set to default
-+    response->KGStatus = 0;
+     response->KGStatus = 0;       // KG is set to default
 +    std::string ks;
 +    std::string kv;
 +    ipmi::Cc cc = ipmi::getBMCKey(chNum, ks, kv);
@@ -174,10 +173,10 @@ index 168dd99..8b26ca6 100644
      response->userAuth = 0;       // User Level Authentication is enabled
      uint8_t maxChUsers = 0;
 diff --git a/command/rakp34.cpp b/command/rakp34.cpp
-index cfa2363..deed708 100644
+index f14430e..c390b08 100644
 --- a/command/rakp34.cpp
 +++ b/command/rakp34.cpp
-@@ -214,7 +214,21 @@ std::vector<uint8_t> RAKP34(const std::vector<uint8_t>& inPayload,
+@@ -211,7 +211,21 @@ std::vector<uint8_t> RAKP34(const std::vector<uint8_t>& inPayload,
      std::copy_n(session->userName.data(), userLength, iter);
  
      // Generate Session Integrity Key
@@ -201,5 +200,4 @@ index cfa2363..deed708 100644
      // Update the SIK in the Authentication Algo Interface
      authAlgo->sessionIntegrityKey.insert(authAlgo->sessionIntegrityKey.begin(),
 -- 
-2.33.0
-
+2.25.1
