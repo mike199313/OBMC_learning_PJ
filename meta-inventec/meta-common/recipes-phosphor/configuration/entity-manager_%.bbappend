@@ -1,5 +1,7 @@
 FILESEXTRAPATHS:prepend := "${THISDIR}/${PN}:"
 
+PACKAGECONFIG:append = " resizefru"
+PACKAGECONFIG[resizefru] = "-Dfru-device-resizefru=true, -Dfru-device-resizefru=false, ,"
 
 SRC_URI:append  = " \
                     file://0001-Add-a-writable-dbus-interface.patch \

@@ -50,17 +50,18 @@ xyz.openbmc_project.FruDevice       interface -         -                       
 .PRODUCT_PRODUCT_NAME               property  s         "TRANSFORMERS        "             emits-change
 .PRODUCT_SERIAL_NUMBER              property  s         "                        "         emits-change
 .PRODUCT_VERSION                    property  s         "        "                         emits-change
----
- src/FruDevice.cpp | 3 ++-
- src/FruUtils.cpp  | 4 ++++
- 2 files changed, 6 insertions(+), 1 deletion(-)
- mode change 100644 => 100755 src/FruUtils.cpp
 
-diff --git a/src/FruDevice.cpp b/src/FruDevice.cpp
-index ec42eca..fe1461b 100644
---- a/src/FruDevice.cpp
-+++ b/src/FruDevice.cpp
-@@ -59,7 +59,8 @@ extern "C"
+---
+ src/fru_device.cpp | 3 ++-
+ src/fru_utils.cpp  | 4 ++++
+ 2 files changed, 6 insertions(+), 1 deletion(-)
+ mode change 100644 => 100755 src/fru_utils.cpp
+
+diff --git a/src/fru_device.cpp b/src/fru_device.cpp
+index c67bfc5..5862876 100644
+--- a/src/fru_device.cpp
++++ b/src/fru_device.cpp
+@@ -60,7 +60,8 @@ extern "C"
  
  namespace fs = std::filesystem;
  static constexpr bool debug = false;
@@ -70,13 +71,13 @@ index ec42eca..fe1461b 100644
  constexpr size_t maxEepromPageIndex = 255;
  constexpr size_t busTimeoutSeconds = 5;
  
-diff --git a/src/FruUtils.cpp b/src/FruUtils.cpp
+diff --git a/src/fru_utils.cpp b/src/fru_utils.cpp
 old mode 100644
 new mode 100755
-index 70f461c..19b65f1
---- a/src/FruUtils.cpp
-+++ b/src/FruUtils.cpp
-@@ -310,6 +310,9 @@ resCodes
+index b168705..54beeec
+--- a/src/fru_utils.cpp
++++ b/src/fru_utils.cpp
+@@ -311,6 +311,9 @@ resCodes
              fruBytes.begin() + offset + fruAreaSize - 1;
          ++fruBytesIter;
  
@@ -86,7 +87,7 @@ index 70f461c..19b65f1
          uint8_t fruComputedChecksum =
              calculateChecksum(fruBytes.begin() + offset, fruBytesIterEndArea);
          if (fruComputedChecksum != *fruBytesIterEndArea)
-@@ -324,6 +327,7 @@ resCodes
+@@ -325,6 +328,7 @@ resCodes
              std::cerr << ss.str();
              ret = resCodes::resWarn;
          }
@@ -95,5 +96,4 @@ index 70f461c..19b65f1
          /* Set default language flag to true as Chassis Fru area are always
           * encoded in English defined in Section 10 of Fru specification
 -- 
-2.17.1
-
+2.34.1

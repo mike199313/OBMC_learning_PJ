@@ -14,47 +14,33 @@ Solution/Change:
 Entry Test:
         busctl tree xyz.openbmc_project.FruDevice
         busctl set-property xyz.openbmc_project.FruDevice /xyz/openbmc_project/FruDevice/3_80 xyz.openbmc_project.FruDevice BOARD_PRODUCT_NAME s "TRANSFORMERS"
----
- meson_options.txt |  2 +-
- src/FruDevice.cpp | 61 ++++++++++++++++++++++-------------------------
- 2 files changed, 30 insertions(+), 33 deletions(-)
- mode change 100644 => 100755 meson_options.txt
- mode change 100644 => 100755 src/FruDevice.cpp
 
-diff --git a/meson_options.txt b/meson_options.txt
-old mode 100644
-new mode 100755
-index 770451d..df01f92
---- a/meson_options.txt
-+++ b/meson_options.txt
-@@ -5,5 +5,5 @@ option(
-     'fru-device', type: 'boolean', description: 'Build fru-device.',
- )
- option(
--    'fru-device-resizefru', value : false, type: 'boolean', description: 'Allow FruDevice to resize FRU areas.',
-+    'fru-device-resizefru', value : true, type: 'boolean', description: 'Allow FruDevice to resize FRU areas.',
- )
-diff --git a/src/FruDevice.cpp b/src/FruDevice.cpp
-old mode 100644
-new mode 100755
-index fe1461b..59215c3
---- a/src/FruDevice.cpp
-+++ b/src/FruDevice.cpp
-@@ -676,7 +676,9 @@ void addFruObjectToDbus(
-         unknownBusObjectCount++;
+---
+ src/fru_device.cpp | 62 ++++++++++++++++++++++------------------------
+ src/fru_utils.cpp  |  0
+ 2 files changed, 29 insertions(+), 33 deletions(-)
+ mode change 100755 => 100644 src/fru_utils.cpp
+
+diff --git a/src/fru_device.cpp b/src/fru_device.cpp
+index 5862876..b8c3e63 100644
+--- a/src/fru_device.cpp
++++ b/src/fru_device.cpp
+@@ -667,8 +667,9 @@ void addFruObjectToDbus(
+         return;
      }
- 
--    productName = "/xyz/openbmc_project/FruDevice/" + productName;
+
+-    std::string productName =
+-        "/xyz/openbmc_project/FruDevice/" + optionalProductName.value();
 +    //Modified by Matt, Change the Fru Device path from product name to [bus]_[address]
-+    productName = "/xyz/openbmc_project/FruDevice/" + std::to_string(bus) + "_" + std::to_string(address);
-+
-     // avoid duplicates by checking to see if on a mux
-     if (bus > 0)
-     {
-@@ -744,37 +746,32 @@ void addFruObjectToDbus(
++    std::string productName = "/xyz/openbmc_project/FruDevice/"
++                        + std::to_string(bus) + "_" + std::to_string(address);
+
+     std::optional<int> index = findIndexForFRU(dbusInterfaceMap, productName);
+     if (index.has_value())
+@@ -693,37 +694,32 @@ void addFruObjectToDbus(
          std::string key =
              std::regex_replace(property.first, nonAsciiRegex, "_");
- 
+
 -        if (property.first == "PRODUCT_ASSET_TAG")
 -        {
 -            std::string propertyName = property.first;
@@ -113,17 +99,19 @@ index fe1461b..59215c3
          if (debug)
          {
              std::cout << property.first << ": " << property.second << "\n";
-@@ -1289,8 +1286,8 @@ bool updateFRUProperty(
+@@ -1147,8 +1143,8 @@ bool updateFRUProperty(
          std::copy(restFRUAreasData.begin(), restFRUAreasData.end(),
                    fruData.begin() + nextFRUAreaNewLoc);
          // Update Common Header
--        for (int fruArea = fruAreaInternal; fruArea <= fruAreaMultirecord;
--             fruArea++)
-+        for (fruAreas fruArea = fruAreas::fruAreaInternal; fruArea <= fruAreas::fruAreaMultirecord;
-+             ++fruArea)
+-        for (fruAreas nextFRUArea = fruAreas::fruAreaInternal;
+-             nextFRUArea <= fruAreas::fruAreaMultirecord; ++nextFRUArea)
++        for (fruAreas nextFRUArea = fruAreas::fruAreaInternal; nextFRUArea <= fruAreas::fruAreaMultirecord;
++             ++nextFRUArea)
          {
-             unsigned int fruAreaOffsetField = getHeaderAreaFieldOffset(fruArea);
-             size_t curFRUAreaOffset = fruData[fruAreaOffsetField];
--- 
-2.33.0
-
+             unsigned int fruAreaOffsetField =
+                 getHeaderAreaFieldOffset(nextFRUArea);
+diff --git a/src/fru_utils.cpp b/src/fru_utils.cpp
+old mode 100755
+new mode 100644
+--
+2.25.1
