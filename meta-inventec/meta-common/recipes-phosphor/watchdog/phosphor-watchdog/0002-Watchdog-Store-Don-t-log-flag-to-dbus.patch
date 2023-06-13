@@ -24,18 +24,19 @@ Start Watchdog countdown
 Wait for timeout.
 Check ipmitool sel list.
 There should have not watchdog entry.
+
 ---
  src/watchdog.cpp | 93 +++++++++++++++++++++++++++---------------------
  1 file changed, 52 insertions(+), 41 deletions(-)
 
 diff --git a/src/watchdog.cpp b/src/watchdog.cpp
-index 0601937..c655613 100644
+index ec5721c..0c34292 100644
 --- a/src/watchdog.cpp
 +++ b/src/watchdog.cpp
-@@ -417,57 +417,63 @@ void Watchdog::timeOutHandler()
+@@ -405,57 +405,63 @@ void Watchdog::timeOutHandler()
      }
  
-     // Send WATCHDOG IPMI SEL 
+     // Send WATCHDOG IPMI SEL
 -    try
 +    /*
 +        Inventec - Store Don't log flag to dbus
@@ -137,15 +138,15 @@ index 0601937..c655613 100644
      }
  
      // Update WATCHDOG Sensor value and state
-@@ -491,6 +497,7 @@ void Watchdog::timeOutHandler()
+@@ -479,6 +485,7 @@ void Watchdog::timeOutHandler()
                             wdt::propertyValue,
                             std::variant<uint8_t>(selTimerAction));
          bus.call(writeSensor);
-+ 	interval(interval()); //set to original config value 
++        interval(interval()); //set to original config value
      }
      catch (sdbusplus::exception_t& e)
      {
-@@ -521,6 +528,10 @@ void Watchdog::tryFallbackOrDisable()
+@@ -526,6 +533,10 @@ void Watchdog::tryFallbackOrDisable()
      // Make sure we accurately reflect our enabled state to the
      // dbus interface.
      WatchdogInherits::enabled(false);
@@ -157,5 +158,4 @@ index 0601937..c655613 100644
  
  } // namespace watchdog
 -- 
-2.33.0
-
+2.25.1
