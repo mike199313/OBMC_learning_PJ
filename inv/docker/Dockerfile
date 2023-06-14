@@ -3,34 +3,37 @@ FROM ubuntu:20.04
 ENV TZ=Asia/Taipei \
     DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update && apt-get install -y \
-        git build-essential
+RUN apt-get update
 
 RUN apt-get install -y \
-        libsdl1.2-dev texinfo gawk chrpath diffstat
+        gawk wget git diffstat unzip texinfo
 
 RUN apt-get install -y \
-        python3.8-minimal
-RUN apt-get install -y \
-        python3.8
-RUN apt-get install -y \
-        sudo \
-        cpio \
-        wget \
-        locales
+        build-essential gcc g++ make
 
 RUN apt-get install -y \
-        vim \
-        liblz4-tool \
-        zstd \
-        pkg-config
+        chrpath socat cpio
 
-RUN rm /usr/bin/python3
-RUN ln -s python3.8 /usr/bin/python3
+RUN apt-get install -y \
+        python3 python3-pip python3-pexpect
 
+RUN apt-get install -y \
+        python3-git python3-jinja2 python3-distutils
 
-RUN sed -i -e 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen && \
-    locale-gen
+RUN apt-get install -y \
+        xz-utils debianutils iputils-ping
+
+RUN apt-get install -y \
+        libegl1-mesa libsdl1.2-dev python3-subunit
+
+RUN apt-get install -y \
+        mesa-common-dev zstd liblz4-tool file locales
+
+RUN apt-get install -y \
+        bzip2 lz4 vim
+
+RUN locale-gen en_US.UTF-8
+
 ENV LANG en_US.UTF-8  
 ENV LANGUAGE en_US:en  
 ENV LC_ALL en_US.UTF-8   
