@@ -31,35 +31,36 @@ sctl tree xyz.openbmc_project.HwmonTempSensor
         |-/xyz/openbmc_project/sensors/temperature/THERMAL_U6
         |-/xyz/openbmc_project/sensors/temperature/THERMAL_U8
         `-/xyz/openbmc_project/sensors/temperature/THERMAL_U95
+
 ---
  src/HwmonTempMain.cpp | 6 ++++++
  src/IpmiInfo.cpp      | 3 ++-
  2 files changed, 8 insertions(+), 1 deletion(-)
 
 diff --git a/src/HwmonTempMain.cpp b/src/HwmonTempMain.cpp
-index 261817e..2c3b877 100644
+index 025242c..39e0efa 100644
 --- a/src/HwmonTempMain.cpp
 +++ b/src/HwmonTempMain.cpp
-@@ -500,6 +500,7 @@ void createSensors(
-                         /* Inventec - Add tmp468 support and Label search for extra thresold and ipmi config */
-                         /* Extra threshold should all add label.*/
-                         std::vector<thresholds::Threshold> sensorThresholdsExtra;
-+                        sensorThresholdsExtra.clear();
-                         std::string labelHead = sensorName.substr(0, sensorName.find(" "));
-                         if (!parseThresholdsFromConfig(sensorData, sensorThresholdsExtra, &labelHead))
-                         {
-@@ -513,6 +514,11 @@ void createSensors(
-                         {
-                             std::cerr << "error populating ipmi for "
-                                       << sensorName << "\n";
-+                            /*
-+                                Inventec - Skip if sensorIpmiConfig not found.
-+                            */
-+                            sensors.erase(sensorName);
-+                            continue;
-                         }
+@@ -505,6 +505,7 @@ void createSensors(
+             /* Inventec - Add tmp468 support and Label search for extra thresold and ipmi config */
+             /* Extra threshold should all add label.*/
+             std::vector<thresholds::Threshold> sensorThresholdsExtra;
++            sensorThresholdsExtra.clear();
+             std::string labelHead = sensorName.substr(0, sensorName.find(" "));
+             if (!parseThresholdsFromConfig(sensorData, sensorThresholdsExtra, &labelHead))
+             {
+@@ -518,6 +519,11 @@ void createSensors(
+             {
+                 std::cerr << "error populating ipmi for "
+                             << sensorName << "\n";
++                /*
++                    Inventec - Skip if sensorIpmiConfig not found.
++                */
++                sensors.erase(sensorName);
++                continue;
+             }
  
-                         sensor = nullptr;
+             if (!activateOnly)
 diff --git a/src/IpmiInfo.cpp b/src/IpmiInfo.cpp
 index 4187f68..1c18087 100644
 --- a/src/IpmiInfo.cpp
@@ -75,5 +76,4 @@ index 4187f68..1c18087 100644
  
  } // namespace ipmidata
 -- 
-2.17.1
-
+2.25.1

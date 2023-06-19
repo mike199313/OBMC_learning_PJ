@@ -5,77 +5,40 @@ Subject: [PATCH 17/27] watchdog - Add WATCHDOG sensor DBUS interface
 
 - Add WATCHDOG sensor DBUS interface for watchdog timeout service
   update state and value
+
 ---
- include/WDTSensor.hpp                         |  29 ++
  meson_options.txt                             |   1 +
  service_files/meson.build                     |   1 +
  .../xyz.openbmc_project.wdtsensor.service     |  13 +
- src/WDTSensor.cpp                             | 258 ++++++++++++++++++
- src/meson.build                               |  16 ++
- 6 files changed, 318 insertions(+)
- create mode 100644 include/WDTSensor.hpp
+ src/WDTSensor.cpp                             | 257 ++++++++++++++++++
+ src/WDTSensor.hpp                             |  29 ++
+ src/meson.build                               |  15 +
+ 6 files changed, 316 insertions(+)
  create mode 100644 service_files/xyz.openbmc_project.wdtsensor.service
  create mode 100644 src/WDTSensor.cpp
+ create mode 100644 src/WDTSensor.hpp
 
-diff --git a/include/WDTSensor.hpp b/include/WDTSensor.hpp
-new file mode 100644
-index 0000000..ea32a89
---- /dev/null
-+++ b/include/WDTSensor.hpp
-@@ -0,0 +1,29 @@
-+#pragma once
-+
-+#include "Thresholds.hpp"
-+#include "sensor.hpp"
-+#include "IpmiInfo.hpp"
-+
-+#include <sdbusplus/asio/object_server.hpp>
-+
-+#include <string>
-+#include <vector>
-+
-+class WDTSensor :
-+    public std::enable_shared_from_this<WDTSensor>
-+{
-+  public:
-+    WDTSensor(sdbusplus::asio::object_server& objectServer,
-+                    std::shared_ptr<sdbusplus::asio::connection>& conn,
-+                    const std::string& name,
-+                    std::vector<ipmidata::IpmiConfig>&& ipmiinfo);
-+    ~WDTSensor();
-+
-+  private:
-+    sdbusplus::asio::object_server& objectServer;
-+    std::shared_ptr<sdbusplus::asio::connection> dbusConnection;
-+    std::shared_ptr<sdbusplus::asio::dbus_interface> sensorInterface;
-+    std::shared_ptr<sdbusplus::asio::dbus_interface> ipmiInterface;
-+    double defaultVal = 0;
-+    std::string state = "";
-+};
 diff --git a/meson_options.txt b/meson_options.txt
-index cb95f43..3244b5d 100644
+index d0c3185..8e40665 100644
 --- a/meson_options.txt
 +++ b/meson_options.txt
-@@ -9,6 +9,7 @@ option('invcfm', type: 'feature', value: 'enabled', description: 'Enable InvCfm
+@@ -18,3 +18,4 @@ option('invcfm', type: 'feature', value: 'enabled', description: 'Enable InvCfm
  option('accumulate', type: 'feature', value: 'enabled', description: 'Enable accumulate sensor.',)
  option('iiohwmon', type: 'feature', value: 'enabled', description: 'Enable iiohwmon sensor.',)
  option('tsod', type: 'feature', value: 'enabled', description: 'Enable TSOD sensor.',)
 +option('wdt', type: 'feature', value: 'enabled', description: 'Enable Watchdog event sensor.',)
- option('intrusion', type: 'feature', value: 'enabled', description: 'Enable intrusion sensor.',)
- option('ipmb', type: 'feature', value: 'enabled', description: 'Enable IPMB sensor.',)
- option('mcu', type: 'feature', value: 'enabled', description: 'Enable MCU sensor.',)
 diff --git a/service_files/meson.build b/service_files/meson.build
-index c1d8c9e..0fccee4 100644
+index b30be75..931f9ef 100644
 --- a/service_files/meson.build
 +++ b/service_files/meson.build
-@@ -11,6 +11,7 @@ unit_files = [
+@@ -16,6 +16,7 @@ unit_files = [
      ['accumulate', 'xyz.openbmc_project.accumulatesensor.service'],
      ['iiohwmon', 'xyz.openbmc_project.iiohwmonsensor.service'],
      ['tsod', 'xyz.openbmc_project.tsodsensor.service'],
 +    ['wdt', 'xyz.openbmc_project.wdtsensor.service'],
-     ['intrusion', 'xyz.openbmc_project.intrusionsensor.service'],
-     ['mcu', 'xyz.openbmc_project.mcutempsensor.service'],
-     ['nvme', 'xyz.openbmc_project.nvmesensor.service'],
+ ]
+ 
+ foreach tuple : unit_files
 diff --git a/service_files/xyz.openbmc_project.wdtsensor.service b/service_files/xyz.openbmc_project.wdtsensor.service
 new file mode 100644
 index 0000000..858228a
@@ -97,16 +60,17 @@ index 0000000..858228a
 +WantedBy=multi-user.target
 diff --git a/src/WDTSensor.cpp b/src/WDTSensor.cpp
 new file mode 100644
-index 0000000..0e7169b
+index 0000000..fb4a2c1
 --- /dev/null
 +++ b/src/WDTSensor.cpp
-@@ -0,0 +1,258 @@
+@@ -0,0 +1,257 @@
 +#include "WDTSensor.hpp"
 +#include "Utils.hpp"
 +
 +#include <array>
 +#include <boost/algorithm/string/predicate.hpp>
 +#include <boost/algorithm/string/replace.hpp>
++#include <boost/asio/deadline_timer.hpp>
 +#include <boost/container/flat_map.hpp>
 +#include <boost/container/flat_set.hpp>
 +#include <filesystem>
@@ -187,7 +151,7 @@ index 0000000..0e7169b
 +}
 +
 +void createSensors(
-+    boost::asio::io_service& io, sdbusplus::asio::object_server& objectServer,
++    boost::asio::io_context& io, sdbusplus::asio::object_server& objectServer,
 +    boost::container::flat_map<std::string,
 +    std::unique_ptr<WDTSensor>>& sensors,
 +    std::shared_ptr<sdbusplus::asio::connection>& dbusConnection,
@@ -210,7 +174,6 @@ index 0000000..0e7169b
 +                const std::pair<std::string,
 +                                boost::container::flat_map<std::string, BasicVariantType>>*
 +                    baseConfiguration = nullptr;
-+
 +
 +                // find base configuration
 +                for (const char* type : sensorTypes)
@@ -292,12 +255,11 @@ index 0000000..0e7169b
 +        }));
 +    getter->getConfiguration(
 +        std::vector<std::string>(sensorTypes.begin(), sensorTypes.end()));
-+
 +}
 +
 +int main()
 +{
-+    boost::asio::io_service io;
++    boost::asio::io_context io;
 +    auto systemBus = std::make_shared<sdbusplus::asio::connection>(io);
 +
 +    systemBus->request_name("xyz.openbmc_project.WDTSensor");
@@ -315,7 +277,7 @@ index 0000000..0e7169b
 +        std::cout << "xyz.openbmc_project.WDTSensor" << "\n";
 +    }
 +
-+    io.post([&]() {
++    boost::asio::post(io, [&]() {
 +        createSensors(io, objectServer, sensors, systemBus, nullptr);
 +    });
 +
@@ -359,14 +321,50 @@ index 0000000..0e7169b
 +
 +    io.run();
 +}
+diff --git a/src/WDTSensor.hpp b/src/WDTSensor.hpp
+new file mode 100644
+index 0000000..ea32a89
+--- /dev/null
++++ b/src/WDTSensor.hpp
+@@ -0,0 +1,29 @@
++#pragma once
++
++#include "Thresholds.hpp"
++#include "sensor.hpp"
++#include "IpmiInfo.hpp"
++
++#include <sdbusplus/asio/object_server.hpp>
++
++#include <string>
++#include <vector>
++
++class WDTSensor :
++    public std::enable_shared_from_this<WDTSensor>
++{
++  public:
++    WDTSensor(sdbusplus::asio::object_server& objectServer,
++                    std::shared_ptr<sdbusplus::asio::connection>& conn,
++                    const std::string& name,
++                    std::vector<ipmidata::IpmiConfig>&& ipmiinfo);
++    ~WDTSensor();
++
++  private:
++    sdbusplus::asio::object_server& objectServer;
++    std::shared_ptr<sdbusplus::asio::connection> dbusConnection;
++    std::shared_ptr<sdbusplus::asio::dbus_interface> sensorInterface;
++    std::shared_ptr<sdbusplus::asio::dbus_interface> ipmiInterface;
++    double defaultVal = 0;
++    std::string state = "";
++};
 diff --git a/src/meson.build b/src/meson.build
-index 2d9392f..9f9ffc2 100644
+index 690a403..72b1ac4 100644
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -194,6 +194,22 @@ if get_option('tsod').enabled()
+@@ -338,3 +338,18 @@ if get_option('tsod').enabled()
+         install: true,
      )
  endif
- 
++
 +if get_option('wdt').enabled()
 +    executable(
 +        'wdtsensor',
@@ -377,15 +375,9 @@ index 2d9392f..9f9ffc2 100644
 +            thresholds_dep,
 +            utils_dep,
 +        ],
-+        implicit_include_directories: false,
-+        include_directories: '../include',
++        cpp_args: uring_args,
 +        install: true,
 +    )
 +endif
-+
- if get_option('intrusion').enabled()
-     executable(
-         'intrusionsensor',
 -- 
-2.33.0
-
+2.25.1

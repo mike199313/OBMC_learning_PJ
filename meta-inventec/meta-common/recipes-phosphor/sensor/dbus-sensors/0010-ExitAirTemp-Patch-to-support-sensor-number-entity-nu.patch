@@ -42,54 +42,25 @@ xyz.openbmc_project.State.Decorator.Availability    interface -         -       
 .Available                                          property  b         true                                     emits-change writable
 xyz.openbmc_project.State.Decorator.OperationalStatus interface -         -                                        -
 .Functional                                         property  b         true                                     emits-change
----
- include/ExitAirTempSensor.hpp |  5 ++-
- src/ExitAirTempSensor.cpp     | 68 +++++++++++++++++++++++++++++++++--
- 2 files changed, 70 insertions(+), 3 deletions(-)
 
-diff --git a/include/ExitAirTempSensor.hpp b/include/ExitAirTempSensor.hpp
-index 2008291..2ac9e2f 100644
---- a/include/ExitAirTempSensor.hpp
-+++ b/include/ExitAirTempSensor.hpp
-@@ -2,6 +2,7 @@
- #include <boost/container/flat_map.hpp>
- #include <sdbusplus/bus/match.hpp>
- #include <sensor.hpp>
-+#include <IpmiInfo.hpp>
- 
- #include <chrono>
- #include <limits>
-@@ -25,6 +26,7 @@ struct CFMSensor : public Sensor, std::enable_shared_from_this<CFMSensor>
-               const std::string& name, const std::string& sensorConfiguration,
-               sdbusplus::asio::object_server& objectServer,
-               std::vector<thresholds::Threshold>&& thresholds,
-+              std::vector<ipmidata::IpmiConfig>&& ipmiinfo,
-               std::shared_ptr<ExitAirTempSensor>& parent);
-     ~CFMSensor() override;
- 
-@@ -63,7 +65,8 @@ struct ExitAirTempSensor :
-                       const std::string& name,
-                       const std::string& sensorConfiguration,
-                       sdbusplus::asio::object_server& objectServer,
--                      std::vector<thresholds::Threshold>&& thresholds);
-+                      std::vector<thresholds::Threshold>&& thresholds,
-+                      std::vector<ipmidata::IpmiConfig>&& ipmiinfo);
-     ~ExitAirTempSensor() override;
- 
-     void checkThresholds(void) override;
+---
+ src/ExitAirTempSensor.cpp | 70 ++++++++++++++++++++++++++++++++++++---
+ src/ExitAirTempSensor.hpp |  5 ++-
+ 2 files changed, 70 insertions(+), 5 deletions(-)
+
 diff --git a/src/ExitAirTempSensor.cpp b/src/ExitAirTempSensor.cpp
-index 58f7468..19e4f1d 100644
+index 9beae58..309c0b5 100644
 --- a/src/ExitAirTempSensor.cpp
 +++ b/src/ExitAirTempSensor.cpp
-@@ -161,6 +161,7 @@ CFMSensor::CFMSensor(std::shared_ptr<sdbusplus::asio::connection>& conn,
+@@ -159,6 +159,7 @@ CFMSensor::CFMSensor(std::shared_ptr<sdbusplus::asio::connection>& conn,
                       const std::string& sensorConfiguration,
                       sdbusplus::asio::object_server& objectServer,
                       std::vector<thresholds::Threshold>&& thresholdData,
 +                     std::vector<ipmidata::IpmiConfig>&& ipmiinfo,
                       std::shared_ptr<ExitAirTempSensor>& parent) :
      Sensor(escapeName(sensorName), std::move(thresholdData),
-            sensorConfiguration, "xyz.openbmc_project.Configuration.ExitAirTemp",
-@@ -180,6 +181,28 @@ CFMSensor::CFMSensor(std::shared_ptr<sdbusplus::asio::connection>& conn,
+            sensorConfiguration, "CFMSensor", false, false, cfmMaxReading,
+@@ -177,6 +178,27 @@ CFMSensor::CFMSensor(std::shared_ptr<sdbusplus::asio::connection>& conn,
                  "/xyz/openbmc_project/sensors/airflow/" + name, interface);
      }
  
@@ -114,19 +85,18 @@ index 58f7468..19e4f1d 100644
 +        }
 +    }
 +
-+
      association = objectServer.add_interface(
          "/xyz/openbmc_project/sensors/airflow/" + name, association::interface);
  
-@@ -290,6 +313,7 @@ CFMSensor::~CFMSensor()
-         objServer.remove_interface(iface);
-     }
-     objServer.remove_interface(sensorInterface);
-+    objServer.remove_interface(ipmiInterface);
+@@ -287,6 +309,7 @@ CFMSensor::~CFMSensor()
      objServer.remove_interface(association);
      objServer.remove_interface(cfmLimitIface);
      objServer.remove_interface(pwmLimitIface);
-@@ -505,7 +529,8 @@ ExitAirTempSensor::ExitAirTempSensor(
++    objServer.remove_interface(ipmiInterface);
+ }
+ 
+ void CFMSensor::createMaxCFMIface(void)
+@@ -496,7 +519,8 @@ ExitAirTempSensor::ExitAirTempSensor(
      std::shared_ptr<sdbusplus::asio::connection>& conn,
      const std::string& sensorName, const std::string& sensorConfiguration,
      sdbusplus::asio::object_server& objectServer,
@@ -134,9 +104,9 @@ index 58f7468..19e4f1d 100644
 +    std::vector<thresholds::Threshold>&& thresholdData,
 +    std::vector<ipmidata::IpmiConfig>&& ipmiinfo) :
      Sensor(escapeName(sensorName), std::move(thresholdData),
-            sensorConfiguration, "xyz.openbmc_project.Configuration.ExitAirTemp",
-            false, false, exitAirMaxReading, exitAirMinReading, conn,
-@@ -523,6 +548,28 @@ ExitAirTempSensor::ExitAirTempSensor(
+            sensorConfiguration, "ExitAirTemp", false, false, exitAirMaxReading,
+            exitAirMinReading, conn, PowerState::on),
+@@ -513,6 +537,28 @@ ExitAirTempSensor::ExitAirTempSensor(
              objectServer.add_interface(
                  "/xyz/openbmc_project/sensors/temperature/" + name, interface);
      }
@@ -165,51 +135,83 @@ index 58f7468..19e4f1d 100644
      association = objectServer.add_interface(
          "/xyz/openbmc_project/sensors/temperature/" + name,
          association::interface);
-@@ -536,6 +583,7 @@ ExitAirTempSensor::~ExitAirTempSensor()
-         objServer.remove_interface(iface);
+@@ -527,6 +573,7 @@ ExitAirTempSensor::~ExitAirTempSensor()
      }
      objServer.remove_interface(sensorInterface);
-+    objServer.remove_interface(ipmiInterface);
      objServer.remove_interface(association);
++    objServer.remove_interface(ipmiInterface);
  }
  
-@@ -891,9 +939,18 @@ void createSensor(sdbusplus::asio::object_server& objectServer,
+ void ExitAirTempSensor::setupMatches(void)
+@@ -878,11 +925,19 @@ void createSensor(sdbusplus::asio::object_server& objectServer,
+                     // thresholds should be under the same path
+                     std::vector<thresholds::Threshold> sensorThresholds;
+                     parseThresholdsFromConfig(interfaces, sensorThresholds);
+-
+                     std::string name = loadVariant<std::string>(cfg, "Name");
++
++                    std::vector<ipmidata::IpmiConfig> sensorIpmiConfig;
++                    if (!parseIpmiDataFromConfig(interfaces, sensorIpmiConfig, &name))
++                    {
++                        std::cerr << "error populating ipmi for "
++                                << name << "\n";
++                    }
++
+                     exitAirSensor = std::make_shared<ExitAirTempSensor>(
+                         dbusConnection, name, path.str, objectServer,
+-                        std::move(sensorThresholds));
++                        std::move(sensorThresholds),
++                        std::move(sensorIpmiConfig));
+                     exitAirSensor->powerFactorMin =
+                         loadVariant<double>(cfg, "PowerFactorMin");
+                     exitAirSensor->powerFactorMax =
+@@ -898,9 +953,16 @@ void createSensor(sdbusplus::asio::object_server& objectServer,
+                     std::vector<thresholds::Threshold> sensorThresholds;
+                     parseThresholdsFromConfig(interfaces, sensorThresholds);
+                     std::string name = loadVariant<std::string>(cfg, "Name");
++                    std::vector<ipmidata::IpmiConfig> sensorIpmiConfig;
++                    if (!parseIpmiDataFromConfig(interfaces, sensorIpmiConfig, &name))
++                    {
++                        std::cerr << "error populating ipmi for " << name << "\n";
++                    }
++
+                     auto sensor = std::make_shared<CFMSensor>(
+                         dbusConnection, name, path.str, objectServer,
+-                        std::move(sensorThresholds), exitAirSensor);
++                        std::move(sensorThresholds),
++                        std::move(sensorIpmiConfig), exitAirSensor);
+                     loadVariantPathArray(cfg, "Tachs", sensor->tachs);
+                     sensor->maxCFM = loadVariant<double>(cfg, "MaxCFM");
  
-                         std::string name =
-                             loadVariant<std::string>(entry.second, "Name");
-+
-+                        std::vector<ipmidata::IpmiConfig> sensorIpmiConfig;
-+                        if (!parseIpmiDataFromConfig(pathPair.second, sensorIpmiConfig, &name))
-+                        {
-+                            std::cerr << "error populating ipmi for "
-+                                    << name << "\n";
-+                        }
-+
-                         exitAirSensor = std::make_shared<ExitAirTempSensor>(
-                             dbusConnection, name, pathPair.first.str,
--                            objectServer, std::move(sensorThresholds));
-+                            objectServer, std::move(sensorThresholds),
-+                            std::move(sensorIpmiConfig));
-                         exitAirSensor->powerFactorMin =
-                             loadVariant<double>(entry.second, "PowerFactorMin");
-                         exitAirSensor->powerFactorMax =
-@@ -916,9 +973,16 @@ void createSensor(sdbusplus::asio::object_server& objectServer,
-                                                   sensorThresholds);
-                         std::string name =
-                             loadVariant<std::string>(entry.second, "Name");
-+                        std::vector<ipmidata::IpmiConfig> sensorIpmiConfig;
-+                        if (!parseIpmiDataFromConfig(pathPair.second, sensorIpmiConfig, &name))
-+                        {
-+                            std::cerr << "error populating ipmi for " << name << "\n";
-+                        }
-+
-                         auto sensor = std::make_shared<CFMSensor>(
-                             dbusConnection, name, pathPair.first.str,
-                             objectServer, std::move(sensorThresholds),
-+                            std::move(sensorIpmiConfig),
-                             exitAirSensor);
-                         loadVariantPathArray(entry.second, "Tachs",
-                                              sensor->tachs);
+diff --git a/src/ExitAirTempSensor.hpp b/src/ExitAirTempSensor.hpp
+index 5bd9735..54b8263 100644
+--- a/src/ExitAirTempSensor.hpp
++++ b/src/ExitAirTempSensor.hpp
+@@ -2,6 +2,7 @@
+ #include <boost/container/flat_map.hpp>
+ #include <sdbusplus/bus/match.hpp>
+ #include <sensor.hpp>
++#include <IpmiInfo.hpp>
+ 
+ #include <chrono>
+ #include <limits>
+@@ -25,6 +26,7 @@ struct CFMSensor : public Sensor, std::enable_shared_from_this<CFMSensor>
+               const std::string& name, const std::string& sensorConfiguration,
+               sdbusplus::asio::object_server& objectServer,
+               std::vector<thresholds::Threshold>&& thresholdData,
++              std::vector<ipmidata::IpmiConfig>&& ipmiinfo,
+               std::shared_ptr<ExitAirTempSensor>& parent);
+     ~CFMSensor() override;
+ 
+@@ -63,7 +65,8 @@ struct ExitAirTempSensor :
+                       const std::string& name,
+                       const std::string& sensorConfiguration,
+                       sdbusplus::asio::object_server& objectServer,
+-                      std::vector<thresholds::Threshold>&& thresholdData);
++                      std::vector<thresholds::Threshold>&& thresholdData,
++                      std::vector<ipmidata::IpmiConfig>&& ipmiinfo);
+     ~ExitAirTempSensor() override;
+ 
+     void checkThresholds(void) override;
 -- 
-2.33.0
-
+2.25.1

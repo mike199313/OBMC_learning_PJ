@@ -9,172 +9,45 @@ Subject: [PATCH 03/27] Fan - Patch to support sensor number, entity number and
 - Fix index for fan0 and pwm0
 - Support Present sensor
 - Ignore to set psu default value
----
- include/PwmSensor.hpp  |   3 +
- include/TachSensor.hpp |  55 +++++++-
- src/FanMain.cpp        | 209 +++++++++++++++++++++++-----
- src/PSUSensorMain.cpp  |  22 ++-
- src/PwmSensor.cpp      |  64 ++++++++-
- src/TachSensor.cpp     | 305 ++++++++++++++++++++++++++++++++++++++---
- 6 files changed, 598 insertions(+), 60 deletions(-)
 
-diff --git a/include/PwmSensor.hpp b/include/PwmSensor.hpp
-index 2c8ebe6..d0410a9 100644
---- a/include/PwmSensor.hpp
-+++ b/include/PwmSensor.hpp
-@@ -2,6 +2,7 @@
- 
- #include <sdbusplus/asio/object_server.hpp>
- #include <sensor.hpp>
-+#include <IpmiInfo.hpp>
- 
- #include <memory>
- #include <string>
-@@ -12,6 +13,7 @@ class PwmSensor
-     PwmSensor(const std::string& name, const std::string& sysPath,
-               std::shared_ptr<sdbusplus::asio::connection>& conn,
-               sdbusplus::asio::object_server& objectServer,
-+              std::vector<ipmidata::IpmiConfig>&& ipmiinfo,
-               const std::string& sensorConfiguration,
-               const std::string& sensorType, bool isValueMutable = false);
-     ~PwmSensor();
-@@ -24,6 +26,7 @@ class PwmSensor
-     std::shared_ptr<sdbusplus::asio::dbus_interface> controlInterface;
-     std::shared_ptr<sdbusplus::asio::dbus_interface> association;
-     std::shared_ptr<sdbusplus::asio::dbus_interface> valueMutabilityInterface;
-+    std::shared_ptr<sdbusplus::asio::dbus_interface> ipmiInterface;
-     double pwmMax;
-     void setValue(uint32_t value);
-     uint32_t getValue(bool errThrow = true);
-diff --git a/include/TachSensor.hpp b/include/TachSensor.hpp
-index 75dcd06..d1949a3 100644
---- a/include/TachSensor.hpp
-+++ b/include/TachSensor.hpp
-@@ -7,6 +7,7 @@
- #include <phosphor-logging/lg2.hpp>
- #include <sdbusplus/asio/object_server.hpp>
- #include <sensor.hpp>
-+#include <IpmiInfo.hpp>
- 
- #include <memory>
- #include <optional>
-@@ -14,22 +15,69 @@
- #include <utility>
- #include <vector>
- 
-+static const std::string PRESENT_SENSOR_PATH = "/xyz/openbmc_project/sensors/discrete_08h/fan_tach";
-+
-+/*
-+ Because some fans don't have thier own GPIO present pin,
-+ they need to use tach value to determine presence.
-+*/
-+
-+enum class presenceMethod
-+{
-+  tach,
-+  gpio
-+};
-+
- class PresenceSensor
- {
-   public:
--    PresenceSensor(const std::string& pinName, bool inverted,
--                   boost::asio::io_service& io, const std::string& name);
-+    PresenceSensor(presenceMethod&& method,
-+                   const std::string& gpioName, bool inverted,
-+                   boost::asio::io_service& io, const std::string& name,
-+                   sdbusplus::asio::object_server& objectServer,
-+                   std::shared_ptr<sdbusplus::asio::connection>& conn,
-+                   const std::string& configurationPath,
-+                   std::vector<ipmidata::IpmiConfig>&& ipmiinfo);
-+
-+    PresenceSensor(presenceMethod&& method,
-+                   double& tachVal, double& hysVal,
-+                   boost::asio::io_service& io, const std::string& name,
-+                   sdbusplus::asio::object_server& objectServer,
-+                   std::shared_ptr<sdbusplus::asio::connection>& conn,
-+                   const std::string& configurationPath,
-+                   std::vector<ipmidata::IpmiConfig>&& ipmiinfo);
-+
-     ~PresenceSensor();
- 
-     void monitorPresence(void);
-     void read(void);
-     bool getValue(void);
- 
-+    bool checkPresent(double& tachVal);
-+    void clearCounter();
-+    bool is_TheMethod(presenceMethod&& _method);
-+
-+    void recordAbsentIPMISel(bool assert);
-+
-   private:
-     bool status = true;
-     gpiod::line gpioLine;
-     boost::asio::posix::stream_descriptor gpioFd;
-     std::string name;
-+    presenceMethod method;
-+    double badTach; // a tach value to judge this fan is unpresent.
-+    double goodTach; // a tach value to judge this fan is present.
-+    u_int8_t presentCount = 0;
-+    u_int8_t unpresentCount = 0;
-+
-+    double value = std::numeric_limits<double>::quiet_NaN();
-+
-+    std::string configurationPath;
-+    sdbusplus::asio::object_server& objServer;
-+    std::shared_ptr<sdbusplus::asio::connection>& conn; /*for recording IPMI sel*/
-+    std::shared_ptr<sdbusplus::asio::dbus_interface> association;
-+    std::shared_ptr<sdbusplus::asio::dbus_interface> sensorInterface;
-+    std::shared_ptr<sdbusplus::asio::dbus_interface> ipmiInterface;
- };
- 
- namespace redundancy
-@@ -68,6 +116,7 @@ class TachSensor : public Sensor
-                std::optional<RedundancySensor>* redundancy,
-                boost::asio::io_service& io, const std::string& fanName,
-                std::vector<thresholds::Threshold>&& thresholds,
-+               std::vector<ipmidata::IpmiConfig>&& ipmiinfo,
-                const std::string& sensorConfiguration,
-                const std::pair<double, double>& limits,
-                const PowerState& powerState,
-@@ -80,6 +129,7 @@ class TachSensor : public Sensor
-     std::unique_ptr<PresenceSensor> presence;
-     std::shared_ptr<sdbusplus::asio::dbus_interface> itemIface;
-     std::shared_ptr<sdbusplus::asio::dbus_interface> itemAssoc;
-+    std::shared_ptr<sdbusplus::asio::connection>& conn; /*for recording IPMI sel*/
-     boost::asio::streambuf readBuf;
-     boost::asio::posix::stream_descriptor inputDev;
-     boost::asio::deadline_timer waitTimer;
-@@ -89,6 +139,7 @@ class TachSensor : public Sensor
-     void setupRead(void);
-     void handleResponse(const boost::system::error_code& err);
-     void checkThresholds(void) override;
-+    bool preCheckTachVal(void);
- };
- 
- inline void logFanInserted(const std::string& device)
+---
+ src/FanMain.cpp       | 200 +++++++++++++++++++++++++------
+ src/PSUSensorMain.cpp |  21 +++-
+ src/PwmSensor.cpp     |  64 +++++++++-
+ src/PwmSensor.hpp     |   3 +
+ src/TachSensor.cpp    | 270 +++++++++++++++++++++++++++++++++++++++---
+ src/TachSensor.hpp    |  54 ++++++++-
+ 6 files changed, 557 insertions(+), 55 deletions(-)
+
 diff --git a/src/FanMain.cpp b/src/FanMain.cpp
-index 112848b..a733ccb 100644
+index 32022c1..8994041 100644
 --- a/src/FanMain.cpp
 +++ b/src/FanMain.cpp
 @@ -39,6 +39,7 @@
- #include <variant>
  #include <vector>
  
-+static constexpr bool debug = false;
  namespace fs = std::filesystem;
++static constexpr bool debug = false;
  
  // The following two structures need to be consistent
-@@ -148,6 +149,101 @@ void createRedundancySensor(
+ static auto sensorTypes{std::to_array<const char*>(
+@@ -156,7 +157,7 @@ bool findPwmPath(const fs::path& directory, unsigned int pwm, fs::path& pwmPath)
+     std::error_code ec;
+ 
+     /* Assuming PWM file is appeared in the same directory as fanX_input */
+-    auto path = directory / ("pwm" + std::to_string(pwm + 1));
++    auto path = directory / ("pwm" + std::to_string(pwm));
+     bool exists = fs::exists(path, ec);
+ 
+     if (ec || !exists)
+@@ -249,6 +250,99 @@ void createRedundancySensor(
          "org.freedesktop.DBus.ObjectManager", "GetManagedObjects");
  }
  
-+
 +static bool parsePresenceConfig(
 +                        const SensorData& sensorData,
 +                        const char* baseType,
-+                        std::string& sensorName, boost::asio::io_service& io,
++                        std::string& sensorName, boost::asio::io_context& io,
 +                        sdbusplus::asio::object_server& objectServer,
 +                        std::shared_ptr<sdbusplus::asio::connection>& dbusConnection,
 +                        const std::string& configurationPath,
@@ -264,195 +137,180 @@ index 112848b..a733ccb 100644
 +    return false;
 +}
 +
-+
  void createSensors(
-     boost::asio::io_service& io, sdbusplus::asio::object_server& objectServer,
-     boost::container::flat_map<std::string, std::unique_ptr<TachSensor>>&
-@@ -185,8 +281,11 @@ void createSensors(
-                 fs::path directory = path.parent_path();
-                 FanTypes fanType = getFanType(directory);
+     boost::asio::io_context& io, sdbusplus::asio::object_server& objectServer,
+     boost::container::flat_map<std::string, std::shared_ptr<TachSensor>>&
+@@ -286,8 +380,9 @@ void createSensors(
+             FanTypes fanType = getFanType(directory);
+             std::string cfgIntf = configInterfaceName(sensorTypes[fanType]);
  
-+                /* Fix for fan0_input */
-                 // convert to 0 based
--                size_t index = std::stoul(indexStr) - 1;
-+                //size_t index = std::stoul(indexStr) - 1;
-+                size_t index = std::stoul(indexStr);
-+
++            /* Fix for fan0_input */
+             // convert to 0 based
+-            size_t index = std::stoul(indexStr) - 1;
++            size_t index = std::stoul(indexStr);
  
-                 const char* baseType = nullptr;
-                 const SensorData* sensorData = nullptr;
-@@ -315,40 +414,24 @@ void createSensors(
-                               << sensorName << "\n";
-                 }
+             const char* baseType = nullptr;
+             const SensorData* sensorData = nullptr;
+@@ -412,38 +507,23 @@ void createSensors(
+                           << "\n";
+             }
  
--                auto presenceConfig =
--                    sensorData->find(baseType + std::string(".Presence"));
-+                std::vector<ipmidata::IpmiConfig> sensorIpmiConfig;
-+                std::string name = sensorName.substr(0, sensorName.find(" "));
-+                if (!parseIpmiDataFromConfig(*sensorData, sensorIpmiConfig, &name))
-+                {
-+                    std::cerr << "error populating ipmi for "
-+                                << name << "\n";
-+                }
+-            auto presenceConfig =
+-                sensorData->find(cfgIntf + std::string(".Presence"));
++            std::vector<ipmidata::IpmiConfig> sensorIpmiConfig;
++            std::string name = sensorName.substr(0, sensorName.find(" "));
++            if (!parseIpmiDataFromConfig(*sensorData, sensorIpmiConfig, &name))
++            {
++                std::cerr << "error populating ipmi for "
++                            << name << "\n";
++            }
  
-                 std::unique_ptr<PresenceSensor> presenceSensor(nullptr);
+             std::unique_ptr<PresenceSensor> presenceSensor(nullptr);
+ 
+-            // presence sensors are optional
+-            if (presenceConfig != sensorData->end())
++            if (!parsePresenceConfig(
++                *sensorData, baseType,
++                sensorName, io,
++                objectServer, dbusConnection, *interfacePath,
++                presenceSensor))
+             {
+-                auto findPolarity = presenceConfig->second.find("Polarity");
+-                auto findPinName = presenceConfig->second.find("PinName");
 -
--                // presence sensors are optional
--                if (presenceConfig != sensorData->end())
-+                if (!parsePresenceConfig(
-+                    *sensorData, baseType,
-+                    sensorName, io,
-+                    objectServer, dbusConnection, *interfacePath,
-+                    presenceSensor))
-                 {
--                    auto findPolarity = presenceConfig->second.find("Polarity");
--                    auto findPinName = presenceConfig->second.find("PinName");
--
--                    if (findPinName == presenceConfig->second.end() ||
--                        findPolarity == presenceConfig->second.end())
+-                if (findPinName == presenceConfig->second.end() ||
+-                    findPolarity == presenceConfig->second.end())
+-                {
+-                    std::cerr << "Malformed Presence Configuration\n";
+-                }
+-                else
+-                {
+-                    bool inverted =
+-                        std::get<std::string>(findPolarity->second) == "Low";
+-                    if (const auto* pinName =
+-                            std::get_if<std::string>(&findPinName->second))
 -                    {
--                        std::cerr << "Malformed Presence Configuration\n";
+-                        presenceSensor = std::make_unique<PresenceSensor>(
+-                            *pinName, inverted, io, sensorName);
 -                    }
 -                    else
 -                    {
--                        bool inverted = std::get<std::string>(
--                                            findPolarity->second) == "Low";
--                        if (auto pinName =
--                                std::get_if<std::string>(&findPinName->second))
--                        {
--                            presenceSensor = std::make_unique<PresenceSensor>(
--                                *pinName, inverted, io, sensorName);
--                        }
--                        else
--                        {
--                            std::cerr
--                                << "Malformed Presence pinName for sensor "
--                                << sensorName << " \n";
--                        }
+-                        std::cerr << "Malformed Presence pinName for sensor "
+-                                  << sensorName << " \n";
 -                    }
-+                    std::cerr << "Malformed Presence Configuration\n";
-                 }
+-                }
++                std::cerr << "Malformed Presence Configuration\n";
+             }
+             std::optional<RedundancySensor>* redundancy = nullptr;
+             if (fanType == FanTypes::aspeed)
+@@ -453,6 +533,14 @@ void createSensors(
+ 
+             PowerState powerState = getPowerState(baseConfiguration->second);
+ 
++            if (debug)
++            {
++                std::cerr << "Create " << sensorName
++                        << ", sysPath: " << path.string()
++                        << "\ninterface: " << *interfacePath
++                        << '\n';
++            }
 +
-                 std::optional<RedundancySensor>* redundancy = nullptr;
-                 if (fanType == FanTypes::aspeed)
-                 {
-@@ -367,6 +450,14 @@ void createSensors(
+             constexpr double defaultMaxReading = 25000;
+             constexpr double defaultMinReading = 0;
+             std::pair<double, double> limits =
+@@ -464,6 +552,7 @@ void createSensors(
+             std::optional<std::string> led;
+             std::string pwmName;
+             fs::path pwmPath;
++            std::string connectorName;
+ 
+             // The Mutable parameter is optional, defaulting to false
+             bool isValueMutable = false;
+@@ -482,7 +571,7 @@ void createSensors(
                      }
-                 }
  
-+                if (debug)
-+                {
-+                    std::cerr << "Create " << sensorName
-+                            << ", sysPath: " << path.string()
-+                            << "\ninterface: " << *interfacePath
-+                            << '\n';
-+                }
-+
-                 constexpr double defaultMaxReading = 25000;
-                 constexpr double defaultMinReading = 0;
-                 std::pair<double, double> limits =
-@@ -378,6 +469,7 @@ void createSensors(
-                 std::optional<std::string> led;
-                 std::string pwmName;
-                 fs::path pwmPath;
-+                std::string connectorName;
+                     fs::path pwmEnableFile =
+-                        "pwm" + std::to_string(pwm + 1) + "_enable";
++                        "pwm" + std::to_string(pwm) + "_enable";
+                     fs::path enablePath = pwmPath.parent_path() / pwmEnableFile;
+                     enablePwm(enablePath);
  
-                 // The Mutable parameter is optional, defaulting to false
-                 bool isValueMutable = false;
-@@ -386,14 +478,16 @@ void createSensors(
-                     auto findPwm = connector->second.find("Pwm");
-                     if (findPwm != connector->second.end())
+@@ -496,7 +585,7 @@ void createSensors(
+                     }
+                     else
                      {
-+                        /* Fix for fan0_input */
-+                        /* convert to 0 based */
-                         fs::path pwmEnableFile =
--                            "pwm" + std::to_string(index + 1) + "_enable";
-+                            "pwm" + std::to_string(index) + "_enable";
-                         fs::path enablePath =
-                             path.parent_path() / pwmEnableFile;
-                         enablePwm(enablePath);
-                         size_t pwm = std::visit(VariantToUnsignedIntVisitor(),
-                                                 findPwm->second);
--                        pwmPath = directory / ("pwm" + std::to_string(pwm + 1));
-+                        pwmPath = directory / ("pwm" + std::to_string(pwm));
-                         /* use pwm name override if found in configuration else
-                          * use default */
-                         auto findOverride = connector->second.find("PwmName");
-@@ -404,7 +498,7 @@ void createSensors(
-                         }
-                         else
-                         {
--                            pwmName = "Pwm_" + std::to_string(pwm + 1);
-+                            pwmName = "Pwm_" + std::to_string(pwm);
-                         }
+-                        pwmName = "Pwm_" + std::to_string(pwm + 1);
++                        pwmName = "Pwm_" + std::to_string(pwm);
+                     }
  
-                         // Check PWM sensor mutability
-@@ -446,15 +540,58 @@ void createSensors(
-                 tachSensors[sensorName] = std::make_unique<TachSensor>(
-                     path.string(), baseType, objectServer, dbusConnection,
-                     std::move(presenceSensor), redundancy, io, sensorName,
--                    std::move(sensorThresholds), *interfacePath, limits,
-+                    std::move(sensorThresholds), std::move(sensorIpmiConfig), *interfacePath, limits,
-                     powerState, led);
+                     // Check PWM sensor mutability
+@@ -543,15 +632,60 @@ void createSensors(
+             tachSensor = std::make_shared<TachSensor>(
+                 path.string(), baseType, objectServer, dbusConnection,
+                 std::move(presenceSensor), redundancy, io, sensorName,
+-                std::move(sensorThresholds), *interfacePath, limits, powerState,
++                std::move(sensorThresholds), std::move(sensorIpmiConfig),
++                *interfacePath, limits, powerState,
+                 led);
+             tachSensor->setupRead();
  
-                 if (!pwmPath.empty() && fs::exists(pwmPath) &&
-                     !pwmSensors.count(pwmPath))
-                 {
-+                    std::vector<ipmidata::IpmiConfig> sensorIpmiConfig;
-+                    baseConfiguration = nullptr;
-+                    sensorData = nullptr;
-+                    for (const std::pair<sdbusplus::message::object_path,
-+                                        SensorData>& sensor : sensorConfigurations)
+             if (!pwmPath.empty() && fs::exists(pwmPath) &&
+                 (pwmSensors.count(pwmPath) == 0U))
+             {
++                std::vector<ipmidata::IpmiConfig> sensorIpmiConfig;
++                baseConfiguration = nullptr;
++                sensorData = nullptr;
++                for (const std::pair<sdbusplus::message::object_path,
++                                    SensorData>& sensor : sensorConfigurations)
++                {
++                    // find the base of the configuration to see if indexes
++                    // match
++                    auto sensorBaseFind =
++                        sensor.second.find(sensorTypes[fanType]);
++                    if (sensorBaseFind == sensor.second.end())
 +                    {
-+                        // find the base of the configuration to see if indexes
-+                        // match
-+                        auto sensorBaseFind =
-+                            sensor.second.find(sensorTypes[fanType]);
-+                        if (sensorBaseFind == sensor.second.end())
-+                        {
-+                            continue;
-+                        }
-+
-+                        baseConfiguration = &(*sensorBaseFind);
-+
-+                        auto findName = baseConfiguration->second.find("Name");
-+                        if (findName != baseConfiguration->second.end())
-+                        {
-+                            std::string findPwmName = std::visit(VariantToStringVisitor(),
-+                                                                    findName->second);
-+                            if (findPwmName == pwmName)
-+                            {
-+                                sensorData = &(sensor.second);
-+                                break;
-+                            }
-+                        }
-+                    }
-+
-+                    if (sensorData == nullptr)
-+                    {
-+                        std::cerr << "failed to find match for " << pwmName
-+                                << "\n";
 +                        continue;
 +                    }
 +
-+                    if (!parseIpmiDataFromConfig(*sensorData, sensorIpmiConfig, &pwmName))
-+                    {
-+                         std::cerr << "error populating ipmi for "
-+                              << pwmName << "\n";
-+                    }
++                    baseConfiguration = &(*sensorBaseFind);
 +
-                     pwmSensors[pwmPath] = std::make_unique<PwmSensor>(
-                         pwmName, pwmPath, dbusConnection, objectServer,
--                        *interfacePath, "Fan", isValueMutable);
-+                        std::move(sensorIpmiConfig), *interfacePath, "Fan", isValueMutable);
-                 }
++                    auto findName = baseConfiguration->second.find("Name");
++                    if (findName != baseConfiguration->second.end())
++                    {
++                        std::string findPwmName = std::visit(VariantToStringVisitor(),
++                                                                findName->second);
++                        if (findPwmName == pwmName)
++                        {
++                            sensorData = &(sensor.second);
++                            break;
++                        }
++                    }
++                }
++
++                if (sensorData == nullptr)
++                {
++                    std::cerr << "failed to find match for " << pwmName
++                            << "\n";
++                    continue;
++                }
++
++                if (!parseIpmiDataFromConfig(*sensorData, sensorIpmiConfig, &pwmName))
++                {
++                        std::cerr << "error populating ipmi for "
++                            << pwmName << "\n";
++                }
++
+                 pwmSensors[pwmPath] = std::make_unique<PwmSensor>(
+                     pwmName, pwmPath, dbusConnection, objectServer,
++                    std::move(sensorIpmiConfig),
+                     *interfacePath, "Fan", isValueMutable);
              }
- 
+         }
 diff --git a/src/PSUSensorMain.cpp b/src/PSUSensorMain.cpp
-index 60e2dfa..9c536c7 100644
+index 90fcc8e..a3ab049 100644
 --- a/src/PSUSensorMain.cpp
 +++ b/src/PSUSensorMain.cpp
-@@ -256,8 +256,9 @@ static void
+@@ -236,8 +236,9 @@ static void
                     const std::string& interfacePath,
                     std::shared_ptr<sdbusplus::asio::connection>& dbusConnection,
                     sdbusplus::asio::object_server& objectServer,
@@ -460,34 +318,33 @@ index 60e2dfa..9c536c7 100644
 +                   const std::string& psuName, const SensorData& sensorData)
  {
 +    std::string sensorName;
-     for (const auto& pwmName : pwmTable)
+     for (const auto& [pwmLabel, pwmName] : pwmTable)
      {
-         if (pwmName.first != labelHead)
-@@ -280,9 +281,20 @@ static void
-             continue;
-         }
+         if (pwmLabel != labelHead)
+@@ -269,8 +270,20 @@ static void
+         objPath += "_";
+         objPath += pwmName;
  
 -        pwmSensors[psuName + labelHead] = std::make_unique<PwmSensor>(
--            "Pwm_" + psuName + "_" + pwmName.second, pwmPathStr, dbusConnection,
--            objectServer, interfacePath + "_" + pwmName.second, "PSU");
-+        sensorName = "Pwm_" + psuName + "_" + pwmName.second;
+-            name, pwmPathStr, dbusConnection, objectServer, objPath, "PSU");
++        sensorName = "Pwm_" + psuName + "_" + pwmName;
 +        // Currently Not Support psu PSM IPMI sensor Info, so let it empty
 +        std::vector<ipmidata::IpmiConfig> sensorIpmiConfig;
-+        if (!parseIpmiDataFromConfig(sensorData, sensorIpmiConfig, &sensorName))
++        if (parseIpmiDataFromConfig(sensorData, sensorIpmiConfig, &sensorName))
 +        {
-+            std::cerr << "error populating ipmi for " << sensorName << "\n";
++            pwmSensors[psuName + labelHead] = std::make_unique<PwmSensor>(
++                name, pwmPathStr, dbusConnection, objectServer,
++                std::move(sensorIpmiConfig),
++                objPath, "PSU");
 +        }
 +        else
 +        {
-+            pwmSensors[psuName + labelHead] = std::make_unique<PwmSensor>(
-+                sensorName, pwmPathStr, dbusConnection,
-+                objectServer, std::move(sensorIpmiConfig),
-+                interfacePath + "_" + pwmName.second, "PSU");
++            std::cerr << "error populating ipmi for " << sensorName << "\n";
 +        }
      }
  }
  
-@@ -626,7 +638,7 @@ static void createSensorsCallback(
+@@ -605,7 +618,7 @@ static void createSensorsCallback(
              }
  
              checkPWMSensor(sensorPath, labelHead, *interfacePath,
@@ -497,10 +354,10 @@ index 60e2dfa..9c536c7 100644
              if (!findLabels.empty())
              {
 diff --git a/src/PwmSensor.cpp b/src/PwmSensor.cpp
-index c1f0674..05106b7 100644
+index ad54dfe..2cbaf91 100644
 --- a/src/PwmSensor.cpp
 +++ b/src/PwmSensor.cpp
-@@ -30,6 +30,7 @@ static constexpr double targetIfaceMax = sysPwmMax;
+@@ -33,6 +33,7 @@ static constexpr double targetIfaceMax = sysPwmMax;
  PwmSensor::PwmSensor(const std::string& name, const std::string& sysPath,
                       std::shared_ptr<sdbusplus::asio::connection>& conn,
                       sdbusplus::asio::object_server& objectServer,
@@ -508,7 +365,7 @@ index c1f0674..05106b7 100644
                       const std::string& sensorConfiguration,
                       const std::string& sensorType, bool isValueMutable) :
      sysPath(sysPath),
-@@ -54,7 +55,15 @@ PwmSensor::PwmSensor(const std::string& name, const std::string& sysPath,
+@@ -57,7 +58,15 @@ PwmSensor::PwmSensor(const std::string& name, const std::string& sysPath,
      {
          // default pwm to non 0
          pwmValue = static_cast<uint32_t>(pwmMax * (defaultPwm / 100.0));
@@ -525,7 +382,7 @@ index c1f0674..05106b7 100644
      }
      double fValue = 100.0 * (static_cast<double>(pwmValue) / pwmMax);
      sensorInterface->register_property(
-@@ -173,10 +182,59 @@ PwmSensor::PwmSensor(const std::string& name, const std::string& sysPath,
+@@ -175,10 +184,59 @@ PwmSensor::PwmSensor(const std::string& name, const std::string& sysPath,
      if (sensorType == "PSU")
      {
          createInventoryAssoc(conn, association, sensorConfiguration);
@@ -585,7 +442,7 @@ index c1f0674..05106b7 100644
      }
  }
  PwmSensor::~PwmSensor()
-@@ -184,6 +242,10 @@ PwmSensor::~PwmSensor()
+@@ -186,6 +244,10 @@ PwmSensor::~PwmSensor()
      objectServer.remove_interface(sensorInterface);
      objectServer.remove_interface(controlInterface);
      objectServer.remove_interface(association);
@@ -596,42 +453,67 @@ index c1f0674..05106b7 100644
  }
  
  void PwmSensor::setValue(uint32_t value)
+diff --git a/src/PwmSensor.hpp b/src/PwmSensor.hpp
+index f70079b..ae6803d 100644
+--- a/src/PwmSensor.hpp
++++ b/src/PwmSensor.hpp
+@@ -1,6 +1,7 @@
+ #pragma once
+ 
+ #include "sensor.hpp"
++#include "IpmiInfo.hpp"
+ 
+ #include <sdbusplus/asio/object_server.hpp>
+ 
+@@ -13,6 +14,7 @@ class PwmSensor
+     PwmSensor(const std::string& name, const std::string& sysPath,
+               std::shared_ptr<sdbusplus::asio::connection>& conn,
+               sdbusplus::asio::object_server& objectServer,
++              std::vector<ipmidata::IpmiConfig>&& ipmiinfo,
+               const std::string& sensorConfiguration,
+               const std::string& sensorType, bool isValueMutable = false);
+     ~PwmSensor();
+@@ -25,6 +27,7 @@ class PwmSensor
+     std::shared_ptr<sdbusplus::asio::dbus_interface> controlInterface;
+     std::shared_ptr<sdbusplus::asio::dbus_interface> association;
+     std::shared_ptr<sdbusplus::asio::dbus_interface> valueMutabilityInterface;
++    std::shared_ptr<sdbusplus::asio::dbus_interface> ipmiInterface;
+     double pwmMax;
+     void setValue(uint32_t value);
+     uint32_t getValue(bool errThrow = true);
 diff --git a/src/TachSensor.cpp b/src/TachSensor.cpp
-index f609410..78a38df 100644
+index 3971324..af13a8e 100644
 --- a/src/TachSensor.cpp
 +++ b/src/TachSensor.cpp
-@@ -36,7 +36,11 @@
+@@ -37,7 +37,9 @@
  #include <utility>
  #include <vector>
  
 -static constexpr unsigned int pwmPollMs = 500;
-+//static constexpr unsigned int pwmPollMs = 500;
 +static constexpr unsigned int pwmPollMs = 2000; //extend the polling interval to 2 seconds
 +constexpr size_t sensorPwrOffPollTimeMs = 5000;
 +static constexpr u_int8_t checkPresentCount = 3;
-+
  
  TachSensor::TachSensor(const std::string& path, const std::string& objectType,
                         sdbusplus::asio::object_server& objectServer,
-@@ -45,6 +49,7 @@ TachSensor::TachSensor(const std::string& path, const std::string& objectType,
+@@ -46,6 +48,7 @@ TachSensor::TachSensor(const std::string& path, const std::string& objectType,
                         std::optional<RedundancySensor>* redundancy,
-                        boost::asio::io_service& io, const std::string& fanName,
+                        boost::asio::io_context& io, const std::string& fanName,
                         std::vector<thresholds::Threshold>&& thresholdsIn,
 +                       std::vector<ipmidata::IpmiConfig>&& _ipmiinfo,
                         const std::string& sensorConfiguration,
                         const std::pair<double, double>& limits,
                         const PowerState& powerState,
-@@ -53,7 +58,8 @@ TachSensor::TachSensor(const std::string& path, const std::string& objectType,
+@@ -54,7 +57,7 @@ TachSensor::TachSensor(const std::string& path, const std::string& objectType,
             objectType, false, false, limits.second, limits.first, conn,
             powerState),
      objServer(objectServer), redundancy(redundancy),
--    presence(std::move(presenceSensor)), inputDev(io), waitTimer(io),
+-    presence(std::move(presenceSensor)),
 +    presence(std::move(presenceSensor)), conn(conn),
-+    inputDev(io), waitTimer(io),
-     path(path), led(ledIn)
+     inputDev(io, path, boost::asio::random_access_file::read_only),
+     waitTimer(io), path(path), led(ledIn)
  {
-     // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg)
-@@ -68,6 +74,27 @@ TachSensor::TachSensor(const std::string& path, const std::string& objectType,
+@@ -62,6 +65,27 @@ TachSensor::TachSensor(const std::string& path, const std::string& objectType,
          "/xyz/openbmc_project/sensors/fan_tach/" + name,
          "xyz.openbmc_project.Sensor.Value");
  
@@ -659,20 +541,19 @@ index f609410..78a38df 100644
      for (const auto& threshold : thresholds)
      {
          std::string interface = thresholds::getInterface(threshold.level);
-@@ -114,6 +141,7 @@ TachSensor::~TachSensor()
+@@ -107,6 +131,7 @@ TachSensor::~TachSensor()
      objServer.remove_interface(association);
      objServer.remove_interface(itemIface);
      objServer.remove_interface(itemAssoc);
 +    objServer.remove_interface(ipmiInterface);
  }
  
- void TachSensor::setupRead(void)
-@@ -132,18 +160,38 @@ void TachSensor::handleResponse(const boost::system::error_code& err)
+ void TachSensor::setupRead()
+@@ -152,18 +177,37 @@ void TachSensor::handleResponse(const boost::system::error_code& err,
      }
      bool missing = false;
      size_t pollTime = pwmPollMs;
 +    bool is_powerGood = readingStateGood();
-+    std::istream responseStream(&readBuf);
 +
      if (presence)
      {
@@ -693,9 +574,8 @@ index f609410..78a38df 100644
          }
 -        itemIface->set_property("Present", !missing);
      }
--    std::istream responseStream(&readBuf);
+ 
 -    if (!missing)
-+
 +    if (!is_powerGood)
 +    {
 +        updateValue(std::numeric_limits<double>::quiet_NaN());
@@ -713,16 +593,11 @@ index f609410..78a38df 100644
      {
          if (!err)
          {
-@@ -153,7 +201,23 @@ void TachSensor::handleResponse(const boost::system::error_code& err)
-                 std::getline(responseStream, response);
-                 rawValue = std::stod(response);
-                 responseStream.clear();
--                updateValue(rawValue);
-+                if (!preCheckTachVal())
-+                {
-+                    goto nextTry;
-+                }
-+
+@@ -178,7 +222,18 @@ void TachSensor::handleResponse(const boost::system::error_code& err,
+             }
+             else
+             {
+-                updateValue(nvalue);
 +                if (presence && presence->is_TheMethod(presenceMethod::tach))
 +                {
 +                    // check if it is under checking fan presence
@@ -736,65 +611,41 @@ index f609410..78a38df 100644
 +                    updateValue(rawValue);
 +                }
              }
-             catch (const std::invalid_argument&)
-             {
-@@ -167,6 +231,7 @@ void TachSensor::handleResponse(const boost::system::error_code& err)
-             pollTime = sensorFailedPollTimeMs;
+         }
+         else
+@@ -188,6 +243,7 @@ void TachSensor::handleResponse(const boost::system::error_code& err,
          }
      }
-+nextTry:
-     responseStream.clear();
-     inputDev.close();
  
-@@ -205,11 +270,40 @@ void TachSensor::checkThresholds(void)
++nextTry:
+     restartRead(pollTime);
+ }
+ 
+@@ -209,11 +265,16 @@ void TachSensor::checkThresholds(void)
      }
  }
  
 -PresenceSensor::PresenceSensor(const std::string& gpioName, bool inverted,
--                               boost::asio::io_service& io,
+-                               boost::asio::io_context& io,
 -                               const std::string& name) :
-+/* @brief To pre-check tach value mechanism
-+ *        to avoid tach value abruptly changed on the dbus
-+ * @param[in] curTachVal - current tach value
-+ * @return bool
-+*/
-+//bool TachSensor::preCheckTachVal(const double& curTachVal)
-+bool TachSensor::preCheckTachVal(void)
-+{
-+    // Currently we just preare this hook function and a temporary method here but not using it
-+    // we need to test further, verify and comfirm with thermal team
-+    // to see if we need to a preCheck value mechanism
-+
-+    // We calculate the difference of current tach and previous one
-+    // and check the result is over the tolerance, if it is then goto next reading to check again.
-+    // If the check count reach limit then consider the current tach value is what exactly it is. 
-+    // if (std::abs(curTachVal - preTachVal) >= tachTolerance && preCkCount++ < preCkCountLimit)
-+    // {
-+    //     return false;
-+    // }
-+    // preCkCount = 0;
-+    // preTachVal = curTachVal;
-+
-+    return true;
-+}
-+
 +PresenceSensor::PresenceSensor(presenceMethod&& method,
 +                   const std::string& gpioName, bool inverted,
-+                   boost::asio::io_service& io, const std::string& name,
++                   boost::asio::io_context& io, const std::string& name,
 +                   sdbusplus::asio::object_server& objectServer,
 +                   std::shared_ptr<sdbusplus::asio::connection>& conn,
 +                   const std::string& configurationPath,
 +                   std::vector<ipmidata::IpmiConfig>&& _ipmiinfo):
      gpioLine(gpiod::find_line(gpioName)),
 -    gpioFd(io), name(name)
-+    gpioFd(io), name(name), method(method), objServer(objectServer), conn(conn)
++    gpioFd(io), name(name),
++    method(method), objServer(objectServer), conn(conn)
  {
      if (!gpioLine)
      {
-@@ -239,14 +333,93 @@ PresenceSensor::PresenceSensor(const std::string& gpioName, bool inverted,
-         status = false;
+@@ -244,13 +305,93 @@ PresenceSensor::PresenceSensor(const std::string& gpioName, bool inverted,
          return;
      }
+ 
 +    /* If impiInfo is configured, expose dbus interface.*/
 +    if (!_ipmiinfo.empty())
 +    {
@@ -824,13 +675,13 @@ index f609410..78a38df 100644
 +
 +        createAssociation(association, configurationPath);
 +    }
- 
++
      monitorPresence();
  }
  
 +PresenceSensor::PresenceSensor(presenceMethod&& method,
 +                   double& tachVal, double& hysVal,
-+                   boost::asio::io_service& io, const std::string& name,
++                   boost::asio::io_context& io, const std::string& name,
 +                   sdbusplus::asio::object_server& objectServer,
 +                   std::shared_ptr<sdbusplus::asio::connection>& conn,
 +                   const std::string& configurationPath,
@@ -887,7 +738,7 @@ index f609410..78a38df 100644
  }
  
  void PresenceSensor::monitorPresence(void)
-@@ -279,10 +452,12 @@ void PresenceSensor::read(void)
+@@ -282,10 +423,12 @@ void PresenceSensor::read(void)
      if (status)
      {
          logFanInserted(name);
@@ -900,7 +751,7 @@ index f609410..78a38df 100644
      }
  }
  
-@@ -291,6 +466,104 @@ bool PresenceSensor::getValue(void)
+@@ -294,6 +437,103 @@ bool PresenceSensor::getValue(void) const
      return status;
  }
  
@@ -964,7 +815,6 @@ index f609410..78a38df 100644
 +    return true;
 +}
 +
-+
 +/*
 + * @brief To record to SEL for fan insert/remove
 + * @param[in] assert - insert/remove
@@ -1005,6 +855,105 @@ index f609410..78a38df 100644
  RedundancySensor::RedundancySensor(size_t count,
                                     const std::vector<std::string>& children,
                                     sdbusplus::asio::object_server& objectServer,
+diff --git a/src/TachSensor.hpp b/src/TachSensor.hpp
+index b53b5ae..4a98cb7 100644
+--- a/src/TachSensor.hpp
++++ b/src/TachSensor.hpp
+@@ -2,6 +2,7 @@
+ 
+ #include "Thresholds.hpp"
+ #include "sensor.hpp"
++#include "IpmiInfo.hpp"
+ 
+ #include <boost/asio/random_access_file.hpp>
+ #include <boost/container/flat_map.hpp>
+@@ -16,22 +17,69 @@
+ #include <utility>
+ #include <vector>
+ 
++static const std::string PRESENT_SENSOR_PATH = "/xyz/openbmc_project/sensors/discrete_08h/fan_tach";
++
++/*
++ Because some fans don't have thier own GPIO present pin,
++ they need to use tach value to determine presence.
++*/
++
++enum class presenceMethod
++{
++  tach,
++  gpio
++};
++
+ class PresenceSensor
+ {
+   public:
+-    PresenceSensor(const std::string& gpioName, bool inverted,
+-                   boost::asio::io_context& io, const std::string& name);
++    PresenceSensor(presenceMethod&& method,
++                   const std::string& gpioName, bool inverted,
++                   boost::asio::io_context& io, const std::string& name,
++                   sdbusplus::asio::object_server& objectServer,
++                   std::shared_ptr<sdbusplus::asio::connection>& conn,
++                   const std::string& configurationPath,
++                   std::vector<ipmidata::IpmiConfig>&& ipmiinfo);
++
++    PresenceSensor(presenceMethod&& method,
++                   double& tachVal, double& hysVal,
++                   boost::asio::io_context& io, const std::string& name,
++                   sdbusplus::asio::object_server& objectServer,
++                   std::shared_ptr<sdbusplus::asio::connection>& conn,
++                   const std::string& configurationPath,
++                   std::vector<ipmidata::IpmiConfig>&& ipmiinfo);
++
+     ~PresenceSensor();
+ 
+     void monitorPresence(void);
+     void read(void);
+     bool getValue(void) const;
+ 
++    bool checkPresent(double& tachVal);
++    void clearCounter();
++    bool is_TheMethod(presenceMethod&& _method);
++
++    void recordAbsentIPMISel(bool assert);
++
+   private:
+     bool status = true;
+     gpiod::line gpioLine;
+     boost::asio::posix::stream_descriptor gpioFd;
+     std::string name;
++    presenceMethod method;
++    double badTach; // a tach value to judge this fan is unpresent.
++    double goodTach; // a tach value to judge this fan is present.
++    u_int8_t presentCount = 0;
++    u_int8_t unpresentCount = 0;
++
++    double value = std::numeric_limits<double>::quiet_NaN();
++
++    std::string configurationPath;
++    sdbusplus::asio::object_server& objServer;
++    std::shared_ptr<sdbusplus::asio::connection>& conn; /*for recording IPMI sel*/
++    std::shared_ptr<sdbusplus::asio::dbus_interface> association;
++    std::shared_ptr<sdbusplus::asio::dbus_interface> sensorInterface;
++    std::shared_ptr<sdbusplus::asio::dbus_interface> ipmiInterface;
+ };
+ 
+ namespace redundancy
+@@ -72,6 +120,7 @@ class TachSensor :
+                std::optional<RedundancySensor>* redundancy,
+                boost::asio::io_context& io, const std::string& fanName,
+                std::vector<thresholds::Threshold>&& thresholds,
++               std::vector<ipmidata::IpmiConfig>&& ipmiinfo,
+                const std::string& sensorConfiguration,
+                const std::pair<double, double>& limits,
+                const PowerState& powerState,
+@@ -88,6 +137,7 @@ class TachSensor :
+     std::unique_ptr<PresenceSensor> presence;
+     std::shared_ptr<sdbusplus::asio::dbus_interface> itemIface;
+     std::shared_ptr<sdbusplus::asio::dbus_interface> itemAssoc;
++    std::shared_ptr<sdbusplus::asio::connection>& conn; /*for recording IPMI sel*/
+     boost::asio::random_access_file inputDev;
+     boost::asio::steady_timer waitTimer;
+     std::string path;
 -- 
-2.33.0
-
+2.25.1

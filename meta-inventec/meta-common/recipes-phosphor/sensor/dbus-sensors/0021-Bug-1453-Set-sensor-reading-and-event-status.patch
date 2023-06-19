@@ -58,36 +58,16 @@ Entry Test：
   	   4 | 12/16/22 | 06:41:41 UTC | Temperature #0x82 |  | Deasserted
 
 ---
- include/ExternalSensor.hpp |  2 ++
  src/ExternalSensor.cpp     | 23 ++++++++++++++++++++++-
- src/ExternalSensorMain.cpp | 10 +++++++++-
- 3 files changed, 33 insertions(+), 2 deletions(-)
+ src/ExternalSensor.hpp     |  2 ++
+ src/ExternalSensorMain.cpp | 11 ++++++++++-
+ 3 files changed, 34 insertions(+), 2 deletions(-)
 
-diff --git a/include/ExternalSensor.hpp b/include/ExternalSensor.hpp
-index 3ca3c8a..414b54b 100644
---- a/include/ExternalSensor.hpp
-+++ b/include/ExternalSensor.hpp
-@@ -8,6 +8,7 @@
- #include <chrono>
- #include <string>
- #include <vector>
-+#include <IpmiInfo.hpp>
- 
- class ExternalSensor :
-     public Sensor,
-@@ -20,6 +21,7 @@ class ExternalSensor :
-                    const std::string& sensorName,
-                    const std::string& sensorMeasure,
-                    std::vector<thresholds::Threshold>&& thresholdsIn,
-+                   std::vector<ipmidata::IpmiConfig>&& ipmiinfo,
-                    const std::string& sensorConfiguration, double maxReading,
-                    double minReading, double timeoutSecs,
-                    const PowerState& powerState);
 diff --git a/src/ExternalSensor.cpp b/src/ExternalSensor.cpp
-index 5fba9b4..edb9fbd 100644
+index cbba6e1..dc3f0ab 100644
 --- a/src/ExternalSensor.cpp
 +++ b/src/ExternalSensor.cpp
-@@ -24,6 +24,7 @@ ExternalSensor::ExternalSensor(
+@@ -22,6 +22,7 @@ ExternalSensor::ExternalSensor(
      std::shared_ptr<sdbusplus::asio::connection>& conn,
      const std::string& sensorName, const std::string& sensorUnits,
      std::vector<thresholds::Threshold>&& thresholdsIn,
@@ -95,7 +75,7 @@ index 5fba9b4..edb9fbd 100644
      const std::string& sensorConfiguration, double maxReading,
      double minReading, double timeoutSecs, const PowerState& powerState) :
      Sensor(escapeName(sensorName), std::move(thresholdsIn), sensorConfiguration,
-@@ -51,6 +52,26 @@ ExternalSensor::ExternalSensor(
+@@ -48,6 +49,26 @@ ExternalSensor::ExternalSensor(
      sensorInterface = objectServer.add_interface(
          objectPath, "xyz.openbmc_project.Sensor.Value");
  
@@ -118,11 +98,11 @@ index 5fba9b4..edb9fbd 100644
 +            ipmiInterface->register_property("entityInstance", ipmi.entityIns);
 +        }
 +    }
-+    
++
      for (const auto& threshold : thresholds)
      {
          std::string interface = thresholds::getInterface(threshold.level);
-@@ -119,7 +140,7 @@ ExternalSensor::~ExternalSensor()
+@@ -116,7 +137,7 @@ ExternalSensor::~ExternalSensor()
  
  void ExternalSensor::checkThresholds(void)
  {
@@ -131,26 +111,49 @@ index 5fba9b4..edb9fbd 100644
  }
  
  bool ExternalSensor::isAliveAndPerishable(void) const
+diff --git a/src/ExternalSensor.hpp b/src/ExternalSensor.hpp
+index 20dd2f0..06ee75e 100644
+--- a/src/ExternalSensor.hpp
++++ b/src/ExternalSensor.hpp
+@@ -8,6 +8,7 @@
+ #include <chrono>
+ #include <string>
+ #include <vector>
++#include <IpmiInfo.hpp>
+ 
+ class ExternalSensor :
+     public Sensor,
+@@ -20,6 +21,7 @@ class ExternalSensor :
+                    const std::string& sensorName,
+                    const std::string& sensorUnits,
+                    std::vector<thresholds::Threshold>&& thresholdsIn,
++                   std::vector<ipmidata::IpmiConfig>&& ipmiinfo,
+                    const std::string& sensorConfiguration, double maxReading,
+                    double minReading, double timeoutSecs,
+                    const PowerState& powerState);
 diff --git a/src/ExternalSensorMain.cpp b/src/ExternalSensorMain.cpp
-index 477a4c6..2c5324a 100644
+index 2c10dc8..391b3b5 100644
 --- a/src/ExternalSensorMain.cpp
 +++ b/src/ExternalSensorMain.cpp
-@@ -320,9 +320,17 @@ void createSensors(
-                 auto& sensorEntry = sensors[sensorName];
-                 sensorEntry = nullptr;
+@@ -310,9 +310,18 @@ void createSensors(
+             auto& sensorEntry = sensors[sensorName];
+             sensorEntry = nullptr;
  
-+                std::vector<ipmidata::IpmiConfig> sensorIpmiConfig;
-+                std::string labelHead = sensorName.substr(0, sensorName.find(" "));
-+                if (!parseIpmiDataFromConfig(sensorData, sensorIpmiConfig, &labelHead))
-+                {
-+                    std::cerr << "error populating ipmi for "
-+                              << sensorName << "\n";
-+                }
-                 sensorEntry = std::make_shared<ExternalSensor>(
-                     sensorType, objectServer, dbusConnection, sensorName,
--                    sensorUnits, std::move(sensorThresholds), interfacePath,
-+                    sensorUnits, std::move(sensorThresholds), 
-+                    std::move(sensorIpmiConfig), interfacePath,
-                     maxValue, minValue, timeoutSecs, readState);
-                 sensorEntry->initWriteHook(
-                     [&sensors, &reaperTimer](
++            std::vector<ipmidata::IpmiConfig> sensorIpmiConfig;
++            std::string labelHead = sensorName.substr(0, sensorName.find(" "));
++            if (!parseIpmiDataFromConfig(sensorData, sensorIpmiConfig, &labelHead))
++            {
++                std::cerr << "error populating ipmi for "
++                            << sensorName << "\n";
++            }
++
+             sensorEntry = std::make_shared<ExternalSensor>(
+                 sensorType, objectServer, dbusConnection, sensorName,
+-                sensorUnits, std::move(sensorThresholds), interfacePath,
++                sensorUnits, std::move(sensorThresholds),
++                std::move(sensorIpmiConfig), interfacePath,
+                 maxValue, minValue, timeoutSecs, readState);
+             sensorEntry->initWriteHook(
+                 [&sensors, &reaperTimer](
+-- 
+2.25.1

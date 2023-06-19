@@ -49,16 +49,118 @@ Entry Test：
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
----
- include/sensor.hpp | 23 ++++++++++++-----------
- src/Thresholds.cpp | 38 +++++++++++++++++++++++++++++++++-----
- 2 files changed, 45 insertions(+), 16 deletions(-)
 
-diff --git a/include/sensor.hpp b/include/sensor.hpp
-index b29cfc1..230973f 100755
---- a/include/sensor.hpp
-+++ b/include/sensor.hpp
-@@ -12,6 +12,8 @@
+---
+ src/Thresholds.cpp | 38 +++++++++++++++++++++++++++++++++-----
+ src/sensor.hpp     | 21 +++++++++++----------
+ 2 files changed, 44 insertions(+), 15 deletions(-)
+
+diff --git a/src/Thresholds.cpp b/src/Thresholds.cpp
+index 343b60d..2ca3b25 100644
+--- a/src/Thresholds.cpp
++++ b/src/Thresholds.cpp
+@@ -20,6 +20,7 @@
+ 
+ enum class IPMISensorEventEnableThresholds : uint8_t
+ {
++    enableEventMessage = (1 << 7),
+     nonRecoverableThreshold = (1 << 6),
+     criticalThreshold = (1 << 5),
+     nonCriticalThreshold = (1 << 4),
+@@ -261,6 +262,12 @@ struct ChangeParam
+ 
+ static std::vector<ChangeParam> checkThresholds(Sensor* sensor, double value)
+ {
++    bool messageEnable = true;
++    if (!(sensor->sensorEventEnable &
++             static_cast<uint8_t>(IPMISensorEventEnableThresholds::enableEventMessage)))
++    {
++        messageEnable = false;
++    }
+     uint8_t assertionEnabledLsb = (sensor->sensorEventStatus & 0xFF000000) >> 24;
+     uint8_t assertionEnabledMsb = (sensor->sensorEventStatus & 0xFF0000) >> 16;
+     uint8_t deassertionEnabledLsb = (sensor->sensorEventStatus & 0XFF00) >>8;
+@@ -291,9 +298,12 @@ static std::vector<ChangeParam> checkThresholds(Sensor* sensor, double value)
+                 thresholdChanges.emplace_back(threshold, true, value);
+                 if (++cHiTrue < assertLogCount)
+                 {
+-                    std::cerr << "Sensor " << sensor->name << " high threshold "
++                    if (messageEnable == true)
++                    {
++                        std::cerr << "Sensor " << sensor->name << " high threshold "
+                               << threshold.value << " assert: value " << value
+                               << " raw data " << sensor->rawValue << "\n";
++                    }
+                 }
+             }
+             else if (value < (threshold.value - threshold.hysteresis))
+@@ -319,10 +329,13 @@ static std::vector<ChangeParam> checkThresholds(Sensor* sensor, double value)
+                 thresholdChanges.emplace_back(threshold, true, value);
+                 if (++cLoTrue < assertLogCount)
+                 {
+-                    std::cerr << "Sensor " << sensor->name << " low threshold "
++                    if (messageEnable == true)
++                    {
++                        std::cerr << "Sensor " << sensor->name << " low threshold "
+                               << threshold.value << " assert: value "
+                               << sensor->value << " raw data "
+                               << sensor->rawValue << "\n";
++                    }
+                 }
+             }
+             else if (value > (threshold.value + threshold.hysteresis))
+@@ -348,9 +361,12 @@ static std::vector<ChangeParam> checkThresholds(Sensor* sensor, double value)
+                 thresholdChanges.emplace_back(threshold, true, value);
+                 if (++cHiTrue < assertLogCount)
+                 {
+-                    std::cerr << "Sensor " << sensor->name << " high threshold "
++                    if (messageEnable == true)
++                    {
++                        std::cerr << "Sensor " << sensor->name << " high threshold "
+                             << threshold.value << " assert: value " << value
+                             << " raw data " << sensor->rawValue << "\n";
++                    }
+                 }
+             }
+             else if (value < (threshold.value - threshold.hysteresis))
+@@ -376,10 +392,13 @@ static std::vector<ChangeParam> checkThresholds(Sensor* sensor, double value)
+                 thresholdChanges.emplace_back(threshold, true, value);
+                 if (++cLoTrue < assertLogCount)
+                 {
+-                    std::cerr << "Sensor " << sensor->name << " low threshold "
++                    if (messageEnable == true)
++                    {
++                        std::cerr << "Sensor " << sensor->name << " low threshold "
+                             << threshold.value << " assert: value "
+                             << sensor->value << " raw data "
+                             << sensor->rawValue << "\n";
++                    }
+                 }
+             }
+             else if (value > (threshold.value + threshold.hysteresis))
+@@ -550,7 +569,16 @@ void assertThresholds(Sensor* sensor, double assertValue,
+ 
+             msg.append(sensor->name, interface->get_interface_name(), property,
+                        assert, assertValue);
+-            msg.signal_send();
++            //event message enable
++            if ((sensor->sensorEventEnable &
++                     static_cast<uint8_t>(IPMISensorEventEnableThresholds::enableEventMessage)))
++            {
++                msg.signal_send();
++            }
++            else
++            {
++                std::cerr << "Event message is disabled\n";
++            }
+         }
+         catch (const sdbusplus::exception_t& e)
+         {
+diff --git a/src/sensor.hpp b/src/sensor.hpp
+index 98af392..8565134 100644
+--- a/src/sensor.hpp
++++ b/src/sensor.hpp
+@@ -15,6 +15,8 @@
  #include <string>
  #include <vector>
  
@@ -67,35 +169,35 @@ index b29cfc1..230973f 100755
  constexpr size_t sensorFailedPollTimeMs = 5000;
  
  // Enable useful logging with sensor instrumentation
-@@ -88,8 +90,8 @@ struct Sensor
+@@ -108,8 +110,8 @@ struct Sensor
      std::shared_ptr<sdbusplus::asio::connection> dbusConnection;
      PowerState readState;
-     size_t errCount;
+     size_t errCount{0};
 -    bool sensorEventEnable = true;
 -    uint32_t sensorEventStatus = 0xffffffff;
 +    uint8_t sensorEventEnable = 0xc0;
 +    uint32_t sensorEventStatus = 0xff0fff0f;
      std::unique_ptr<SensorInstrumentation> instrumentation;
  
- 
-@@ -227,7 +229,7 @@ struct Sensor
-             overriddenState = true;
+     // This member variable provides a hook that can be used to receive
+@@ -240,7 +242,7 @@ struct Sensor
              // check thresholds for external set
              value = newValue;
+ 
 -            if (sensorEventEnable==true)
 +            if (sensorEventEnable & (1 << disableScanning))
              {
                  checkThresholds();
              }
-@@ -255,20 +257,19 @@ struct Sensor
- 
+@@ -271,20 +273,19 @@ struct Sensor
          createAssociation(association, configurationPath);
+ 
          sensorInterface->register_property(
 -            "SensorEventEnable",sensorEventEnable,[this](const bool newSwitch, bool& oldSwitch){
 -               if( newSwitch == oldSwitch )
 +            "SensorEventEnable",sensorEventEnable,[this](const uint8_t newEnable, uint8_t& oldEnable){
 +               if( newEnable == oldEnable )
-                {    
+                {
                     return 1;
                 }
 -               oldSwitch = newSwitch;
@@ -111,127 +213,16 @@ index b29cfc1..230973f 100755
                 return 1;
 -               //return setThresholdDetect(newSwitch, oldSwitch);
              });
+ 
          sensorInterface->register_property(
-             "SensorEventStatus",sensorEventStatus,[this](const uint32_t newStatus, uint32_t& oldStatus){
-@@ -288,7 +289,7 @@ struct Sensor
-             "Value", value, [&](const double& newValue, double& oldValue) {
-                 return setSensorValue(newValue, oldValue);
-             });
--        //sensorInterface->register_property("ThresholdDetect", thresholdSwitch);
-+        
-         for (auto& threshold : thresholds)
-         {
-             if (std::isnan(threshold.hysteresis))
-@@ -535,7 +536,7 @@ struct Sensor
+@@ -549,7 +550,7 @@ struct Sensor
+         // the thresholds::checkThresholds() method,
          // which is called by checkThresholds() below,
          // in all current implementations of sensors that have thresholds.
-         
 -        if (sensorEventEnable==true)
 +        if (sensorEventEnable & (1 << disableScanning))
          {
              checkThresholds();
          }
-diff --git a/src/Thresholds.cpp b/src/Thresholds.cpp
-index 8b88449..37185ed 100755
---- a/src/Thresholds.cpp
-+++ b/src/Thresholds.cpp
-@@ -18,6 +18,7 @@
- 
- enum class IPMISensorEventEnableThresholds : uint8_t
- {
-+    enableEventMessage = (1 << 7),
-     nonRecoverableThreshold = (1 << 6),
-     criticalThreshold = (1 << 5),
-     nonCriticalThreshold = (1 << 4),
-@@ -261,6 +262,12 @@ struct ChangeParam
- };
- static std::vector<ChangeParam> checkThresholds(Sensor* sensor, double value)
- {
-+    bool messageEnable = true;
-+    if (!(sensor->sensorEventEnable & 
-+             static_cast<uint8_t>(IPMISensorEventEnableThresholds::enableEventMessage)))
-+    {
-+        messageEnable = false;
-+    }
-     uint8_t assertionEnabledLsb = (sensor->sensorEventStatus & 0xFF000000) >> 24;
-     uint8_t assertionEnabledMsb = (sensor->sensorEventStatus & 0xFF0000) >> 16;
-     uint8_t deassertionEnabledLsb = (sensor->sensorEventStatus & 0XFF00) >>8;
-@@ -291,9 +298,12 @@ static std::vector<ChangeParam> checkThresholds(Sensor* sensor, double value)
-                 thresholdChanges.emplace_back(threshold, true, value);
-                 if (++cHiTrue < assertLogCount)
-                 {
--                    std::cerr << "Sensor " << sensor->name << " high threshold "
-+                    if (messageEnable == true)
-+                    {   
-+                        std::cerr << "Sensor " << sensor->name << " high threshold "
-                             << threshold.value << " assert: value " << value
-                             << " raw data " << sensor->rawValue << "\n";
-+                    }
-                 }
-             }
-             else if (value < (threshold.value - threshold.hysteresis))
-@@ -318,10 +328,13 @@ static std::vector<ChangeParam> checkThresholds(Sensor* sensor, double value)
-                 thresholdChanges.emplace_back(threshold, true, value);
-                 if (++cLoTrue < assertLogCount)
-                 {
--                    std::cerr << "Sensor " << sensor->name << " low threshold "
-+                    if (messageEnable == true)
-+                    {
-+                        std::cerr << "Sensor " << sensor->name << " low threshold "
-                             << threshold.value << " assert: value "
-                             << sensor->value << " raw data "
-                             << sensor->rawValue << "\n";
-+                    }
-                 }
-             }
-             else if (value > (threshold.value + threshold.hysteresis))
-@@ -346,9 +359,12 @@ static std::vector<ChangeParam> checkThresholds(Sensor* sensor, double value)
-                 thresholdChanges.emplace_back(threshold, true, value);
-                 if (++cHiTrue < assertLogCount)
-                 {
--                    std::cerr << "Sensor " << sensor->name << " high threshold "
-+                    if (messageEnable == true)
-+                    {
-+                        std::cerr << "Sensor " << sensor->name << " high threshold "
-                             << threshold.value << " assert: value " << value
-                             << " raw data " << sensor->rawValue << "\n";
-+                    }
-                 }
-             }
-             else if (value < (threshold.value - threshold.hysteresis))
-@@ -373,10 +389,13 @@ static std::vector<ChangeParam> checkThresholds(Sensor* sensor, double value)
-                 thresholdChanges.emplace_back(threshold, true, value);
-                 if (++cLoTrue < assertLogCount)
-                 {
--                    std::cerr << "Sensor " << sensor->name << " low threshold "
-+                    if (messageEnable == true)
-+                    {
-+                        std::cerr << "Sensor " << sensor->name << " low threshold "
-                             << threshold.value << " assert: value "
-                             << sensor->value << " raw data "
-                             << sensor->rawValue << "\n";
-+                    }
-                 }
-             }
-             else if (value > (threshold.value + threshold.hysteresis))
-@@ -547,7 +566,16 @@ void assertThresholds(Sensor* sensor, double assertValue,
- 
-             msg.append(sensor->name, interface->get_interface_name(), property,
-                        assert, assertValue);
--            msg.signal_send();
-+            //event message enable
-+            if ((sensor->sensorEventEnable & 
-+                     static_cast<uint8_t>(IPMISensorEventEnableThresholds::enableEventMessage)))
-+            {
-+                msg.signal_send();
-+            }
-+            else
-+            {
-+                std::cerr << "Event message is disabled\n";
-+            }
-         }
-         catch (const sdbusplus::exception::exception& e)
-         {
 -- 
-2.33.0
-
+2.25.1

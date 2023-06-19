@@ -8,91 +8,42 @@ Subject: [PATCH 16/27] TsodSensor - add TsodSensor support (temp sensor on
 
 [comment for 2.12 upgrade]
 Change code for threshold interfaces are moved in commit 5667808
+
 ---
- include/TsodSensor.hpp                        |  41 ++
  meson_options.txt                             |   1 +
  service_files/meson.build                     |   1 +
  .../xyz.openbmc_project.tsodsensor.service    |  13 +
  src/TsodSensor.cpp                            | 194 +++++++++
- src/TsodSensorMain.cpp                        | 376 ++++++++++++++++++
+ src/TsodSensor.hpp                            |  42 ++
+ src/TsodSensorMain.cpp                        | 375 ++++++++++++++++++
  src/meson.build                               |  16 +
  7 files changed, 642 insertions(+)
- create mode 100644 include/TsodSensor.hpp
  create mode 100644 service_files/xyz.openbmc_project.tsodsensor.service
  create mode 100644 src/TsodSensor.cpp
+ create mode 100644 src/TsodSensor.hpp
  create mode 100644 src/TsodSensorMain.cpp
 
-diff --git a/include/TsodSensor.hpp b/include/TsodSensor.hpp
-new file mode 100644
-index 0000000..3611c11
---- /dev/null
-+++ b/include/TsodSensor.hpp
-@@ -0,0 +1,41 @@
-+#pragma once
-+
-+#include <Thresholds.hpp>
-+#include <sensor.hpp>
-+#include <IpmiInfo.hpp>
-+#include <boost/asio/streambuf.hpp>
-+#include <sdbusplus/asio/object_server.hpp>
-+
-+#include <string>
-+#include <vector>
-+
-+class TsodSensor :
-+    public Sensor,
-+    public std::enable_shared_from_this<TsodSensor>
-+{
-+  public:
-+    TsodSensor(const std::string& path, const std::string& objectType,
-+                    sdbusplus::asio::object_server& objectServer,
-+                    std::shared_ptr<sdbusplus::asio::connection>& conn,
-+                    boost::asio::io_service& io, const std::string& fanName,
-+                    std::vector<thresholds::Threshold>&& thresholds,
-+                    const float pollRate,
-+                    std::vector<ipmidata::IpmiConfig>&& ipmiinfo,
-+                    const std::string& sensorConfiguration,
-+                   const PowerState powerState,
-+                    size_t totalThresholdNumber);
-+    ~TsodSensor() override;
-+    void setupRead(void);
-+
-+  private:
-+    sdbusplus::asio::object_server& objServer;
-+    boost::asio::posix::stream_descriptor inputDev;
-+    boost::asio::deadline_timer waitTimer;
-+    boost::asio::streambuf readBuf;
-+    std::string path;
-+    unsigned int sensorPollMs;
-+    size_t totalThresholdNumber;
-+
-+    void handleResponse(const boost::system::error_code& err);
-+    void checkThresholds(void) override;
-+};
 diff --git a/meson_options.txt b/meson_options.txt
-index fc3c140..cb95f43 100644
+index 11cbe40..d0c3185 100644
 --- a/meson_options.txt
 +++ b/meson_options.txt
-@@ -8,6 +8,7 @@ option('average', type: 'feature', value: 'enabled', description: 'Enable averag
+@@ -17,3 +17,4 @@ option('average', type: 'feature', value: 'enabled', description: 'Enable averag
  option('invcfm', type: 'feature', value: 'enabled', description: 'Enable InvCfm sensor.',)
  option('accumulate', type: 'feature', value: 'enabled', description: 'Enable accumulate sensor.',)
  option('iiohwmon', type: 'feature', value: 'enabled', description: 'Enable iiohwmon sensor.',)
 +option('tsod', type: 'feature', value: 'enabled', description: 'Enable TSOD sensor.',)
- option('intrusion', type: 'feature', value: 'enabled', description: 'Enable intrusion sensor.',)
- option('ipmb', type: 'feature', value: 'enabled', description: 'Enable IPMB sensor.',)
- option('mcu', type: 'feature', value: 'enabled', description: 'Enable MCU sensor.',)
 diff --git a/service_files/meson.build b/service_files/meson.build
-index e654b38..c1d8c9e 100644
+index 2cc7e90..b30be75 100644
 --- a/service_files/meson.build
 +++ b/service_files/meson.build
-@@ -10,6 +10,7 @@ unit_files = [
+@@ -15,6 +15,7 @@ unit_files = [
      ['invcfm', 'xyz.openbmc_project.invcfmsensor.service'],
      ['accumulate', 'xyz.openbmc_project.accumulatesensor.service'],
      ['iiohwmon', 'xyz.openbmc_project.iiohwmonsensor.service'],
 +    ['tsod', 'xyz.openbmc_project.tsodsensor.service'],
-     ['intrusion', 'xyz.openbmc_project.intrusionsensor.service'],
-     ['mcu', 'xyz.openbmc_project.mcutempsensor.service'],
-     ['nvme', 'xyz.openbmc_project.nvmesensor.service'],
+ ]
+ 
+ foreach tuple : unit_files
 diff --git a/service_files/xyz.openbmc_project.tsodsensor.service b/service_files/xyz.openbmc_project.tsodsensor.service
 new file mode 100644
 index 0000000..ff1ba2f
@@ -114,7 +65,7 @@ index 0000000..ff1ba2f
 +WantedBy=multi-user.target
 diff --git a/src/TsodSensor.cpp b/src/TsodSensor.cpp
 new file mode 100644
-index 0000000..6ac6984
+index 0000000..c55db17
 --- /dev/null
 +++ b/src/TsodSensor.cpp
 @@ -0,0 +1,194 @@
@@ -161,7 +112,7 @@ index 0000000..6ac6984
 +    const std::string& path, const std::string& objectType,
 +    sdbusplus::asio::object_server& objectServer,
 +    std::shared_ptr<sdbusplus::asio::connection>& conn,
-+    boost::asio::io_service& io, const std::string& sensorName,
++    boost::asio::io_context& io, const std::string& sensorName,
 +    std::vector<thresholds::Threshold>&& thresholdsIn, const float pollRate,
 +    std::vector<ipmidata::IpmiConfig>&& _ipmiinfo,
 +    const std::string& sensorConfiguration,
@@ -312,12 +263,60 @@ index 0000000..6ac6984
 +{
 +    thresholds::checkThresholds(this);
 +}
+diff --git a/src/TsodSensor.hpp b/src/TsodSensor.hpp
+new file mode 100644
+index 0000000..d3be154
+--- /dev/null
++++ b/src/TsodSensor.hpp
+@@ -0,0 +1,42 @@
++#pragma once
++
++#include <Thresholds.hpp>
++#include <sensor.hpp>
++#include <IpmiInfo.hpp>
++#include <boost/asio/deadline_timer.hpp>
++#include <boost/asio/streambuf.hpp>
++#include <sdbusplus/asio/object_server.hpp>
++
++#include <string>
++#include <vector>
++
++class TsodSensor :
++    public Sensor,
++    public std::enable_shared_from_this<TsodSensor>
++{
++  public:
++    TsodSensor(const std::string& path, const std::string& objectType,
++                    sdbusplus::asio::object_server& objectServer,
++                    std::shared_ptr<sdbusplus::asio::connection>& conn,
++                    boost::asio::io_context& io, const std::string& fanName,
++                    std::vector<thresholds::Threshold>&& thresholds,
++                    const float pollRate,
++                    std::vector<ipmidata::IpmiConfig>&& ipmiinfo,
++                    const std::string& sensorConfiguration,
++                   const PowerState powerState,
++                    size_t totalThresholdNumber);
++    ~TsodSensor() override;
++    void setupRead(void);
++
++  private:
++    sdbusplus::asio::object_server& objServer;
++    boost::asio::posix::stream_descriptor inputDev;
++    boost::asio::deadline_timer waitTimer;
++    boost::asio::streambuf readBuf;
++    std::string path;
++    unsigned int sensorPollMs;
++    size_t totalThresholdNumber;
++
++    void handleResponse(const boost::system::error_code& err);
++    void checkThresholds(void) override;
++};
 diff --git a/src/TsodSensorMain.cpp b/src/TsodSensorMain.cpp
 new file mode 100644
-index 0000000..e5c5869
+index 0000000..37b0ee3
 --- /dev/null
 +++ b/src/TsodSensorMain.cpp
-@@ -0,0 +1,376 @@
+@@ -0,0 +1,375 @@
 +/*
 +// Copyright (c) 2017 Intel Corporation
 +//
@@ -363,7 +362,7 @@ index 0000000..e5c5869
 +    "xyz.openbmc_project.Configuration.TSOD"};
 +
 +void createSensors(
-+    boost::asio::io_service& io, sdbusplus::asio::object_server& objectServer,
++    boost::asio::io_context& io, sdbusplus::asio::object_server& objectServer,
 +    boost::container::flat_map<std::string, std::shared_ptr<TsodSensor>>&
 +        sensors,
 +    std::shared_ptr<sdbusplus::asio::connection>& dbusConnection,
@@ -629,7 +628,6 @@ index 0000000..e5c5869
 +                            std::move(sensorIpmiConfig), 
 +                            *interfacePath, readState, totalThresholdNumber);
 +                        sensor->setupRead();
-+
 +                    }
 +                }
 +            }
@@ -640,7 +638,7 @@ index 0000000..e5c5869
 +
 +int main()
 +{
-+    boost::asio::io_service io;
++    boost::asio::io_context io;
 +    auto systemBus = std::make_shared<sdbusplus::asio::connection>(io);
 +    systemBus->request_name("xyz.openbmc_project.TsodSensor");
 +    sdbusplus::asio::object_server objectServer(systemBus);
@@ -650,7 +648,7 @@ index 0000000..e5c5869
 +    auto sensorsChanged =
 +        std::make_shared<boost::container::flat_set<std::string>>();
 +
-+    io.post([&]() {
++    boost::asio::post(io, [&]() {
 +        createSensors(io, objectServer, sensors, systemBus, nullptr);
 +    });
 +
@@ -695,13 +693,14 @@ index 0000000..e5c5869
 +    io.run();
 +}
 diff --git a/src/meson.build b/src/meson.build
-index 9880ed0..2d9392f 100644
+index a84195a..690a403 100644
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -177,6 +177,22 @@ if get_option('iiohwmon').enabled()
+@@ -322,3 +322,19 @@ if get_option('iiohwmon').enabled()
+         install: true,
      )
  endif
- 
++
 +if get_option('tsod').enabled()
 +    executable(
 +        'tsodsensor',
@@ -713,14 +712,9 @@ index 9880ed0..2d9392f 100644
 +            thresholds_dep,
 +            utils_dep,
 +        ],
-+        implicit_include_directories: false,
-+        include_directories: '../include',
++        cpp_args: uring_args,
 +        install: true,
 +    )
 +endif
- 
- if get_option('intrusion').enabled()
-     executable(
 -- 
-2.33.0
-
+2.25.1

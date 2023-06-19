@@ -80,77 +80,40 @@ xyz.openbmc_project.Sensor.IpmiSensor       interface -         -               
 .sensorNumber                               property  t         120                                      emits-change
 xyz.openbmc_project.Sensor.Value            interface -         -                                        -
 .Value                                      property  d         0                                        emits-change
+
 ---
- include/EventSensor.hpp                       |  29 ++
  meson_options.txt                             |   1 +
  service_files/meson.build                     |   1 +
  .../xyz.openbmc_project.eventsensor.service   |  12 +
- src/EventSensor.cpp                           | 305 ++++++++++++++++++
- src/meson.build                               |  17 +
- 6 files changed, 365 insertions(+)
- create mode 100644 include/EventSensor.hpp
+ src/EventSensor.cpp                           | 306 ++++++++++++++++++
+ src/EventSensor.hpp                           |  29 ++
+ src/meson.build                               |  15 +
+ 6 files changed, 364 insertions(+)
  create mode 100644 service_files/xyz.openbmc_project.eventsensor.service
  create mode 100644 src/EventSensor.cpp
+ create mode 100644 src/EventSensor.hpp
 
-diff --git a/include/EventSensor.hpp b/include/EventSensor.hpp
-new file mode 100644
-index 0000000..ea5cad7
---- /dev/null
-+++ b/include/EventSensor.hpp
-@@ -0,0 +1,29 @@
-+#pragma once
-+
-+#include "IpmiInfo.hpp"
-+#include "sensor.hpp"
-+
-+#include <sdbusplus/asio/object_server.hpp>
-+
-+#include <string>
-+#include <vector>
-+
-+class EventSensor : public std::enable_shared_from_this<EventSensor>
-+{
-+  public:
-+    EventSensor(sdbusplus::asio::object_server& objectServer,
-+                std::shared_ptr<sdbusplus::asio::connection>& conn,
-+                const std::string& eventName,
-+                const std::string& readingType, const std::string& sensorType,
-+                const std::string& configurationPath,
-+                std::vector<ipmidata::IpmiConfig>&& ipmiinfo);
-+    ~EventSensor();
-+
-+  private:
-+    sdbusplus::asio::object_server& objServer;
-+    std::string configurationPath;
-+    std::shared_ptr<sdbusplus::asio::connection> conn;
-+    std::shared_ptr<sdbusplus::asio::dbus_interface> association;
-+    std::shared_ptr<sdbusplus::asio::dbus_interface> sensorInterface;
-+    std::shared_ptr<sdbusplus::asio::dbus_interface> ipmiInterface;
-+};
 diff --git a/meson_options.txt b/meson_options.txt
-index f9d25e7..231c0cd 100644
+index d6a8b96..686effd 100644
 --- a/meson_options.txt
 +++ b/meson_options.txt
-@@ -3,6 +3,7 @@ option('cpu', type: 'feature', value: 'enabled', description: 'Enable CPU sensor
- option('exit-air', type: 'feature', value: 'enabled', description: 'Enable exit air sensor.',)
- option('fan', type: 'feature', value: 'enabled', description: 'Enable fan sensor.',)
- option('hwmon-temp', type: 'feature', value: 'enabled', description: 'Enable HWMON temperature sensor.',)
+@@ -12,3 +12,4 @@ option('external', type: 'feature', value: 'enabled', description: 'Enable Exter
+ option('tests', type: 'feature', value: 'enabled', description: 'Build tests.',)
+ option('validate-unsecure-feature', type : 'feature', value : 'disabled', description : 'Enables unsecure features required by validation. Note: mustbe turned off for production images.',)
+ option('insecure-sensor-override', type : 'feature', value : 'disabled', description : 'Enables Sensor override feature without any check.',)
 +option('event', type: 'feature', value: 'enabled', description: 'Enable General event sensor.',)
- option('intrusion', type: 'feature', value: 'enabled', description: 'Enable intrusion sensor.',)
- option('ipmb', type: 'feature', value: 'enabled', description: 'Enable IPMB sensor.',)
- option('mcu', type: 'feature', value: 'enabled', description: 'Enable MCU sensor.',)
 diff --git a/service_files/meson.build b/service_files/meson.build
-index 37bb261..5f0af4b 100644
+index 5f5b78c..31b5166 100644
 --- a/service_files/meson.build
 +++ b/service_files/meson.build
-@@ -5,6 +5,7 @@ unit_files = [
-     ['fan', 'xyz.openbmc_project.fansensor.service'],
-     ['hwmon-temp', 'xyz.openbmc_project.hwmontempsensor.service'],
-     ['ipmb', 'xyz.openbmc_project.ipmbsensor.service'],
-+    ['event', 'xyz.openbmc_project.eventsensor.service'],
-     ['intrusion', 'xyz.openbmc_project.intrusionsensor.service'],
-     ['mcu', 'xyz.openbmc_project.mcutempsensor.service'],
+@@ -10,6 +10,7 @@ unit_files = [
      ['nvme', 'xyz.openbmc_project.nvmesensor.service'],
+     ['psu', 'xyz.openbmc_project.psusensor.service'],
+     ['external', 'xyz.openbmc_project.externalsensor.service'],
++    ['event', 'xyz.openbmc_project.eventsensor.service'],
+ ]
+ 
+ foreach tuple : unit_files
 diff --git a/service_files/xyz.openbmc_project.eventsensor.service b/service_files/xyz.openbmc_project.eventsensor.service
 new file mode 100644
 index 0000000..1bcf053
@@ -171,16 +134,17 @@ index 0000000..1bcf053
 +WantedBy=multi-user.target
 diff --git a/src/EventSensor.cpp b/src/EventSensor.cpp
 new file mode 100644
-index 0000000..3840c14
+index 0000000..191bdea
 --- /dev/null
 +++ b/src/EventSensor.cpp
-@@ -0,0 +1,305 @@
+@@ -0,0 +1,306 @@
 +#include "EventSensor.hpp"
 +#include "Utils.hpp"
 +
 +#include <array>
 +#include <boost/algorithm/string/predicate.hpp>
 +#include <boost/algorithm/string/replace.hpp>
++#include <boost/asio/deadline_timer.hpp>
 +#include <boost/container/flat_map.hpp>
 +#include <boost/container/flat_set.hpp>
 +#include <filesystem>
@@ -269,7 +233,7 @@ index 0000000..3840c14
 +}
 +
 +void createSensors(
-+    boost::asio::io_service& io, sdbusplus::asio::object_server& objectServer,
++    boost::asio::io_context& io, sdbusplus::asio::object_server& objectServer,
 +    boost::container::flat_map<std::string, std::unique_ptr<EventSensor>>&
 +        sensors,
 +    std::shared_ptr<sdbusplus::asio::connection>& dbusConnection,
@@ -418,7 +382,7 @@ index 0000000..3840c14
 +
 +int main()
 +{
-+    boost::asio::io_service io;
++    boost::asio::io_context io;
 +    auto systemBus = std::make_shared<sdbusplus::asio::connection>(io);
 +
 +    systemBus->request_name("xyz.openbmc_project.EventSensor");
@@ -436,7 +400,7 @@ index 0000000..3840c14
 +        std::cout << "xyz.openbmc_project.EventSensor" << "\n";
 +    }
 +
-+    io.post([&]() {
++    boost::asio::post(io, [&]() {
 +        createSensors(io, objectServer, sensors, systemBus, nullptr);
 +    });
 +
@@ -480,14 +444,50 @@ index 0000000..3840c14
 +
 +    io.run();
 +}
+diff --git a/src/EventSensor.hpp b/src/EventSensor.hpp
+new file mode 100644
+index 0000000..ea5cad7
+--- /dev/null
++++ b/src/EventSensor.hpp
+@@ -0,0 +1,29 @@
++#pragma once
++
++#include "IpmiInfo.hpp"
++#include "sensor.hpp"
++
++#include <sdbusplus/asio/object_server.hpp>
++
++#include <string>
++#include <vector>
++
++class EventSensor : public std::enable_shared_from_this<EventSensor>
++{
++  public:
++    EventSensor(sdbusplus::asio::object_server& objectServer,
++                std::shared_ptr<sdbusplus::asio::connection>& conn,
++                const std::string& eventName,
++                const std::string& readingType, const std::string& sensorType,
++                const std::string& configurationPath,
++                std::vector<ipmidata::IpmiConfig>&& ipmiinfo);
++    ~EventSensor();
++
++  private:
++    sdbusplus::asio::object_server& objServer;
++    std::string configurationPath;
++    std::shared_ptr<sdbusplus::asio::connection> conn;
++    std::shared_ptr<sdbusplus::asio::dbus_interface> association;
++    std::shared_ptr<sdbusplus::asio::dbus_interface> sensorInterface;
++    std::shared_ptr<sdbusplus::asio::dbus_interface> ipmiInterface;
++};
 diff --git a/src/meson.build b/src/meson.build
-index 199857b..dffb916 100644
+index db90d33..dc887a7 100644
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -93,6 +93,23 @@ if get_option('hwmon-temp').enabled()
+@@ -243,3 +243,18 @@ if get_option('external').enabled()
+         install: true,
      )
  endif
- 
++
 +if get_option('event').enabled()
 +    executable(
 +        'eventsensor',
@@ -498,16 +498,9 @@ index 199857b..dffb916 100644
 +            thresholds_dep,
 +            utils_dep,
 +        ],
-+        implicit_include_directories: false,
-+        include_directories: '../include',
++        cpp_args: uring_args,
 +        install: true,
 +    )
 +endif
-+
-+
- if get_option('intrusion').enabled()
-     executable(
-         'intrusionsensor',
 -- 
-2.33.0
-
+2.25.1

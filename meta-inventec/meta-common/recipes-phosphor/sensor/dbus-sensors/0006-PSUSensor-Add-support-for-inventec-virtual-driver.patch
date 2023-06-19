@@ -4,39 +4,22 @@ Date: Tue, 1 Mar 2022 02:51:30 +0000
 Subject: [PATCH 06/27] PSUSensor - Add support for inventec virtual driver
 
 - Add support for inventec virtual driver
+
 ---
- src/PSUSensorMain.cpp | 8 ++++++--
- 1 file changed, 6 insertions(+), 2 deletions(-)
+ src/PSUSensorMain.cpp | 1 +
+ 1 file changed, 1 insertion(+)
 
 diff --git a/src/PSUSensorMain.cpp b/src/PSUSensorMain.cpp
-index 9c536c7..eeb9818 100644
+index a3ab049..d025773 100644
 --- a/src/PSUSensorMain.cpp
 +++ b/src/PSUSensorMain.cpp
-@@ -41,7 +41,9 @@
+@@ -43,6 +43,7 @@
  static constexpr bool debug = false;
  
- static constexpr auto sensorTypes{std::to_array<const char*>(
--    {"xyz.openbmc_project.Configuration.ADM1266",
-+    {
-+     "xyz.openbmc_project.Configuration.VIRTUAL_PSU",
-+     "xyz.openbmc_project.Configuration.ADM1266",
-      "xyz.openbmc_project.Configuration.ADM1272",
-      "xyz.openbmc_project.Configuration.ADM1275",
-      "xyz.openbmc_project.Configuration.ADM1278",
-@@ -73,10 +75,12 @@ static constexpr auto sensorTypes{std::to_array<const char*>(
-      "xyz.openbmc_project.Configuration.RAA229004",
-      "xyz.openbmc_project.Configuration.RAA229126",
-      "xyz.openbmc_project.Configuration.TPS546D24",
--     "xyz.openbmc_project.Configuration.XDPE12284"})};
-+     "xyz.openbmc_project.Configuration.XDPE12284",
-+     })};
- 
- // clang-format off
- static constexpr auto pmbusNames{std::to_array<const char*>({
-+    "virtual_psu",
-     "adm1266",
-     "adm1272",
-     "adm1275",
+ static const I2CDeviceTypeMap sensorTypes{
++    {"VIRTUAL_PSU", I2CDeviceType{"virtual_psu", true}},
+     {"ADM1266", I2CDeviceType{"adm1266", true}},
+     {"ADM1272", I2CDeviceType{"adm1272", true}},
+     {"ADM1275", I2CDeviceType{"adm1275", true}},
 -- 
-2.33.0
-
+2.25.1

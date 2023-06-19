@@ -9,81 +9,104 @@ Subject: [PATCH 05/27] HwmonTemp - Add tmp468 support and Label search for
 [comment for 2.12 upgrade]
 1. Modify build error
 2. Modify call function for parseThresholdsFromConfig because of changes in definition
+
 ---
- src/HwmonTempMain.cpp | 41 ++++++++++++++++++++++++++++++++++++-----
- 1 file changed, 36 insertions(+), 5 deletions(-)
+ src/HwmonTempMain.cpp | 51 +++++++++++++++++++++++++++++++------------
+ 1 file changed, 37 insertions(+), 14 deletions(-)
 
 diff --git a/src/HwmonTempMain.cpp b/src/HwmonTempMain.cpp
-index 401341f..7b11bd9 100644
+index 4d67869..68a67cf 100644
 --- a/src/HwmonTempMain.cpp
 +++ b/src/HwmonTempMain.cpp
-@@ -69,6 +69,7 @@ static auto sensorTypes{
-                                 "xyz.openbmc_project.Configuration.TMP175",
-                                 "xyz.openbmc_project.Configuration.TMP421",
-                                 "xyz.openbmc_project.Configuration.TMP441",
-+                                "xyz.openbmc_project.Configuration.TMP468",
-                                 "xyz.openbmc_project.Configuration.TMP75",
-                                 "xyz.openbmc_project.Configuration.W83773G"})};
+@@ -73,6 +73,7 @@ static const I2CDeviceTypeMap sensorTypes{
+     {"TMP175", I2CDeviceType{"tmp175", true}},
+     {"TMP421", I2CDeviceType{"tmp421", true}},
+     {"TMP441", I2CDeviceType{"tmp441", true}},
++    {"TMP468", I2CDeviceType{"tmp468", true}},
+     {"TMP75", I2CDeviceType{"tmp75", true}},
+     {"W83773G", I2CDeviceType{"w83773g", true}},
+ };
+@@ -471,11 +472,23 @@ void createSensors(
  
-@@ -383,11 +384,23 @@ void createSensors(
+             std::vector<thresholds::Threshold> sensorThresholds;
  
-                 std::vector<thresholds::Threshold> sensorThresholds;
- 
--                if (!parseThresholdsFromConfig(sensorData, sensorThresholds,
--                                               nullptr, &index))
-+                /* Inventec - Add tmp468 support and Label search for extra thresold and ipmi config */
-+                if( !sensorType.compare("xyz.openbmc_project.Configuration.TMP468") ) {
-+                    std::string thresholdLabel = sensorName.substr(0, sensorName.find(" "));
-+                    if (!parseThresholdsFromConfig(sensorData, sensorThresholds,&thresholdLabel, nullptr))
-+                    {
-+                        std::cerr << "error populating thresholds for "
-+                              << sensorName << " index 1\n";
-+                    }
+-            if (!parseThresholdsFromConfig(sensorData, sensorThresholds,
+-                                           nullptr, &index))
++            /* Inventec - Add tmp468 support and Label search for extra thresold and ipmi config */
++            if( !sensorType.compare("xyz.openbmc_project.Configuration.TMP468") ) {
++                std::string thresholdLabel = sensorName.substr(0, sensorName.find(" "));
++                if (!parseThresholdsFromConfig(sensorData, sensorThresholds, &thresholdLabel, nullptr))
++                {
++                    std::cerr << "error populating thresholds for "
++                            << sensorName << " index 1\n";
 +                }
-+                else
++            }
++            else
+             {
+-                std::cerr << "error populating thresholds for " << sensorName
+-                          << " index " << index << "\n";
++                if (!parseThresholdsFromConfig(sensorData, sensorThresholds,
++                                            nullptr, &index))
++                {
++                    std::cerr << "error populating thresholds for "
++                            << sensorName << " index 1\n";
++                }
+             }
+ 
+             float pollRate = getPollRate(baseConfigMap, pollRateDefault);
+@@ -483,25 +496,35 @@ void createSensors(
+ 
+             auto permitSet = getPermitSet(baseConfigMap);
+             auto& sensor = sensors[sensorName];
+-            if (!activateOnly)
+-            {
+-                sensor = nullptr;
+-            }
+-            auto hwmonFile =
+-                getFullHwmonFilePath(directory.string(), "temp1", permitSet);
+-            if (pathStr.starts_with("/sys/bus/iio/devices"))
++
++            /* Inventec - Add tmp468 support and Label search for extra thresold and ipmi config */
++            /* Extra threshold should all add label.*/
++            std::vector<thresholds::Threshold> sensorThresholdsExtra;
++            std::string labelHead = sensorName.substr(0, sensorName.find(" "));
++            if (!parseThresholdsFromConfig(sensorData, sensorThresholdsExtra, &labelHead))
+             {
+-                hwmonFile = pathStr;
++                std::cerr << "error populating thresholds for "
++                            << sensorName << "\n";
+             }
+ 
++            /* Extra ipmiconfig.*/
+             std::vector<ipmidata::IpmiConfig> sensorIpmiConfig;
+-            std::string labelHead = sensorName.substr(0, sensorName.find(" "));
+             if (!parseIpmiDataFromConfig(sensorData, sensorIpmiConfig, &labelHead))
+             {
+                 std::cerr << "error populating ipmi for "
+                             << sensorName << "\n";
+             }
+ 
++            if (!activateOnly)
++            {
++                sensor = nullptr;
++            }
++            auto hwmonFile =
++                getFullHwmonFilePath(directory.string(), "temp1", permitSet);
++            if (pathStr.starts_with("/sys/bus/iio/devices"))
++            {
++                hwmonFile = pathStr;
++            }
+             if (hwmonFile)
+             {
+                 if (sensor != nullptr)
+@@ -512,7 +535,7 @@ void createSensors(
                  {
--                    std::cerr << "error populating thresholds for "
--                              << sensorName << " index " << index << "\n";
-+                    if (!parseThresholdsFromConfig(sensorData, sensorThresholds,
-+                                                nullptr, &index))
-+                    {
-+                        std::cerr << "error populating thresholds for "
-+                                << sensorName << " index 1\n";
-+                    }
-                 }
- 
-                 auto findPollRate = baseConfigMap.find("PollRate");
-@@ -479,11 +492,29 @@ void createSensors(
-                         }
- 
-                         auto& sensor = sensors[sensorName];
-+                        /* Inventec - Add tmp468 support and Label search for extra thresold and ipmi config */
-+                        /* Extra threshold should all add label.*/
-+                        std::vector<thresholds::Threshold> sensorThresholdsExtra;
-+                        std::string labelHead = sensorName.substr(0, sensorName.find(" "));
-+                        if (!parseThresholdsFromConfig(sensorData, sensorThresholdsExtra, &labelHead))
-+                        {
-+                            std::cerr << "error populating thresholds for "
-+                                      << sensorName << "\n";
-+                        }
-+
-+                        /* Extra ipmiconfig.*/
-+                        std::vector<ipmidata::IpmiConfig> sensorIpmiConfig;
-+                        if (!parseIpmiDataFromConfig(sensorData, sensorIpmiConfig, &labelHead))
-+                        {
-+                            std::cerr << "error populating ipmi for "
-+                                      << sensorName << "\n";
-+                        }
-+
-                         sensor = nullptr;
-                         sensor = std::make_shared<HwmonTempSensor>(
-                             *hwmonFile, sensorType, objectServer,
-                             dbusConnection, io, sensorName,
--                            std::move(thresholds), std::move(sensorIpmiConfig), thisSensorParameters,
-+                            std::move(sensorThresholdsExtra), std::move(sensorIpmiConfig), thisSensorParameters,
-                             pollRate, interfacePath, readState);
-                         sensor->setupRead();
-                         hwmonName.erase(remove(hwmonName.begin(),
+                     sensor = std::make_shared<HwmonTempSensor>(
+                         *hwmonFile, sensorType, objectServer, dbusConnection,
+-                        io, sensorName, std::move(sensorThresholds),
++                        io, sensorName, std::move(sensorThresholdsExtra),
+                         std::move(sensorIpmiConfig),
+                         thisSensorParameters, pollRate, interfacePath,
+                         readState, i2cDev);
 -- 
-2.33.0
-
+2.25.1

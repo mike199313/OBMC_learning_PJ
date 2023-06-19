@@ -80,39 +80,20 @@ sysadmin@starscream:~# ipmitool sdr list
 <---skip--->
 BP2_EDSFF_J9     | 50.80 degrees C   | ok
 <---skip--->
----
- include/NVMeSensor.hpp   |  2 ++
- src/NVMeBasicContext.cpp | 16 ++++++++++++----
- src/NVMeSensor.cpp       | 24 ++++++++++++++++++++++++
- src/NVMeSensorMain.cpp   | 13 ++++++++++---
- src/meson.build          |  1 +
- 5 files changed, 49 insertions(+), 7 deletions(-)
 
-diff --git a/include/NVMeSensor.hpp b/include/NVMeSensor.hpp
-index a0dce78..77094fa 100644
---- a/include/NVMeSensor.hpp
-+++ b/include/NVMeSensor.hpp
-@@ -2,6 +2,7 @@
- 
- #include <boost/asio/io_service.hpp>
- #include <sensor.hpp>
-+#include <IpmiInfo.hpp>
- 
- class NVMeSensor : public Sensor
- {
-@@ -14,6 +15,7 @@ class NVMeSensor : public Sensor
-                std::shared_ptr<sdbusplus::asio::connection>& conn,
-                const std::string& sensorName,
-                std::vector<thresholds::Threshold>&& thresholds,
-+               std::vector<ipmidata::IpmiConfig>&& ipmiinfo,
-                const std::string& sensorConfiguration, const int busNumber);
-     ~NVMeSensor() override;
- 
+---
+ src/NVMeBasicContext.cpp | 14 ++++++++++----
+ src/NVMeSensor.cpp       | 24 ++++++++++++++++++++++++
+ src/NVMeSensor.hpp       |  2 ++
+ src/NVMeSensorMain.cpp   | 13 +++++++++++--
+ src/meson.build          |  1 +
+ 5 files changed, 48 insertions(+), 6 deletions(-)
+
 diff --git a/src/NVMeBasicContext.cpp b/src/NVMeBasicContext.cpp
-index 5708ad8..d568af1 100644
+index de18b42..8a8aa73 100644
 --- a/src/NVMeBasicContext.cpp
 +++ b/src/NVMeBasicContext.cpp
-@@ -29,6 +29,9 @@ extern "C"
+@@ -28,6 +28,9 @@ extern "C"
   * https://nvmexpress.org/wp-content/uploads/NVMe_Management_-_Technical_Note_on_Basic_Management_Command.pdf
   */
  
@@ -122,28 +103,26 @@ index 5708ad8..d568af1 100644
  static std::shared_ptr<std::array<uint8_t, 6>>
      encodeBasicQuery(int bus, uint8_t device, uint8_t offset)
  {
-@@ -83,10 +86,15 @@ static ssize_t execBasicQuery(int bus, uint8_t addr, uint8_t cmd,
-     size = i2c_smbus_read_block_data(fileHandle.handle(), cmd, resp.data());
-     if (size < 0)
-     {
--        std::cerr << "Failed to read block data from device 0x" << std::hex
--                  << (int)addr << " on bus " << std::dec << bus << ": "
--                  << strerror(errno) << "\n";
--        return size;
-+
-+        /* Inventec - Reduce error log*/
-+        if(debug)
-+        {
-+            std::cerr << "Failed to read block data from device 0x" << std::hex
-+                    << (int)addr << " on bus " << std::dec << bus << ": "
-+                    << strerror(errno) << "\n";
-+        }
-+        return -errno;
-     }
-     if (size > UINT8_MAX + 1)
-     {
+@@ -85,10 +88,13 @@ static void execBasicQuery(int bus, uint8_t addr, uint8_t cmd,
+         size = i2c_smbus_read_block_data(fileHandle.handle(), cmd, resp.data());
+         if (size < 0)
+         {
+-            std::cerr << "Failed to read block data from device 0x" << std::hex
+-                      << (int)addr << " on bus " << std::dec << bus << ": "
+-                      << strerror(errno) << "\n";
+-            resp.resize(0);
++            /* Inventec - Reduce error log*/
++            if(debug)
++            {
++                std::cerr << "Failed to read block data from device 0x" << std::hex
++                        << (int)addr << " on bus " << std::dec << bus << ": "
++                        << strerror(errno) << "\n";
++            }
+         }
+         else if (size > UINT8_MAX + 1)
+         {
 diff --git a/src/NVMeSensor.cpp b/src/NVMeSensor.cpp
-index 213e320..e03da70 100644
+index d265a02..fe376cc 100644
 --- a/src/NVMeSensor.cpp
 +++ b/src/NVMeSensor.cpp
 @@ -26,6 +26,7 @@ NVMeSensor::NVMeSensor(sdbusplus::asio::object_server& objectServer,
@@ -152,7 +131,7 @@ index 213e320..e03da70 100644
                         std::vector<thresholds::Threshold>&& thresholdsIn,
 +                       std::vector<ipmidata::IpmiConfig>&& ipmiinfo,
                         const std::string& sensorConfiguration,
-                        const int busNumber) :
+                        const int busNumber, const uint8_t slaveAddr) :
      Sensor(escapeName(sensorName), std::move(thresholdsIn), sensorConfiguration,
 @@ -49,6 +50,28 @@ NVMeSensor::NVMeSensor(sdbusplus::asio::object_server& objectServer,
              objectServer.add_interface(
@@ -183,61 +162,79 @@ index 213e320..e03da70 100644
      association = objectServer.add_interface(
          "/xyz/openbmc_project/sensors/temperature/" + name,
          association::interface);
-@@ -64,6 +87,7 @@ NVMeSensor::~NVMeSensor()
-         objServer.remove_interface(iface);
+@@ -65,6 +88,7 @@ NVMeSensor::~NVMeSensor()
      }
      objServer.remove_interface(sensorInterface);
-+    objServer.remove_interface(ipmiInterface);
      objServer.remove_interface(association);
++    objServer.remove_interface(ipmiInterface);
  }
  
+ bool NVMeSensor::sample()
+diff --git a/src/NVMeSensor.hpp b/src/NVMeSensor.hpp
+index 5d89d6a..54e9e07 100644
+--- a/src/NVMeSensor.hpp
++++ b/src/NVMeSensor.hpp
+@@ -2,6 +2,7 @@
+ 
+ #include <boost/asio/io_context.hpp>
+ #include <sensor.hpp>
++#include <IpmiInfo.hpp>
+ 
+ class NVMeSensor : public Sensor
+ {
+@@ -13,6 +14,7 @@ class NVMeSensor : public Sensor
+                std::shared_ptr<sdbusplus::asio::connection>& conn,
+                const std::string& sensorName,
+                std::vector<thresholds::Threshold>&& thresholds,
++               std::vector<ipmidata::IpmiConfig>&& ipmiinfo,
+                const std::string& sensorConfiguration, int busNumber,
+                uint8_t slaveAddr);
+     ~NVMeSensor() override;
 diff --git a/src/NVMeSensorMain.cpp b/src/NVMeSensorMain.cpp
-index d5e3026..92314ec 100644
+index 9cd453e..76fccc2 100644
 --- a/src/NVMeSensorMain.cpp
 +++ b/src/NVMeSensorMain.cpp
-@@ -146,20 +146,27 @@ static void handleSensorConfigurations(
-                 std::cerr << "error populating thresholds for " << *sensorName
-                           << "\n";
-             }
-+            std::vector<ipmidata::IpmiConfig> sensorIpmiConfig;
-+            std::string labelHead = sensorName->substr(0, sensorName->find(" "));
-+            if (!parseIpmiDataFromConfig(sensorData, sensorIpmiConfig, &labelHead))
-+            {
-+                std::cerr << "error populating ipmi for "
-+                            << *sensorName << "\n";
-+            }
+@@ -170,18 +170,27 @@ static void handleSensorConfigurations(
+                       << "\n";
+         }
  
-             try
-             {
-                 // May throw for an invalid rootBus
-+                /* Bug 827 - [SW][Common][dbus-sensors] - nvmesensor rootbus conflix cause sensor cannot update */
-                 std::shared_ptr<NVMeContext> context =
--                    provideRootBusContext(io, nvmeDeviceMap, *rootBus);
-+                    provideRootBusContext(io, nvmeDeviceMap, *busNumber);
++        std::vector<ipmidata::IpmiConfig> sensorIpmiConfig;
++        std::string labelHead = sensorName->substr(0, sensorName->find(" "));
++        if (!parseIpmiDataFromConfig(sensorData, sensorIpmiConfig, &labelHead))
++        {
++            std::cerr << "error populating ipmi for "
++                        << *sensorName << "\n";
++        }
++
+         try
+         {
+             // May throw for an invalid rootBus
++            /* Bug 827 - [SW][Common][dbus-sensors] - nvmesensor rootbus conflix cause sensor cannot update */
+             std::shared_ptr<NVMeContext> context =
+-                provideRootBusContext(io, nvmeDeviceMap, *rootBus);
++                provideRootBusContext(io, nvmeDeviceMap, *busNumber);
  
-                 // Construct the sensor after grabbing the context so we don't
-                 // glitch D-Bus May throw for an invalid busNumber
-                 std::shared_ptr<NVMeSensor> sensorPtr =
-                     std::make_shared<NVMeSensor>(
-                         objectServer, io, dbusConnection, *sensorName,
--                        std::move(sensorThresholds), interfacePath, *busNumber);
--
-+                        std::move(sensorThresholds), std::move(sensorIpmiConfig), interfacePath, *busNumber);
-                 context->addSensor(sensorPtr);
-             }
-             catch (const std::invalid_argument& ex)
+             // Construct the sensor after grabbing the context so we don't
+             // glitch D-Bus May throw for an invalid busNumber
+             std::shared_ptr<NVMeSensor> sensorPtr =
+                 std::make_shared<NVMeSensor>(
+                     objectServer, io, dbusConnection, *sensorName,
+-                    std::move(sensorThresholds), interfacePath, *busNumber,
++                    std::move(sensorThresholds), std::move(sensorIpmiConfig), interfacePath, *busNumber,
+                     slaveAddr);
+ 
+             context->addSensor(sensorPtr);
 diff --git a/src/meson.build b/src/meson.build
-index 9f9ffc2..c25889f 100644
+index 72b1ac4..c11cf16 100644
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -269,6 +269,7 @@ if get_option('nvme').enabled()
+@@ -202,6 +202,7 @@ if get_option('nvme').enabled()
  
      executable(
          'nvmesensor',
 +        'IpmiInfo.cpp',
          sources: nvme_srcs,
          dependencies: nvme_deps,
-         implicit_include_directories: false,
+         cpp_args: uring_args,
 -- 
-2.17.1
-
+2.25.1

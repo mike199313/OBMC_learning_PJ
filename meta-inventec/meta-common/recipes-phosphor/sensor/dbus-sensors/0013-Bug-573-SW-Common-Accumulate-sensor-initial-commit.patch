@@ -41,96 +41,42 @@ acc_test         | 80h | ok  | 10.11 | 75 degrees C
 
 [comment for 2.12 upgrade]
 Change code for threshold interfaces are moved in commit 5667808
+
 ---
- include/AccumulateSensor.hpp                  |  46 +++
  meson_options.txt                             |   1 +
  service_files/meson.build                     |   1 +
  ...z.openbmc_project.accumulatesensor.service |  12 +
- src/AccumulateSensor.cpp                      | 292 +++++++++++++++++
- src/AccumulateSensorMain.cpp                  | 307 ++++++++++++++++++
- src/meson.build                               |  17 +
- 7 files changed, 676 insertions(+)
- create mode 100644 include/AccumulateSensor.hpp
+ src/AccumulateSensor.cpp                      | 288 +++++++++++++++++
+ src/AccumulateSensor.hpp                      |  47 +++
+ src/AccumulateSensorMain.cpp                  | 304 ++++++++++++++++++
+ src/meson.build                               |  16 +
+ 7 files changed, 669 insertions(+)
  create mode 100644 service_files/xyz.openbmc_project.accumulatesensor.service
  create mode 100644 src/AccumulateSensor.cpp
+ create mode 100644 src/AccumulateSensor.hpp
  create mode 100644 src/AccumulateSensorMain.cpp
 
-diff --git a/include/AccumulateSensor.hpp b/include/AccumulateSensor.hpp
-new file mode 100644
-index 0000000..8655e33
---- /dev/null
-+++ b/include/AccumulateSensor.hpp
-@@ -0,0 +1,46 @@
-+#pragma once
-+
-+#include <Thresholds.hpp>
-+#include <Utils.hpp>
-+#include <sensor.hpp>
-+#include <IpmiInfo.hpp>
-+
-+#include <boost/asio/streambuf.hpp>
-+#include <sdbusplus/asio/object_server.hpp>
-+
-+#include <string>
-+#include <vector>
-+
-+class AccumulateSensor :
-+    public Sensor,
-+    public std::enable_shared_from_this<AccumulateSensor>
-+{
-+  public:
-+    AccumulateSensor( const std::string& objectType,
-+                    sdbusplus::asio::object_server& objectServer,
-+                    std::shared_ptr<sdbusplus::asio::connection>& conn,
-+                    boost::asio::io_service& io,
-+                    const std::string& sensorName,
-+                    const std::string& sensorType,
-+                    const std::string& eventType,
-+                    const double max, const double min,
-+                    std::vector<std::string>&& sensorMembers,
-+                    std::vector<thresholds::Threshold>&& thresholds,
-+                    std::vector<ipmidata::IpmiConfig>&& ipmiinfo,
-+                    const std::string& sensorConfiguration);
-+    ~AccumulateSensor();
-+    void setupRead(void);
-+
-+  private:
-+    sdbusplus::asio::object_server& objServer;
-+    boost::asio::deadline_timer waitTimer;
-+    size_t errCount;
-+    std::vector<std::string> sensorMemberPaths;
-+    std::vector<double> sensorValues;
-+    unsigned int updatedSensorNumber;
-+
-+    void getSensorReading(std::string& path);
-+    void checkUpdate(void);
-+    void updateReading(void);
-+    void checkThresholds(void) override;
-+};
 diff --git a/meson_options.txt b/meson_options.txt
-index 63ce99b..5a3294c 100644
+index 9a75e7b..69ceb29 100644
 --- a/meson_options.txt
 +++ b/meson_options.txt
-@@ -6,6 +6,7 @@ option('hwmon-temp', type: 'feature', value: 'enabled', description: 'Enable HWM
+@@ -15,3 +15,4 @@ option('insecure-sensor-override', type : 'feature', value : 'disabled', descrip
  option('event', type: 'feature', value: 'enabled', description: 'Enable General event sensor.',)
  option('average', type: 'feature', value: 'enabled', description: 'Enable average sensor.',)
  option('invcfm', type: 'feature', value: 'enabled', description: 'Enable InvCfm sensor.',)
 +option('accumulate', type: 'feature', value: 'enabled', description: 'Enable accumulate sensor.',)
- option('intrusion', type: 'feature', value: 'enabled', description: 'Enable intrusion sensor.',)
- option('ipmb', type: 'feature', value: 'enabled', description: 'Enable IPMB sensor.',)
- option('mcu', type: 'feature', value: 'enabled', description: 'Enable MCU sensor.',)
 diff --git a/service_files/meson.build b/service_files/meson.build
-index 6642e7a..4018fc6 100644
+index 0e07444..34ff39a 100644
 --- a/service_files/meson.build
 +++ b/service_files/meson.build
-@@ -8,6 +8,7 @@ unit_files = [
+@@ -13,6 +13,7 @@ unit_files = [
      ['event', 'xyz.openbmc_project.eventsensor.service'],
      ['average', 'xyz.openbmc_project.averagesensor.service'],
      ['invcfm', 'xyz.openbmc_project.invcfmsensor.service'],
 +    ['accumulate', 'xyz.openbmc_project.accumulatesensor.service'],
-     ['intrusion', 'xyz.openbmc_project.intrusionsensor.service'],
-     ['mcu', 'xyz.openbmc_project.mcutempsensor.service'],
-     ['nvme', 'xyz.openbmc_project.nvmesensor.service'],
+ ]
+ 
+ foreach tuple : unit_files
 diff --git a/service_files/xyz.openbmc_project.accumulatesensor.service b/service_files/xyz.openbmc_project.accumulatesensor.service
 new file mode 100644
 index 0000000..f918f85
@@ -151,10 +97,10 @@ index 0000000..f918f85
 +WantedBy=multi-user.target
 diff --git a/src/AccumulateSensor.cpp b/src/AccumulateSensor.cpp
 new file mode 100644
-index 0000000..96db25d
+index 0000000..36a628c
 --- /dev/null
 +++ b/src/AccumulateSensor.cpp
-@@ -0,0 +1,292 @@
+@@ -0,0 +1,288 @@
 +/*
 +// Copyright (c) 2017 Intel Corporation
 +//
@@ -195,7 +141,7 @@ index 0000000..96db25d
 +    const std::string& objectType,
 +    sdbusplus::asio::object_server& objectServer,
 +    std::shared_ptr<sdbusplus::asio::connection>& conn,
-+    boost::asio::io_service& io,
++    boost::asio::io_context& io,
 +    const std::string& sensorName,
 +    const std::string& sensorType,
 +    const std::string& eventType,
@@ -381,7 +327,6 @@ index 0000000..96db25d
 +    return;
 +}
 +
-+
 +void AccumulateSensor::setupRead(void)
 +{
 +    /* Clear the sensor number of updated, wait for new update.*/
@@ -394,7 +339,6 @@ index 0000000..96db25d
 +    }
 +}
 +
-+
 +void AccumulateSensor::checkUpdate(void)
 +{
 +
@@ -403,7 +347,6 @@ index 0000000..96db25d
 +        updateReading();
 +    }
 +}
-+
 +
 +void AccumulateSensor::updateReading(void)
 +{
@@ -442,17 +385,69 @@ index 0000000..96db25d
 +    });
 +}
 +
-+
 +void AccumulateSensor::checkThresholds(void)
 +{
 +    thresholds::checkThresholds(this);
 +}
+diff --git a/src/AccumulateSensor.hpp b/src/AccumulateSensor.hpp
+new file mode 100644
+index 0000000..cd0017f
+--- /dev/null
++++ b/src/AccumulateSensor.hpp
+@@ -0,0 +1,47 @@
++#pragma once
++
++#include <Thresholds.hpp>
++#include <Utils.hpp>
++#include <sensor.hpp>
++#include <IpmiInfo.hpp>
++
++#include <boost/asio/deadline_timer.hpp>
++#include <boost/asio/streambuf.hpp>
++#include <sdbusplus/asio/object_server.hpp>
++
++#include <string>
++#include <vector>
++
++class AccumulateSensor :
++    public Sensor,
++    public std::enable_shared_from_this<AccumulateSensor>
++{
++  public:
++    AccumulateSensor( const std::string& objectType,
++                    sdbusplus::asio::object_server& objectServer,
++                    std::shared_ptr<sdbusplus::asio::connection>& conn,
++                    boost::asio::io_context& io,
++                    const std::string& sensorName,
++                    const std::string& sensorType,
++                    const std::string& eventType,
++                    const double max, const double min,
++                    std::vector<std::string>&& sensorMembers,
++                    std::vector<thresholds::Threshold>&& thresholds,
++                    std::vector<ipmidata::IpmiConfig>&& ipmiinfo,
++                    const std::string& sensorConfiguration);
++    ~AccumulateSensor();
++    void setupRead(void);
++
++  private:
++    sdbusplus::asio::object_server& objServer;
++    boost::asio::deadline_timer waitTimer;
++    size_t errCount;
++    std::vector<std::string> sensorMemberPaths;
++    std::vector<double> sensorValues;
++    unsigned int updatedSensorNumber;
++
++    void getSensorReading(std::string& path);
++    void checkUpdate(void);
++    void updateReading(void);
++    void checkThresholds(void) override;
++};
 diff --git a/src/AccumulateSensorMain.cpp b/src/AccumulateSensorMain.cpp
 new file mode 100644
-index 0000000..ebb3607
+index 0000000..67862e7
 --- /dev/null
 +++ b/src/AccumulateSensorMain.cpp
-@@ -0,0 +1,307 @@
+@@ -0,0 +1,304 @@
 +/*
 +// Copyright (c) 2017 Intel Corporation
 +//
@@ -499,7 +494,7 @@ index 0000000..ebb3607
 +    "xyz.openbmc_project.Configuration.AccumulateSensor"};
 +
 +void createSensors(
-+    boost::asio::io_service& io, sdbusplus::asio::object_server& objectServer,
++    boost::asio::io_context& io, sdbusplus::asio::object_server& objectServer,
 +    boost::container::flat_map<std::string, std::shared_ptr<AccumulateSensor>>&
 +        sensors,
 +    std::shared_ptr<sdbusplus::asio::connection>& dbusConnection,
@@ -638,7 +633,6 @@ index 0000000..ebb3607
 +                    }
 +                }
 +
-+
 +                auto& sensor = sensors[sensorName];
 +                sensor = nullptr;
 +
@@ -672,7 +666,6 @@ index 0000000..ebb3607
 +                        std::get<std::string>(findSensorMember->second));
 +                }
 +
-+
 +                if (DEBUG)
 +                {
 +                    std::cerr <<"SensorName: " << sensorName << '\n'
@@ -688,7 +681,6 @@ index 0000000..ebb3607
 +                        std::cerr << "sensorMember " << sensorMember << '\n';
 +                    }
 +                }
-+
 +
 +                sensor = std::make_shared<AccumulateSensor>(
 +                    accumulateType, objectServer, dbusConnection,
@@ -707,7 +699,7 @@ index 0000000..ebb3607
 +
 +int main()
 +{
-+    boost::asio::io_service io;
++    boost::asio::io_context io;
 +    auto systemBus = std::make_shared<sdbusplus::asio::connection>(io);
 +    systemBus->request_name("xyz.openbmc_project.AccumulateSensor");
 +    sdbusplus::asio::object_server objectServer(systemBus);
@@ -717,7 +709,7 @@ index 0000000..ebb3607
 +    auto sensorsChanged =
 +        std::make_shared<boost::container::flat_set<std::string>>();
 +
-+    io.post([&]() {
++    boost::asio::post(io, [&]() {
 +        createSensors(io, objectServer, sensors, systemBus, nullptr);
 +    });
 +
@@ -761,13 +753,14 @@ index 0000000..ebb3607
 +    io.run();
 +}
 diff --git a/src/meson.build b/src/meson.build
-index d4abb5e..16e809a 100644
+index 5f49e71..22c0e21 100644
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -143,6 +143,23 @@ if get_option('invcfm').enabled()
+@@ -290,3 +290,19 @@ if get_option('invcfm').enabled()
+         install: true,
      )
  endif
- 
++
 +if get_option('accumulate').enabled()
 +    executable(
 +        'accumulatesensor',
@@ -779,15 +772,9 @@ index d4abb5e..16e809a 100644
 +            thresholds_dep,
 +            utils_dep,
 +        ],
-+        implicit_include_directories: false,
-+        include_directories: '../include',
++        cpp_args: uring_args,
 +        install: true,
 +    )
 +endif
-+
- 
- if get_option('intrusion').enabled()
-     executable(
 -- 
-2.33.0
-
+2.25.1

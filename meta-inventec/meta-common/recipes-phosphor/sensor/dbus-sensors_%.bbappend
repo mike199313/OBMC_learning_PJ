@@ -19,9 +19,9 @@ SRC_URI += "\
             file://0016-TsodSensor-add-TsodSensor-support-temp-sensor-on-dim.patch \
             file://0017-watchdog-Add-WATCHDOG-sensor-DBUS-interface.patch \
             file://0018-NvmeSensor-patches.patch \
-            file://0024-Event-generation-enabled-disabled.patch \
-            file://0025-get-sensor-enable-after-setting.patch \
-            file://0026-Bug-1453-Set-sensor-reading-and-event-status.patch \
+            file://0019-Event-generation-enabled-disabled.patch \
+            file://0020-get-sensor-enable-after-setting.patch \
+            file://0021-Bug-1453-Set-sensor-reading-and-event-status.patch \
            "
 
 PACKAGECONFIG:append =" \
