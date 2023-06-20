@@ -1,7 +1,7 @@
-From 7d65fb9cb225131b87e81d97ea4243f0c1e699fa Mon Sep 17 00:00:00 2001
+From 33e90dfd2b4a0dee11deb7947bd3dd3ff6f69733 Mon Sep 17 00:00:00 2001
 From: "pj.chen" <chen.pj@inventec.com>
 Date: Wed, 2 Mar 2022 07:20:20 +0000
-Subject: [PATCH 3/5] Bug623 - [SW][Transformers][OpenBMC][IPMI] Implement get
+Subject: [PATCH 3/7] Bug623 - [SW][Transformers][OpenBMC][IPMI] Implement get
  chassis status command
 
 Symptom/Reason :
@@ -47,15 +47,17 @@ Entry Test:
     - ipmitool chassis status
     - ipmitool raw 0x00 0x01
         -- to get current chassis status
+
+%% original patch: 0003-Bug623-SW-Transformers-OpenBMC-IPMI-Implement-get-ch.patch
 ---
  src/power_control.cpp | 10 ++++++++++
  1 file changed, 10 insertions(+)
 
 diff --git a/src/power_control.cpp b/src/power_control.cpp
-index 1965afc..c4f74cd 100644
+index 75d60fa..6c64444 100644
 --- a/src/power_control.cpp
 +++ b/src/power_control.cpp
-@@ -3062,6 +3062,16 @@ int main(int argc, char* argv[])
+@@ -3099,6 +3099,16 @@ int main(int argc, char* argv[])
              return 1;
          });
  
@@ -73,5 +75,5 @@ index 1965afc..c4f74cd 100644
      chassisIface->initialize();
  
 -- 
-2.33.0
+2.34.1
 

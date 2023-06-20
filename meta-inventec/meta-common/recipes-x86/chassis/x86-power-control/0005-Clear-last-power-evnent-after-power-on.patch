@@ -1,7 +1,7 @@
-From a06803ebf6a8ac19169c2b996019c7d1ca8b6c2e Mon Sep 17 00:00:00 2001
+From 8b090d8169878e1d0c52ea5c2157ff331b1a1891 Mon Sep 17 00:00:00 2001
 From: Matt Cheng <cheng.matt@inventec.com>
 Date: Mon, 19 Sep 2022 10:58:39 +0800
-Subject: [PATCH 5/5] Clear last power evnent after power on
+Subject: [PATCH 5/7] Clear last power evnent after power on
 
 Symptom/Reason:
 	Power Overload is always true.
@@ -23,15 +23,17 @@ Entry Test:
 	ipmitool dcmi power deactivate
 	curl -u root:0penBmc -k -X POST https://10.6.141.88/redfish/v1/Systems/system/Actions/ComputerSystem.Reset/ -d '{"ResetType": "On"}'
 	ipmitool chassis status
+
+%% original patch: 0005-Clear-last-power-evnent-after-power-on.patch
 ---
  src/power_control.cpp | 20 ++++++++++++++++++++
  1 file changed, 20 insertions(+)
 
 diff --git a/src/power_control.cpp b/src/power_control.cpp
-index b3a1613..6b7b87e 100644
+index 5dd7a56..ba30ce4 100644
 --- a/src/power_control.cpp
 +++ b/src/power_control.cpp
-@@ -613,6 +613,26 @@ static void setPowerState(const PowerState state)
+@@ -626,6 +626,26 @@ static void setPowerState(const PowerState state)
                                 std::string(getChassisState(powerState)));
      chassisIface->set_property("LastStateChangeTime", getCurrentTimeMs());
  
@@ -59,5 +61,5 @@ index b3a1613..6b7b87e 100644
      savePowerState(state);
  }
 -- 
-2.33.0
+2.34.1
 

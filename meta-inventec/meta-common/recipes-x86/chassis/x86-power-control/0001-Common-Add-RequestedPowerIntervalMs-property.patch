@@ -1,7 +1,7 @@
-From 20e77fcc7cac1e64be4ad7cb73067e2177a9c4c3 Mon Sep 17 00:00:00 2001
+From 2f1e493955faf466ebed39eed4930d227663c0fb Mon Sep 17 00:00:00 2001
 From: "pj.chen" <chen.pj@inventec.com>
 Date: Wed, 2 Mar 2022 05:47:53 +0000
-Subject: [PATCH 1/5] Common - Add RequestedPowerIntervalMs property
+Subject: [PATCH 1/7] Common - Add RequestedPowerIntervalMs property
 
 Symptom/Reason:
     To support Set Power Cycle Interval command.
@@ -24,10 +24,10 @@ Entry Test:
  1 file changed, 52 insertions(+)
 
 diff --git a/src/power_control.cpp b/src/power_control.cpp
-index 05aa45c..3e0892a 100644
+index 1a89323..492d9d9 100644
 --- a/src/power_control.cpp
 +++ b/src/power_control.cpp
-@@ -2392,6 +2392,47 @@ static int loadConfigValues()
+@@ -2427,6 +2427,47 @@ static int loadConfigValues()
      return 0;
  }
  
@@ -72,10 +72,10 @@ index 05aa45c..3e0892a 100644
 +}
 +
 +
- static bool getDbusMsgGPIOState(sdbusplus::message::message& msg,
+ static bool getDbusMsgGPIOState(sdbusplus::message_t& msg,
                                  const std::string& lineName, bool& value)
  {
-@@ -2965,6 +3006,17 @@ int main(int argc, char* argv[])
+@@ -3002,6 +3043,17 @@ int main(int argc, char* argv[])
                                      std::string(getChassisState(powerState)));
      chassisIface->register_property("LastStateChangeTime", getCurrentTimeMs());
  
@@ -94,5 +94,5 @@ index 05aa45c..3e0892a 100644
  
  #ifdef CHASSIS_SYSTEM_RESET
 -- 
-2.33.0
+2.34.1
 

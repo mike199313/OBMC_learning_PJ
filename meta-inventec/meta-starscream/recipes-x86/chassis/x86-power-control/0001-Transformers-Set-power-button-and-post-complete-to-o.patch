@@ -1,7 +1,7 @@
-From 2d040da618431fe28b783d13985a28c75b27f84c Mon Sep 17 00:00:00 2001
+From 668748643e0e0fce920d0edd2918f4d78d396d00 Mon Sep 17 00:00:00 2001
 From: "pj.chen" <chen.pj@inventec.com>
 Date: Fri, 10 Jun 2022 15:23:28 +0800
-Subject: [PATCH 1/2] Transformers - Set power button and post complete to
+Subject: [PATCH 7/7] Transformers - Set power button and post complete to
  optional
 
 Symptom/Reason:
@@ -28,15 +28,17 @@ Jan 01 00:05:47 transformers power-control[894]: RESET_OUT set to 1
 Jan 01 00:05:47 transformers power-control[894]:  NMI Source Property Monitor
 Jan 01 00:05:47 transformers power-control[894]: Host0: Moving to "Off" state
 Jan 01 00:05:47 transformers power-control[894]: Initializing power state. RestartCause set to xyz.openbmc_project.State.Host.RestartCause.Unknown
+
+%% original patch: 0001-Transformers-Set-power-button-and-post-complete-to-o.patch
 ---
  src/power_control.cpp | 31 +++++++++++++++++++++++++++++--
  1 file changed, 29 insertions(+), 2 deletions(-)
 
 diff --git a/src/power_control.cpp b/src/power_control.cpp
-index d7c74b2..e25cc08 100644
+index d9b65f8..26b07df 100644
 --- a/src/power_control.cpp
 +++ b/src/power_control.cpp
-@@ -1657,8 +1657,17 @@ static void currentHostStateMonitor()
+@@ -1677,8 +1677,17 @@ static void currentHostStateMonitor()
                  // 'OperatingSystemState' to stay at 'Standby', even though
                  // system is OFF. Set 'OperatingSystemState' to 'Inactive'
                  // if HostState is trurned to OFF.
@@ -55,7 +57,7 @@ index d7c74b2..e25cc08 100644
                  // Set the restart cause set for this restart
                  setRestartCause();
  #ifdef USE_ACBOOT
-@@ -2830,6 +2839,12 @@ int main(int argc, char* argv[])
+@@ -2865,6 +2874,12 @@ int main(int argc, char* argv[])
              power_control::dbusGPIOMatcher(powerButtonConfig,
                                             powerButtonHandler);
      }
@@ -68,7 +70,7 @@ index d7c74b2..e25cc08 100644
  
      // Request RESET_BUTTON GPIO events
      if (resetButtonConfig.type == ConfigType::GPIO)
-@@ -2902,9 +2917,14 @@ int main(int argc, char* argv[])
+@@ -2937,9 +2952,14 @@ int main(int argc, char* argv[])
      }
      else
      {
@@ -83,7 +85,7 @@ index d7c74b2..e25cc08 100644
      }
  
      // initialize NMI_OUT GPIO.
-@@ -3488,12 +3508,19 @@ int main(int argc, char* argv[])
+@@ -3525,12 +3545,19 @@ int main(int argc, char* argv[])
                        ? OperatingSystemStateStage::Inactive
                        : OperatingSystemStateStage::Standby;
      }
@@ -105,5 +107,5 @@ index d7c74b2..e25cc08 100644
      osIface->register_property(
          "OperatingSystemState",
 -- 
-2.33.0
+2.34.1
 

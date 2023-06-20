@@ -1,17 +1,18 @@
-From e782f619b7334b31b426416572e4ff25fbb62cb9 Mon Sep 17 00:00:00 2001
+From cf2d241cbf0e68695295c255c1291438ec0545b8 Mon Sep 17 00:00:00 2001
 From: cynthia <wu.cynthia@inventec.com>
 Date: Tue, 18 Oct 2022 02:53:16 +0000
-Subject: [PATCH] Change to lg2 according to official commit c46ebb
+Subject: [PATCH 6/7] Change to lg2 according to official commit c46ebb
 
+%% original patch: 0006-Change-to-lg2-according-to-official-commit-c46ebb.patch
 ---
  src/power_control.cpp | 30 +++++++++---------------------
  1 file changed, 9 insertions(+), 21 deletions(-)
 
 diff --git a/src/power_control.cpp b/src/power_control.cpp
-index 6b7b87e..d7c74b2 100644
+index ba30ce4..d9b65f8 100644
 --- a/src/power_control.cpp
 +++ b/src/power_control.cpp
-@@ -621,9 +621,7 @@ static void setPowerState(const PowerState state)
+@@ -634,9 +634,7 @@ static void setPowerState(const PowerState state)
              [](boost::system::error_code ec) {
                  if (ec)
                  {
@@ -22,7 +23,7 @@ index 6b7b87e..d7c74b2 100644
                  }
              },
              "xyz.openbmc_project.State.Chassis",
-@@ -632,7 +630,7 @@ static void setPowerState(const PowerState state)
+@@ -645,7 +643,7 @@ static void setPowerState(const PowerState state)
              "xyz.openbmc_project.State.Chassis", "LastPowerEvent",
              std::variant<std::uint32_t>(event));
      }
@@ -31,7 +32,7 @@ index 6b7b87e..d7c74b2 100644
      // Save the power state for the restore policy
      savePowerState(state);
  }
-@@ -1714,9 +1712,7 @@ void systemReset()
+@@ -1734,9 +1732,7 @@ void systemReset()
          [](boost::system::error_code ec) {
              if (ec)
              {
@@ -42,7 +43,7 @@ index 6b7b87e..d7c74b2 100644
              }
          },
          systemdBusname, systemdPath, systemdInterface, "StartUnit",
-@@ -1730,9 +1726,7 @@ void systemHostPowerOn()
+@@ -1750,9 +1746,7 @@ void systemHostPowerOn()
          [](boost::system::error_code ec) {
              if (ec)
              {
@@ -53,7 +54,7 @@ index 6b7b87e..d7c74b2 100644
              }
          },
          systemdBusname, systemdPath, systemdInterface, "StartUnit",
-@@ -1745,9 +1739,7 @@ void systemHostPowerOff()
+@@ -1765,9 +1759,7 @@ void systemHostPowerOff()
          [](boost::system::error_code ec) {
              if (ec)
              {
@@ -64,7 +65,7 @@ index 6b7b87e..d7c74b2 100644
              }
          },
          systemdBusname, systemdPath, systemdInterface, "StartUnit",
-@@ -1879,8 +1871,7 @@ static void powerStateGracefulWaitForPSPowerOK(const Event event)
+@@ -1913,8 +1905,7 @@ static void powerStateGracefulWaitForPSPowerOK(const Event event)
              setPowerState(PowerState::on);
              break;
          default:
@@ -74,7 +75,7 @@ index 6b7b87e..d7c74b2 100644
              break;
      }
  }
-@@ -2070,8 +2061,7 @@ static void powerStateGracefulCycleOff(const Event event)
+@@ -2106,8 +2097,7 @@ static void powerStateGracefulCycleOff(const Event event)
              powerOn();
              break;
          default:
@@ -84,7 +85,7 @@ index 6b7b87e..d7c74b2 100644
              break;
      }
  }
-@@ -2564,16 +2554,14 @@ static int updateConfigValues(const std::string& name, auto val)
+@@ -2599,16 +2589,14 @@ static int updateConfigValues(const std::string& name, auto val)
      std::ifstream configFile(configFilePath.c_str());
      if (!configFile.is_open())
      {
@@ -104,5 +105,5 @@ index 6b7b87e..d7c74b2 100644
      }
      auto gpios = data["gpio_configs"];
 -- 
-2.33.0
+2.34.1
 

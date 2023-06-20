@@ -1,7 +1,7 @@
-From 3b0adfbea610d497e05fa2cb9e925de5ff1d1b3c Mon Sep 17 00:00:00 2001
+From e937b3620872ef7f2491bb39e3f0f8d71442b78b Mon Sep 17 00:00:00 2001
 From: emil <huang.emil@inventec.com>
 Date: Fri, 10 Jun 2022 14:46:26 +0800
-Subject: [PATCH 4/5] Bug 396 - [Transformers][OpenBMC][Redfish]Should be
+Subject: [PATCH 4/7] Bug 396 - [Transformers][OpenBMC][Redfish]Should be
  chassis power "on" when execute Graceful Restart (equal Graceful Warm
  Reboot).
 
@@ -83,15 +83,17 @@ curl: (6) Could not resolve host: GET
   "message": "200 OK",
   "status": "ok"
 }emil@janus:~$
+
+%% original patch: 0004-Bug-396-Transformers-OpenBMC-Redfish-Should-be-chass.patch
 ---
  src/power_control.cpp | 100 +++++++++++++++++++++++++++++++++++++++++-
  1 file changed, 99 insertions(+), 1 deletion(-)
 
 diff --git a/src/power_control.cpp b/src/power_control.cpp
-index c4f74cd..b3a1613 100644
+index 6c64444..5dd7a56 100644
 --- a/src/power_control.cpp
 +++ b/src/power_control.cpp
-@@ -250,6 +250,8 @@ enum class PowerState
+@@ -263,6 +263,8 @@ enum class PowerState
      transitionToCycleOff,
      gracefulTransitionToCycleOff,
      checkForWarmReset,
@@ -100,7 +102,7 @@ index c4f74cd..b3a1613 100644
  };
  static PowerState powerState;
  static std::string getPowerStateName(PowerState state)
-@@ -286,6 +288,12 @@ static std::string getPowerStateName(PowerState state)
+@@ -299,6 +301,12 @@ static std::string getPowerStateName(PowerState state)
          case PowerState::checkForWarmReset:
              return "Check for Warm Reset";
              break;
@@ -113,7 +115,7 @@ index c4f74cd..b3a1613 100644
          default:
              return "unknown state: " + std::to_string(static_cast<int>(state));
              break;
-@@ -418,6 +426,8 @@ static void powerStateCycleOff(const Event event);
+@@ -431,6 +439,8 @@ static void powerStateCycleOff(const Event event);
  static void powerStateTransitionToCycleOff(const Event event);
  static void powerStateGracefulTransitionToCycleOff(const Event event);
  static void powerStateCheckForWarmReset(const Event event);
@@ -122,7 +124,7 @@ index c4f74cd..b3a1613 100644
  
  static std::function<void(const Event)> getPowerStateHandler(PowerState state)
  {
-@@ -453,6 +463,12 @@ static std::function<void(const Event)> getPowerStateHandler(PowerState state)
+@@ -466,6 +476,12 @@ static std::function<void(const Event)> getPowerStateHandler(PowerState state)
          case PowerState::checkForWarmReset:
              return powerStateCheckForWarmReset;
              break;
@@ -135,7 +137,7 @@ index c4f74cd..b3a1613 100644
          default:
              return nullptr;
              break;
-@@ -501,6 +517,8 @@ static constexpr std::string_view getHostState(const PowerState state)
+@@ -514,6 +530,8 @@ static constexpr std::string_view getHostState(const PowerState state)
          case PowerState::transitionToCycleOff:
          case PowerState::cycleOff:
          case PowerState::checkForWarmReset:
@@ -144,7 +146,7 @@ index c4f74cd..b3a1613 100644
              return "xyz.openbmc_project.State.Host.HostState.Off";
              break;
          default:
-@@ -518,6 +536,8 @@ static constexpr std::string_view getChassisState(const PowerState state)
+@@ -531,6 +549,8 @@ static constexpr std::string_view getChassisState(const PowerState state)
          case PowerState::transitionToCycleOff:
          case PowerState::gracefulTransitionToCycleOff:
          case PowerState::checkForWarmReset:
@@ -153,7 +155,7 @@ index c4f74cd..b3a1613 100644
              return "xyz.openbmc_project.State.Chassis.PowerState.On";
              break;
          case PowerState::waitForPSPowerOK:
-@@ -1807,6 +1827,44 @@ static void powerStateWaitForPSPowerOK(const Event event)
+@@ -1841,6 +1861,44 @@ static void powerStateWaitForPSPowerOK(const Event event)
      }
  }
  
@@ -198,7 +200,7 @@ index c4f74cd..b3a1613 100644
  static void powerStateWaitForSIOPowerGood(const Event event)
  {
      logEvent(__FUNCTION__, event);
-@@ -1958,6 +2016,46 @@ static void powerStateCycleOff(const Event event)
+@@ -1994,6 +2052,46 @@ static void powerStateCycleOff(const Event event)
      }
  }
  
@@ -245,7 +247,7 @@ index c4f74cd..b3a1613 100644
  static void powerStateTransitionToCycleOff(const Event event)
  {
      logEvent(__FUNCTION__, event);
-@@ -1984,7 +2082,7 @@ static void powerStateGracefulTransitionToCycleOff(const Event event)
+@@ -2020,7 +2118,7 @@ static void powerStateGracefulTransitionToCycleOff(const Event event)
          case Event::psPowerOKDeAssert:
              gracefulPowerOffTimer.cancel();
              systemHostPowerOff();
@@ -255,5 +257,5 @@ index c4f74cd..b3a1613 100644
              break;
          case Event::gracefulPowerOffTimerExpired:
 -- 
-2.33.0
+2.34.1
 

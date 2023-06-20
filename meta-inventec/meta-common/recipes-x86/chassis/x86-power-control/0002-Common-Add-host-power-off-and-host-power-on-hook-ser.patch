@@ -1,7 +1,7 @@
-From 0f429ad1e3ec52eca6fd42c247c41e8569d21a26 Mon Sep 17 00:00:00 2001
+From 85c4dadde0ebd0a2b127edd24fa10e9067dc37b9 Mon Sep 17 00:00:00 2001
 From: "pj.chen" <chen.pj@inventec.com>
 Date: Wed, 2 Mar 2022 07:08:05 +0000
-Subject: [PATCH 2/5] Common - Add host-power-off and host-power-on hook
+Subject: [PATCH 2/7] Common - Add host-power-off and host-power-on hook
  service
 
 Symptom/Reason:
@@ -28,15 +28,17 @@ Mar 23 05:27:09 transformers systemd[1]: Starting System unit to for host power 
 Mar 23 05:27:09 transformers host-power-on.sh[2317]: host-power-on start
 Mar 23 05:27:20 transformers systemd[1]: host-power-on.service: Succeeded.
 Mar 23 05:27:20 transformers systemd[1]: Finished System unit to for host power on.
+
+%% original patch: 0002-Common-Add-host-power-off-and-host-power-on-hook-ser.patch
 ---
  src/power_control.cpp | 88 ++++++++++++++++++++++++++++++++-----------
  1 file changed, 67 insertions(+), 21 deletions(-)
 
 diff --git a/src/power_control.cpp b/src/power_control.cpp
-index 3e0892a..1965afc 100644
+index 492d9d9..75d60fa 100644
 --- a/src/power_control.cpp
 +++ b/src/power_control.cpp
-@@ -1659,12 +1659,69 @@ static void sioPowerGoodWatchdogTimerStart()
+@@ -1679,12 +1679,69 @@ static void sioPowerGoodWatchdogTimerStart()
      });
  }
  
@@ -106,7 +108,7 @@ index 3e0892a..1965afc 100644
              setPowerState(PowerState::off);
              // DC power is unexpectedly lost, beep
              beep(beepPowerFail);
-@@ -1730,6 +1787,7 @@ static void powerStateWaitForPSPowerOK(const Event event)
+@@ -1764,6 +1821,7 @@ static void powerStateWaitForPSPowerOK(const Event event)
              }
              else
              {
@@ -114,7 +116,7 @@ index 3e0892a..1965afc 100644
                  setPowerState(PowerState::on);
              }
              break;
-@@ -1740,6 +1798,7 @@ static void powerStateWaitForPSPowerOK(const Event event)
+@@ -1774,6 +1832,7 @@ static void powerStateWaitForPSPowerOK(const Event event)
              break;
          case Event::sioPowerGoodAssert:
              psPowerOKWatchdogTimer.cancel();
@@ -122,7 +124,7 @@ index 3e0892a..1965afc 100644
              setPowerState(PowerState::on);
              break;
          default:
-@@ -1755,6 +1814,7 @@ static void powerStateWaitForSIOPowerGood(const Event event)
+@@ -1789,6 +1848,7 @@ static void powerStateWaitForSIOPowerGood(const Event event)
      {
          case Event::sioPowerGoodAssert:
              sioPowerGoodWatchdogTimer.cancel();
@@ -130,7 +132,7 @@ index 3e0892a..1965afc 100644
              setPowerState(PowerState::on);
              break;
          case Event::sioPowerGoodWatchdogTimerExpired:
-@@ -1781,6 +1841,7 @@ static void powerStateOff(const Event event)
+@@ -1815,6 +1875,7 @@ static void powerStateOff(const Event event)
              }
              else
              {
@@ -138,7 +140,7 @@ index 3e0892a..1965afc 100644
                  setPowerState(PowerState::on);
              }
              break;
-@@ -1789,6 +1850,7 @@ static void powerStateOff(const Event event)
+@@ -1824,6 +1885,7 @@ static void powerStateOff(const Event event)
              setPowerState(PowerState::waitForPSPowerOK);
              break;
          case Event::sioPowerGoodAssert:
@@ -146,7 +148,7 @@ index 3e0892a..1965afc 100644
              setPowerState(PowerState::on);
              break;
          case Event::powerButtonPressed:
-@@ -1814,6 +1876,7 @@ static void powerStateTransitionToOff(const Event event)
+@@ -1849,6 +1911,7 @@ static void powerStateTransitionToOff(const Event event)
          case Event::psPowerOKDeAssert:
              // Cancel any GPIO assertions held during the transition
              gpioAssertTimer.cancel();
@@ -154,7 +156,7 @@ index 3e0892a..1965afc 100644
              setPowerState(PowerState::off);
              break;
          default:
-@@ -1829,6 +1892,7 @@ static void powerStateGracefulTransitionToOff(const Event event)
+@@ -1864,6 +1927,7 @@ static void powerStateGracefulTransitionToOff(const Event event)
      {
          case Event::psPowerOKDeAssert:
              gracefulPowerOffTimer.cancel();
@@ -162,7 +164,7 @@ index 3e0892a..1965afc 100644
              setPowerState(PowerState::off);
              break;
          case Event::gracefulPowerOffTimerExpired:
-@@ -1902,6 +1966,7 @@ static void powerStateTransitionToCycleOff(const Event event)
+@@ -1938,6 +2002,7 @@ static void powerStateTransitionToCycleOff(const Event event)
          case Event::psPowerOKDeAssert:
              // Cancel any GPIO assertions held during the transition
              gpioAssertTimer.cancel();
@@ -170,7 +172,7 @@ index 3e0892a..1965afc 100644
              setPowerState(PowerState::cycleOff);
              powerCycleTimerStart();
              break;
-@@ -1918,6 +1983,7 @@ static void powerStateGracefulTransitionToCycleOff(const Event event)
+@@ -1954,6 +2019,7 @@ static void powerStateGracefulTransitionToCycleOff(const Event event)
      {
          case Event::psPowerOKDeAssert:
              gracefulPowerOffTimer.cancel();
@@ -178,7 +180,7 @@ index 3e0892a..1965afc 100644
              setPowerState(PowerState::cycleOff);
              powerCycleTimerStart();
              break;
-@@ -1959,6 +2025,7 @@ static void powerStateCheckForWarmReset(const Event event)
+@@ -1995,6 +2061,7 @@ static void powerStateCheckForWarmReset(const Event event)
              break;
          case Event::psPowerOKDeAssert:
              warmResetCheckTimer.cancel();
@@ -186,7 +188,7 @@ index 3e0892a..1965afc 100644
              setPowerState(PowerState::off);
              // DC power is unexpectedly lost, beep
              beep(beepPowerFail);
-@@ -2031,27 +2098,6 @@ static void resetButtonHandler(bool state)
+@@ -2067,27 +2134,6 @@ static void resetButtonHandler(bool state)
      }
  }
  
@@ -215,5 +217,5 @@ index 3e0892a..1965afc 100644
  {
      conn->async_method_call(
 -- 
-2.33.0
+2.34.1
 
