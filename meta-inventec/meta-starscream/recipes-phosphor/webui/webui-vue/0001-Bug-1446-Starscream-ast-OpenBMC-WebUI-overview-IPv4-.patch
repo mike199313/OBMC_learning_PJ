@@ -1,8 +1,8 @@
-From 8349bc3ccd2ecf6665a15b32f536c501ee8edc11 Mon Sep 17 00:00:00 2001
+From 5df92f3eceb8ee26a33855b992469cce190883f3 Mon Sep 17 00:00:00 2001
 From: Jason Lin <lin.jasonyy@inventec.com>
 Date: Wed, 14 Dec 2022 10:42:55 +0800
-Subject: [PATCH] Bug 1446 - [Starscream-ast][OpenBMC][WebUI][overview] IPv4
- display "--" in network infomation section
+Subject: [PATCH 8/8] Bug 1446 - [Starscream-ast][OpenBMC][WebUI][overview]
+ IPv4 display "--" in network infomation section
 
 Symptom/Reason:
 	The IPv4 static address on Starscream is eth1.
@@ -15,6 +15,8 @@ Solution/Change:
 
 Entry Test:
 	https://${ip}/#/
+
+%% original patch: 0001-Bug-1446-Starscream-ast-OpenBMC-WebUI-overview-IPv4-.patch
 ---
  src/views/Overview/OverviewNetwork.vue | 2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
@@ -32,3 +34,6 @@ index b81e5c7..8da12d6 100644
      },
    },
    created() {
+-- 
+2.34.1
+

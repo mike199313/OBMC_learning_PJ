@@ -1,0 +1,711 @@
+From a0a2556efafbf739b7ee3511145c9b7e072e6fbd Mon Sep 17 00:00:00 2001
+From: Vic Ye <ye.vic@inventec.com>
+Date: Tue, 23 May 2023 16:41:51 +0800
+Subject: [PATCH 7/8] video recorder changes
+
+---
+ src/locales/en-US.json                        |  17 +-
+ src/locales/ru-RU.json                        |  17 +-
+ src/store/index.js                            |   2 +
+ .../modules/Operations/KvmConsoleStore.js     |  83 ++++++
+ src/views/Operations/Kvm/KvmConsole.vue       | 240 +++++++++++++++++-
+ .../Kvm/ModalStartVideoRecording.vue          | 175 +++++++++++++
+ 6 files changed, 518 insertions(+), 16 deletions(-)
+ create mode 100644 src/store/modules/Operations/KvmConsoleStore.js
+ create mode 100644 src/views/Operations/Kvm/ModalStartVideoRecording.vue
+
+diff --git a/src/locales/en-US.json b/src/locales/en-US.json
+index d331993..f0ab790 100644
+--- a/src/locales/en-US.json
++++ b/src/locales/en-US.json
+@@ -23,7 +23,8 @@
+             "selected": "Selected",
+             "ok": "OK",
+             "warning": "Warning",
+-            "critical": "Critical"
++            "critical": "Critical",
++            "start": "Start"
+         },
+         "ariaLabel": {
+             "clearSearch": "Clear search input",
+@@ -485,10 +486,22 @@
+     "pageKvm": {
+         "openNewTab": "Open in new tab",
+         "buttonCtrlAltDelete": "Send Ctrl+Alt+Delete",
++        "buttonVideoRecordStart": "Start iKVM recording",
++        "buttonVideoRecordStop": "Stop iKVM recording",
++        "modal": {
++          "startVideoRecordingTitle": "ikvm recording",
++          "colorQuality": "Color quality",
++          "FPS": "Frames per second",
++          "timeOfPart": "Time of part (in seconds)",
++          "autoDownload": "Auto download"
++        },
+         "status": "Status",
+         "connected": "Connected",
+         "connecting": "Connecting",
+-        "disconnected": "Disconnected"
++        "disconnected": "Disconnected",
++        "toast": {
++          "invalidVideoParams": "Invalid video parameters are used."
++        }
+     },
+     "pageLdap": {
+         "pageDescription": "Configure LDAP settings and manage role groups",
+diff --git a/src/locales/ru-RU.json b/src/locales/ru-RU.json
+index 3ff0e6a..bebc00c 100644
+--- a/src/locales/ru-RU.json
++++ b/src/locales/ru-RU.json
+@@ -23,7 +23,8 @@
+             "selected": "Выбрано",
+             "ok": "Хорошо",
+             "warning": "Предупреждение",
+-            "critical": "Критический"
++            "critical": "Критический",
++            "start": "Старт"
+         },
+         "ariaLabel": {
+             "clearSearch": "Очистить поле поиска",
+@@ -485,10 +486,22 @@
+     "pageKvm": {
+         "openNewTab": "Открыть окно в новой вкладке",
+         "buttonCtrlAltDelete": "Послать Ctrl+Alt+Delete",
++        "buttonVideoRecordStart": "Начать запись видео",
++        "buttonVideoRecordStop": "Завершить запись видео",
++        "modal": {
++          "startVideoRecordingTitle": "Начать запись видео",
++          "colorQuality": "Качество цветопередачи",
++          "FPS": "Кадров в секунду",
++          "timeOfPart": "Продолжительность одного интервала (в секундах)",
++          "autoDownload": "Автоматическое скачивание видео"
++        },
+         "status": "Статус",
+         "connected": "Подключено",
+         "connecting": "Подключение",
+-        "disconnected": "Отключено"
++        "disconnected": "Отключено",
++        "toast": {
++          "invalidVideoParams": "Выбраны недопустимые параметры записи видео."
++        }
+     },
+     "pageLdap": {
+         "pageDescription": "Настройка параметров LDAP и управление группами",
+diff --git a/src/store/index.js b/src/store/index.js
+index c0b7894..04159a5 100644
+--- a/src/store/index.js
++++ b/src/store/index.js
+@@ -28,6 +28,7 @@ import AssemblyStore from './modules/HardwareStatus/AssemblyStore';
+ import PostCodeLogsStore from './modules/Logs/PostCodeLogsStore';
+ import PoliciesStore from './modules/SecurityAndAccess/PoliciesStore';
+ import FactoryResetStore from './modules/Operations/FactoryResetStore';
++import KvmConsoleStore from './modules/Operations/KvmConsoleStore';
+ import KeyClearStore from './modules/Operations/KeyClearStore';
+ 
+ import WebSocketPlugin from './plugins/WebSocketPlugin';
+@@ -70,6 +71,7 @@ export default new Vuex.Store({
+     virtualMedia: VirtualMediaStore,
+     policies: PoliciesStore,
+     factoryReset: FactoryResetStore,
++    kvmConsole: KvmConsoleStore,
+     keyClear: KeyClearStore,
+   },
+   plugins: [WebSocketPlugin],
+diff --git a/src/store/modules/Operations/KvmConsoleStore.js b/src/store/modules/Operations/KvmConsoleStore.js
+new file mode 100644
+index 0000000..b9ccd91
+--- /dev/null
++++ b/src/store/modules/Operations/KvmConsoleStore.js
+@@ -0,0 +1,83 @@
++import api from '@/store/api';
++import i18n from '@/i18n';
++
++const KvmConsoleStore = {
++  namespaced: true,
++  state: {
++    allVideoFiles: [],
++    isRecording: null,
++    timeStamp: '',
++  },
++  getters: {
++    allVideoFiles: (state) => state.allVideoFiles,
++    isRecording: (state) => state.isRecording,
++    timeStamp: (state) => state.timeStamp,
++  },
++  mutations: {
++    setVideoFiles(state, videoFiles) {
++      state.allVideoFiles = videoFiles;
++    },
++    setVideoStatus: (state, theValue) => {
++      console.log(' setvideo timestamp to ' + theValue[0]);
++      console.log(' setvideo status to ' + theValue[1]);
++      state.timeStamp = theValue[0];
++      state.isRecording = theValue[1];
++    },
++  },
++  actions: {
++    async getVideoStatus({ commit }) {
++      return await api
++        .get('/kvm/video/status')
++        .then(({ data: { Time = '', Status = false } = {} }) => {
++          console.log(' server get video status = ' + Status);
++          console.log(' server get video time = ' + Time);
++          commit('setVideoStatus', [Time, Status]);
++        })
++        .catch((error) => console.log(error));
++    },
++    async listVideoFiles({ commit }) {
++      return await api
++        .get('/kvm/video/list')
++        .then(({ data: { Members = [] } = {} }) => {
++          const videoFiles = Members.map((data) => {
++            const { File } = data;
++            return {
++              file: File,
++            };
++          });
++          commit('setVideoFiles', videoFiles);
++        })
++        .catch((error) => {
++          console.log('Video Files Data:', error);
++        });
++    },
++    async startRecording({ dispatch }, { timeSlice, FPS }) {
++      const apiPath = '/kvm/video/start';
++      return await api
++        .patch(apiPath, {
++          HighQuality: false,
++          TimeOfPart: timeSlice,
++          FPS: FPS,
++        })
++        .then(() => dispatch('listVideoFiles'))
++        .catch((error) => {
++          console.log('error', error);
++          throw new Error(i18n.t('pageKvm.toast.invalidVideoParams'));
++        });
++    },
++    async stopRecording({ dispatch }) {
++      const apiPath = '/kvm/video/stop';
++      return await api.post(apiPath).then(() => dispatch('listVideoFiles'));
++    },
++    async clearVideoFileList({ dispatch }) {
++      const apiPath = '/kvm/video/list/clear';
++      return await api.post(apiPath).then(() => dispatch('listVideoFiles'));
++    },
++    async deleteVideoFile({ dispatch }, { video_file }) {
++      const apiPath = '/kvm/remove/video/' + video_file;
++      return await api.delete(apiPath).then(() => dispatch('listVideoFiles'));
++    },
++  },
++};
++
++export default KvmConsoleStore;
+diff --git a/src/views/Operations/Kvm/KvmConsole.vue b/src/views/Operations/Kvm/KvmConsole.vue
+index 212514d..e4499ef 100644
+--- a/src/views/Operations/Kvm/KvmConsole.vue
++++ b/src/views/Operations/Kvm/KvmConsole.vue
+@@ -2,11 +2,8 @@
+   <div :class="marginClass">
+     <div ref="toolbar" class="kvm-toolbar">
+       <b-row class="d-flex">
+-        <b-col class="d-flex flex-column justify-content-end" cols="4">
+-          <dl class="mb-2" sm="2" md="2">
+-            <dt class="d-inline font-weight-bold mr-1">
+-              {{ $t('pageKvm.status') }}:
+-            </dt>
++        <b-col class="d-flex flex-column justify-content-center" cols="6">
++          <dl class="mb-1" sm="2" md="1">
+             <dd class="d-inline">
+               <status-icon :status="serverStatusIcon" />
+               <span class="d-none d-md-inline"> {{ serverStatus }}</span>
+@@ -14,15 +11,43 @@
+           </dl>
+         </b-col>
+ 
+-        <b-col class="d-flex justify-content-end pr-1">
++        <b-col class="d-flex justify-content-end">
++          <!-- <b-button variant="link" type="button" @click="screenshot">
++            <icon-camera :title="$t('pageKvm.buttonCamera')" />
++          </b-button> -->
++          <b-button
++            v-if="isConnected"
++            variant="link"
++            type="button"
++            @click="toggleRecord()"
++          >
++            <icon-stop
++              v-if="isVideoRecordStarted"
++              :title="$t('pageKvm.buttonRecordStop')"
++            >
++            </icon-stop>
++            <icon-camera-action
++              v-if="!isVideoRecordStarted"
++              :title="$t('pageKvm.buttonRecordStart')"
++            />
++          </b-button>
++          <b-button variant="link" type="button" @click="toggleDownload">
++            <icon-chip
++              v-if="downloadMode != 0"
++              :title="$t('pageKvm.buttonDownloadStop')"
++            />
++            <icon-download
++              v-if="downloadMode == 0"
++              :title="$t('pageKvm.buttonDownloadAll')"
++            />
++          </b-button>
+           <b-button
+             v-if="isConnected"
+             variant="link"
+             type="button"
+             @click="sendCtrlAltDel"
+           >
+-            <icon-arrow-down />
+-            {{ $t('pageKvm.buttonCtrlAltDelete') }}
++            <icon-restart :title="$t('pageKvm.buttonCtrlAltDelete')" />
+           </b-button>
+           <b-button
+             v-if="!isFullWindow"
+@@ -30,31 +55,53 @@
+             type="button"
+             @click="openConsoleWindow()"
+           >
+-            <icon-launch />
+-            {{ $t('pageKvm.openNewTab') }}
++            <icon-launch :title="$t('pageKvm.openNewTab')" />
+           </b-button>
+         </b-col>
+       </b-row>
++      <modal-start-video-recording
++        :video-recording="modalStartVideoRecording"
++        @ok="onModalOk"
++      />
+     </div>
+     <div id="terminal-kvm" ref="panel" :class="terminalClass"></div>
+   </div>
+ </template>
+ 
+ <script>
++import Axios from 'axios';
+ import RFB from '@novnc/novnc/core/rfb';
+ import StatusIcon from '@/components/Global/StatusIcon';
+ import IconLaunch from '@carbon/icons-vue/es/launch/20';
+-import IconArrowDown from '@carbon/icons-vue/es/arrow--down/16';
++import IconDownload from '@carbon/icons-vue/es/download/20';
++import IconChip from '@carbon/icons-vue/es/chip/20';
++import IconRestart from '@carbon/icons-vue/es/restart/20';
++import IconCameraAction from '@carbon/icons-vue/es/camera--action/20';
++import IconStop from '@carbon/icons-vue/es/stop/20';
+ import { throttle } from 'lodash';
+ import { mapState } from 'vuex';
++import ModalStartVideoRecording from './ModalStartVideoRecording';
++import BVToastMixin from '@/components/Mixins/BVToastMixin';
+ 
+ const Connecting = 0;
+ const Connected = 1;
+ const Disconnected = 2;
++const MinFileName = '';
++const MaxFileName = 'x'; // greater than 'video-'
+ 
+ export default {
+   name: 'KvmConsole',
+-  components: { StatusIcon, IconLaunch, IconArrowDown },
++  components: {
++    StatusIcon,
++    IconLaunch,
++    IconDownload,
++    IconChip,
++    IconRestart,
++    IconCameraAction,
++    IconStop,
++    ModalStartVideoRecording,
++  },
++  mixins: [BVToastMixin],
+   props: {
+     isFullWindow: {
+       type: Boolean,
+@@ -71,6 +118,14 @@ export default {
+       status: Connecting,
+       convasRef: null,
+       resizeKvmWindow: null,
++      timer: '',
++      url: `https://${window.location.host}/kvm/download/video/`,
++      isVideoRecordStarted: false,
++      downloadMode: 0, // 0 for no download, 1 for download, 2 for downloadAll
++      downloadStart: MaxFileName,
++      downloadEnd: MinFileName,
++      downloadVideoInProgress: false,
++      modalStartVideoRecording: null,
+     };
+   },
+   computed: {
+@@ -91,6 +146,15 @@ export default {
+       }
+       return this.$t('pageKvm.connecting');
+     },
++    videoFiles() {
++      return this.$store.getters['kvmConsole/allVideoFiles'];
++    },
++    videoStatus() {
++      return this.$store.getters['kvmConsole/isRecording'];
++    },
++    videoTimeStamp() {
++      return 'video_' + this.$store.getters['kvmConsole/timeStamp'];
++    },
+   },
+   watch: {
+     consoleWindow() {
+@@ -99,6 +163,10 @@ export default {
+   },
+   created() {
+     this.$store.dispatch('global/getSystemInfo');
++    this.timer = setInterval(this.fetchVideoList, 10000);
++    this.$store.dispatch('kvmConsole/getVideoStatus');
++    this.isVideoRecordStarted = this.$store.getters['kvmConsole/isRecording'];
++    console.log('isVideoRecordStarted = ' + this.isVideoRecordStarted);
+   },
+   mounted() {
+     this.openTerminal();
+@@ -106,6 +174,7 @@ export default {
+   beforeDestroy() {
+     window.removeEventListener('resize', this.resizeKvmWindow);
+     this.closeTerminal();
++    this.cancelAutoUpdate();
+   },
+   methods: {
+     sendCtrlAltDel() {
+@@ -177,6 +246,153 @@ export default {
+         'directories=no,titlebar=no,toolbar=no,location=no,status=no,menubar=no,scrollbars=no,resizable=yes,width=700,height=550'
+       );
+     },
++    forceFileDownload(response, video_file) {
++      const url = window.URL.createObjectURL(new Blob([response.data]));
++      const link = document.createElement('a');
++      link.href = url;
++      link.setAttribute('download', video_file); //or any other extension
++      document.body.appendChild(link);
++      link.click();
++    },
++    downloadWithVueResource(video_file) {
++      this.$http({
++        method: 'get',
++        url: this.url + video_file,
++        responseType: 'arraybuffer',
++      })
++        .then((response) => {
++          this.forceFileDownload(response, video_file);
++        })
++        .catch(() => console.log('error occured'))
++        .finally(() => {
++          //console.log('req done !!!');
++          this.$store.dispatch('kvmConsole/deleteVideoFile', {
++            video_file,
++          });
++        });
++    },
++    downloadWithAxios(video_file) {
++      Axios({
++        method: 'get',
++        url: this.url + video_file,
++        responseType: 'arraybuffer',
++      })
++        .then((response) => {
++          this.forceFileDownload(response, video_file);
++        })
++        .catch(() => console.log('Download via Axios has error'))
++        .finally(() => {
++          this.$store.dispatch('kvmConsole/deleteVideoFile', { video_file });
++        });
++    },
++    fetchVideoList() {
++      this.$store.dispatch('kvmConsole/getVideoStatus').finally(() => {
++        this.isVideoRecordStarted = this.$store.getters[
++          'kvmConsole/isRecording'
++        ];
++        console.log('this.isVideoRecordStarted=' + this.isVideoRecordStarted);
++        console.log('downloadMode = ' + this.downloadMode);
++        console.log('downloadStart = ' + this.downloadStart);
++        console.log('downloadEnd = ' + this.downloadEnd);
++        if (this.downloadMode != 0) {
++          if (!this.downloadVideoInProgress) {
++            this.downloadVideoInProgress = true;
++            this.$store.dispatch('kvmConsole/listVideoFiles').finally(() => {
++              const files = this.videoFiles;
++              let index = 0;
++              let found = false;
++              while (index < files.length) {
++                let video_file = files[index]['file'];
++                index = index + 1;
++                if (
++                  video_file >= this.downloadStart &&
++                  video_file <= this.downloadEnd
++                ) {
++                  this.downloadWithAxios(video_file);
++                  console.log('video_file=' + video_file);
++                  found = true;
++                  break;
++                } else if (this.downloadMode == 1) {
++                  console.log('skip video_file: ' + video_file);
++                }
++              }
++              // reset range only if download ends
++              if (!found && this.downloadEnd != MaxFileName) {
++                this.downloadMode = 0;
++                this.downloadStart = MaxFileName;
++                this.downloadEnd = MinFileName;
++              }
++            });
++            this.downloadVideoInProgress = false;
++          }
++        }
++      });
++    },
++    cancelAutoUpdate() {
++      clearInterval(this.timer);
++      this.downloadMode = 0;
++    },
++    initModaStartVideoRecording(startVideoRecording = null) {
++      this.modalStartVideoRecording = startVideoRecording;
++      this.$bvModal.show('start-video-recording');
++    },
++    toggleRecord() {
++      console.log(
++        'toggleRecord: isVideoRecordStarted=',
++        this.isVideoRecordStarted
++      );
++      if (!this.isVideoRecordStarted) {
++        this.initModaStartVideoRecording(null);
++      } else {
++        this.$store
++          .dispatch('kvmConsole/stopRecording')
++          .then(() => {
++            this.$store.dispatch('kvmConsole/getVideoStatus');
++          })
++          .finally(() => {
++            this.isVideoRecordStarted = this.$store.getters[
++              'kvmConsole/isRecording'
++            ];
++
++            if (this.downloadMode == 1) {
++              this.downloadEnd =
++                'video_' + this.$store.getters['kvmConsole/timeStamp'];
++            }
++          });
++      }
++    },
++    toggleDownload() {
++      if (this.downloadMode == 0) {
++        this.downloadMode = 2;
++        this.downloadStart = MinFileName;
++        this.downloadEnd = MaxFileName;
++      } else {
++        this.downloadEnd =
++          'video_' + this.$store.getters['kvmConsole/timeStamp'];
++      }
++      this.fetchVideoList();
++    },
++    onModalOk({ timeSlice, FPS, downloadClean }) {
++      console.log('Download Clean:' + downloadClean);
++      if (downloadClean) {
++        this.downloadMode = 1;
++        this.$store.dispatch('kvmConsole/getVideoStatus').finally(() => {
++          this.downloadStart =
++            'video_' + this.$store.getters['kvmConsole/timeStamp'];
++          console.log('downloadStart := ' + this.downloadStart);
++          this.downloadEnd = MaxFileName;
++        });
++      }
++      this.$store
++        .dispatch('kvmConsole/startRecording', {
++          timeSlice,
++          FPS,
++        })
++        .then(() => {
++          this.isVideoRecordStarted = true;
++        })
++        .catch(({ message }) => this.errorToast(message));
++    },
+   },
+ };
+ </script>
+diff --git a/src/views/Operations/Kvm/ModalStartVideoRecording.vue b/src/views/Operations/Kvm/ModalStartVideoRecording.vue
+new file mode 100644
+index 0000000..8ce715f
+--- /dev/null
++++ b/src/views/Operations/Kvm/ModalStartVideoRecording.vue
+@@ -0,0 +1,175 @@
++<template>
++  <b-modal
++    id="start-video-recording"
++    ref="modal"
++    @ok="onOk"
++    @hidden="resetForm"
++    @shown="fillForm"
++  >
++    <template #modal-title>
++      {{ $t('pageKvm.modal.startRecordingTitle') }}
++    </template>
++    <b-form>
++      <b-form-group :label="$t('pageKvm.modal.FPS')" label-for="FPS">
++        <b-form-input
++          id="FPS"
++          v-model="form.FPS"
++          type="number"
++          :state="getValidationState($v.form.FPS)"
++          @input="$v.form.FPS.$touch()"
++        />
++        <b-form-invalid-feedback role="alert">
++          <template v-if="!$v.form.FPS.required">
++            {{ $t('global.form.fieldRequired') }}
++          </template>
++          <template v-else-if="!$v.form.FPS.minValue || !$v.form.FPS.maxValue">
++            {{ $t('global.form.valueMustBeBetween', { min: 1, max: 15 }) }}
++          </template>
++        </b-form-invalid-feedback>
++      </b-form-group>
++      <b-form-group
++        :label="$t('pageKvm.modal.timeSlice')"
++        label-for="timeSlice"
++      >
++        <b-form-input
++          id="timeSlice"
++          v-model="form.timeSlice"
++          type="number"
++          :state="getValidationState($v.form.timeSlice)"
++          @input="$v.form.timeSlice.$touch()"
++        />
++        <b-form-invalid-feedback role="alert">
++          <template v-if="!$v.form.timeSlice.required">
++            {{ $t('global.form.fieldRequired') }}
++          </template>
++          <template
++            v-else-if="
++              !$v.form.timeSlice.minValue || !$v.form.timeSlice.maxValue
++            "
++          >
++            {{ $t('global.form.valueMustBeBetween', { min: 1, max: 3600 }) }}
++          </template>
++        </b-form-invalid-feedback>
++      </b-form-group>
++      <b-form-group
++        :label="$t('pageKvm.modal.downloadClean')"
++        label-for="downloadClean"
++      >
++        <b-form-select
++          id="downloadClean"
++          v-model="form.downloadClean"
++          :options="downloadCleanOptions"
++          :state="getValidationState($v.form.downloadClean)"
++          @input="$v.form.downloadClean.$touch()"
++        />
++      </b-form-group>
++    </b-form>
++    <template #modal-ok>
++      {{ $t('global.action.start') }}
++    </template>
++    <template #modal-cancel>
++      {{ $t('global.action.cancel') }}
++    </template>
++  </b-modal>
++</template>
++
++<script>
++import { required, minValue, maxValue } from 'vuelidate/lib/validators';
++import VuelidateMixin from '@/components/Mixins/VuelidateMixin.js';
++
++export default {
++  mixins: [VuelidateMixin],
++  props: {
++    videoRecording: {
++      type: Object,
++      default: null,
++      validator: (prop) => {
++        if (prop === null) return true;
++        return (
++          Object.prototype.hasOwnProperty.call(prop, 'timeSlice') &&
++          Object.prototype.hasOwnProperty.call(prop, 'FPS') &&
++          Object.prototype.hasOwnProperty.call(prop, 'downloadClean')
++        );
++      },
++    },
++  },
++  data() {
++    return {
++      form: {
++        timeSlice: null,
++        FPS: null,
++        downloadClean: false,
++      },
++    };
++  },
++  computed: {
++    downloadCleanOptions() {
++      return [
++        { text: 'False', value: false },
++        { text: 'True', value: true },
++      ];
++    },
++  },
++  validations() {
++    return {
++      form: {
++        timeSlice: {
++          required,
++          minValue: minValue(10),
++          maxValue: maxValue(3600),
++        },
++        FPS: {
++          required,
++          minValue: minValue(1),
++          maxValue: maxValue(15),
++        },
++        downloadClean: {
++          required,
++        },
++      },
++    };
++  },
++  methods: {
++    handleSubmit() {
++      this.$v.$touch();
++      if (this.$v.$invalid) return;
++      const FPS = Number(this.form.FPS);
++      if (this.form.FPS.length > 5 || FPS < 1 || FPS > 15) return;
++      const timeSlice = Number(this.form.timeSlice);
++      if (this.form.timeSlice.length > 5 || timeSlice < 10 || timeSlice > 3600)
++        return;
++      const downloadClean = this.form.downloadClean == true;
++      this.$emit('ok', {
++        timeSlice: timeSlice,
++        FPS: FPS,
++        downloadClean: downloadClean,
++      });
++      this.closeModal();
++    },
++    closeModal() {
++      this.$nextTick(() => {
++        this.$refs.modal.hide();
++      });
++    },
++    resetForm() {
++      this.$v.$reset();
++    },
++    fillForm() {
++      if (this.videoRecording) {
++        this.form.timeSlice = this.videoRecording.timeSlice;
++        this.form.FPS = this.videoRecording.FPS.toString();
++        this.form.downloadClean = this.videoRecording.downloadClean == true;
++      } else {
++        this.form.timeSlice = '60';
++        this.form.FPS = '5';
++        this.form.downloadClean = this.downloadCleanOptions[0].value;
++      }
++    },
++    onOk(bvModalEvt) {
++      // prevent modal close
++      bvModalEvt.preventDefault();
++      this.handleSubmit();
++    },
++  },
++};
++</script>
+-- 
+2.25.1

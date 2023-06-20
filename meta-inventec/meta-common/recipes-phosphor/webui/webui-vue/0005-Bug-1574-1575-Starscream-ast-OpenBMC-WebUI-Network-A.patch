@@ -1,8 +1,9 @@
-From 831507abcf6c7417f23c73baa59be2eccf87f0f5 Mon Sep 17 00:00:00 2001
+From 8cf88eaaeca84a8f76062b2cf7304b914bd73091 Mon Sep 17 00:00:00 2001
 From: Jason Lin <lin.jasonyy@inventec.com>
 Date: Thu, 9 Mar 2023 02:16:54 +0000
-Subject: [PATCH] Bug 1574, 1575 - [Starscream-ast][OpenBMC][WebUI][Network]
- Add DNS entry to unexpected interface.
+Subject: [PATCH 6/8] Bug 1574, 1575 -
+ [Starscream-ast][OpenBMC][WebUI][Network] Add DNS entry to unexpected
+ interface.
 
 Symptom/Reason:
 	After adding/deleting Static DNS IP address, the interface will automatically reset to the first interface, eth0 in this case
@@ -16,15 +17,17 @@ Solution/Change:
 Entry Test:
 	1. settings >> network >> eth1
 	2. add/delete Static DNS IP address
+
+%% original patch: 0008-Bug-1574-1575-Starscream-ast-OpenBMC-WebUI-Network-A.patch
 ---
  src/store/modules/Settings/NetworkStore.js | 6 +++---
  1 file changed, 3 insertions(+), 3 deletions(-)
 
 diff --git a/src/store/modules/Settings/NetworkStore.js b/src/store/modules/Settings/NetworkStore.js
-index 125eca7..c65c5e5 100644
+index 5c78d10..ce65c74 100644
 --- a/src/store/modules/Settings/NetworkStore.js
 +++ b/src/store/modules/Settings/NetworkStore.js
-@@ -57,7 +57,7 @@ const NetworkStore = {
+@@ -58,7 +58,7 @@ const NetworkStore = {
        (state.selectedInterfaceIndex = selectedInterfaceIndex),
    },
    actions: {
@@ -33,7 +36,7 @@ index 125eca7..c65c5e5 100644
        return await api
          .get('/redfish/v1/Managers/bmc/EthernetInterfaces')
          .then((response) =>
-@@ -76,8 +76,8 @@ const NetworkStore = {
+@@ -77,8 +77,8 @@ const NetworkStore = {
            const ethernetData = ethernetInterfaces.map(
              (ethernetInterface) => ethernetInterface.data
            );
@@ -44,3 +47,6 @@ index 125eca7..c65c5e5 100644
            commit('setEthernetData', ethernetData);
            commit('setFirstInterfaceId', firstInterfaceId);
            commit('setSelectedInterfaceId', firstInterfaceId);
+-- 
+2.34.1
+

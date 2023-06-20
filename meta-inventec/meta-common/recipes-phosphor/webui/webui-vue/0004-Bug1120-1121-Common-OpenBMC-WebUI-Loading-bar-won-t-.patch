@@ -1,0 +1,51 @@
+From 296990c374fafba06cc7b4313854f3074e6f56a0 Mon Sep 17 00:00:00 2001
+From: Jason Lin <lin.jasonyy@inventec.com>
+Date: Thu, 15 Sep 2022 22:46:07 +0800
+Subject: [PATCH 5/8] Bug1120,1121-[Common][OpenBMC][WebUI]Loading bar won't
+ dispear in overview page.
+
+Symptom/Reason:
+    The Promise object does not receive a message of resolve or reject, so the stopping function of the loading bar will not execute.
+
+Root Cause:
+    The dump section of the overview page will not be shown in specific circumstances, but the Promise of dump section does not support this mechanism.
+
+Solution/Change:
+    Let the Promise only append to the waiting list if the dump section is confirmed to show.
+
+Entry Test:
+    https://{ip}/#/
+---
+ src/store/modules/ResourceManagement/PowerControlStore.js | 2 +-
+ src/views/Overview/OverviewQuickLinks.vue                 | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/store/modules/ResourceManagement/PowerControlStore.js b/src/store/modules/ResourceManagement/PowerControlStore.js
+index 366d3bd..82d7718 100644
+--- a/src/store/modules/ResourceManagement/PowerControlStore.js
++++ b/src/store/modules/ResourceManagement/PowerControlStore.js
+@@ -37,7 +37,7 @@ const PowerControlStore = {
+       const collection = await dispatch('getChassisCollection');
+       if (!collection || collection.length === 0) return;
+       return await api
+-        .get(`${collection[0]}`)
++        .get('/redfish/v1/Chassis/motherboard/Power')
+         .then((response) => api.get(response.data.Power['@odata.id']))
+         .then((response) => {
+           const powerControl = response.data.PowerControl;
+diff --git a/src/views/Overview/OverviewQuickLinks.vue b/src/views/Overview/OverviewQuickLinks.vue
+index bc579b0..0742fd8 100644
+--- a/src/views/Overview/OverviewQuickLinks.vue
++++ b/src/views/Overview/OverviewQuickLinks.vue
+@@ -41,7 +41,7 @@ export default {
+     },
+   },
+   created() {
+-    Promise.all([this.$store.dispatch('global/getBmcTime')]).finally(() => {
++    this.$store.dispatch('global/getBmcTime').finally(() => {
+       this.$root.$emit('overview-quicklinks-complete');
+     });
+   },
+-- 
+2.34.1
+

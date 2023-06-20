@@ -1,12 +1,13 @@
-From f445cd7a764d48006ba18c7472db4bbb4646099b Mon Sep 17 00:00:00 2001
+From 5af7c29be8d99bd38223b25c6112b1bdc01883ac Mon Sep 17 00:00:00 2001
 From: Jason Lin <lin.jasonyy@inventec.com>
 Date: Mon, 20 Jun 2022 10:03:40 +0800
-Subject: [PATCH] Bug1059,1060,1062-[Transformers][OpenBMC][WebUI] status
+Subject: [PATCH 1/8] Bug1059,1060,1062-[Transformers][OpenBMC][WebUI] status
  display issue Bug 1059 - [Transformers][OpenBMC][WebUI]Doesn't display
  "Health rollup" status of Memory summary on Inventory and LEDs of WebUI Bug
  1060 - [Transformers][OpenBMC][WebUI]Doesn't display "Manufacturer" of BMC
  manager on Inventory and LEDs of WebUI.
 
+%% original patch: 0002-Bug1059-1060-1062-Transformers-OpenBMC-WebUI-status-.patch
 ---
  src/store/modules/HardwareStatus/BmcStore.js                 | 2 +-
  src/store/modules/HardwareStatus/SystemStore.js              | 2 +-
@@ -41,7 +42,7 @@ index a1394f1..499941e 100644
        system.processorSummaryState = data.ProcessorSummary?.Status?.State;
        system.powerState = data.PowerState;
 diff --git a/src/views/HardwareStatus/Inventory/InventoryTableChassis.vue b/src/views/HardwareStatus/Inventory/InventoryTableChassis.vue
-index b49cec7..d075031 100644
+index 4c557fa..edf54f6 100644
 --- a/src/views/HardwareStatus/Inventory/InventoryTableChassis.vue
 +++ b/src/views/HardwareStatus/Inventory/InventoryTableChassis.vue
 @@ -77,7 +77,7 @@
@@ -54,10 +55,10 @@ index b49cec7..d075031 100644
                  <dt>{{ $t('pageInventory.table.healthRollup') }}:</dt>
                  <dd>{{ dataFormatter(item.healthRollup) }}</dd>
 diff --git a/src/views/HardwareStatus/Inventory/InventoryTableSystem.vue b/src/views/HardwareStatus/Inventory/InventoryTableSystem.vue
-index cf2cf02..c64d118 100644
+index e62f500..d0b2bec 100644
 --- a/src/views/HardwareStatus/Inventory/InventoryTableSystem.vue
 +++ b/src/views/HardwareStatus/Inventory/InventoryTableSystem.vue
-@@ -130,7 +130,7 @@
+@@ -133,7 +133,7 @@
                  <dd>{{ dataFormatter(item.processorSummaryHealth) }}</dd>
                  <!-- Health Rollup -->
                  <dt>{{ $t('pageInventory.table.healthRollup') }}:</dt>
@@ -67,5 +68,5 @@ index cf2cf02..c64d118 100644
                  <dt>{{ $t('pageInventory.table.count') }}:</dt>
                  <dd>{{ dataFormatter(item.processorSummaryCount) }}</dd>
 -- 
-2.33.0
+2.34.1
 
