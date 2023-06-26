@@ -1,4 +1,4 @@
-From 40d8ee54c87566c1650a74400482603ddde843f8 Mon Sep 17 00:00:00 2001
+From 13a77666a97120151823c72413f58b0b943f64c8 Mon Sep 17 00:00:00 2001
 From: Tommy Lin <lin.tommysc@inventec.com>
 Date: Wed, 9 Mar 2022 06:40:49 +0000
 Subject: [PATCH 1/7] Fix IPMI logging service fail to start issue
@@ -16,15 +16,17 @@ Solution/Change:
 Entry Test:
     ipmitool event 2
     ipmitool sel list
+
+%% original patch: 0001-Fix-IPMI-logging-service-fail-to-start-issue.patch
 ---
  src/sel_logger.cpp | 6 ++++++
  1 file changed, 6 insertions(+)
 
 diff --git a/src/sel_logger.cpp b/src/sel_logger.cpp
-index b7f6a77..1a30926 100644
+index b298817..7bd7a57 100644
 --- a/src/sel_logger.cpp
 +++ b/src/sel_logger.cpp
-@@ -70,6 +70,12 @@ struct DBusInternalError final : public sdbusplus::exception_t
+@@ -73,6 +73,12 @@ struct DBusInternalError final : public sdbusplus::exception_t
  #ifndef SEL_LOGGER_SEND_TO_LOGGING_SERVICE
  static bool getSELLogFiles(std::vector<std::filesystem::path>& selLogFiles)
  {
@@ -38,5 +40,5 @@ index b7f6a77..1a30926 100644
      for (const std::filesystem::directory_entry& dirEnt :
           std::filesystem::directory_iterator(selLogDir))
 -- 
-2.33.0
+2.17.1
 

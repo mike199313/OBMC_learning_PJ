@@ -1,4 +1,4 @@
-From bd3619aec4cf464e3f0c37ae570c778f71d45982 Mon Sep 17 00:00:00 2001
+From a4b109c94fbaddb823633a6b9e02ec95f532b000 Mon Sep 17 00:00:00 2001
 From: Tommy Lin <lin.tommysc@inventec.com>
 Date: Wed, 9 Mar 2022 06:28:31 +0000
 Subject: [PATCH 6/7] Add SIGHUP handler to check clear_sel to restart record
@@ -8,8 +8,8 @@ Add SIGHUP handler to check clear_sel to restart record index
 - For 1st event maybe log on IPMI handle of clear log so to restart it
 ---
  include/sel_logger.hpp |  1 +
- src/sel_logger.cpp     | 56 +++++++++++++++++++++++++++++++++++++++---
- 2 files changed, 54 insertions(+), 3 deletions(-)
+ src/sel_logger.cpp     | 58 +++++++++++++++++++++++++++++++++++++++---
+ 2 files changed, 56 insertions(+), 3 deletions(-)
 
 diff --git a/include/sel_logger.hpp b/include/sel_logger.hpp
 index 313e4e2..27601de 100644
@@ -24,10 +24,10 @@ index 313e4e2..27601de 100644
  template <typename... T>
  static uint16_t
 diff --git a/src/sel_logger.cpp b/src/sel_logger.cpp
-index 0463074..535a529 100644
+index 585c777..bce56b8 100644
 --- a/src/sel_logger.cpp
 +++ b/src/sel_logger.cpp
-@@ -195,6 +195,17 @@ void clearSelLogFiles()
+@@ -198,6 +198,17 @@ void clearSelLogFiles()
          std::cerr << e.what() << "\n";
      }
  }
@@ -45,7 +45,7 @@ index 0463074..535a529 100644
  #endif
  
  static unsigned int getNewRecordId(void)
-@@ -204,16 +215,32 @@ static unsigned int getNewRecordId(void)
+@@ -207,16 +218,32 @@ static unsigned int getNewRecordId(void)
  
      // If the log has been cleared, also clear the current ID
      std::vector<std::filesystem::path> selLogFiles;
@@ -81,7 +81,7 @@ index 0463074..535a529 100644
      recordIndex = recordId;
      return recordId;
  }
-@@ -330,6 +357,19 @@ static void selRedfishHooks([[maybe_unused]] const std::string& message,
+@@ -333,6 +360,19 @@ static void selRedfishHooks([[maybe_unused]] const std::string& message,
                      "REDFISH_MESSAGE_ARGS=%s", messageArgsString.c_str(), NULL);
  }
  
@@ -101,7 +101,7 @@ index 0463074..535a529 100644
  int main(int, char*[])
  {
      // setup connection to dbus
-@@ -337,6 +377,13 @@ int main(int, char*[])
+@@ -340,6 +380,13 @@ int main(int, char*[])
      auto conn = std::make_shared<sdbusplus::asio::connection>(io);
      std::variant<bool> sel_value;
  
@@ -115,16 +115,18 @@ index 0463074..535a529 100644
      // IPMI SEL Object
      conn->request_name(ipmiSelObject);
      auto server = sdbusplus::asio::object_server(conn);
-@@ -430,6 +477,9 @@ int main(int, char*[])
- 
- #ifdef SEL_LOGGER_MONITOR_THRESHOLD_ALARM_EVENTS
-     startThresholdAlarmMonitor(conn, ifaceAddSel);
-+#endif
+@@ -437,6 +484,11 @@ int main(int, char*[])
+ #ifdef SEL_LOGGER_MONITOR_HOST_ERROR_EVENTS
+     startHostErrorEventMonitor(conn);
+ #endif
++
 +#ifdef SEL_LOGGER_CLEARS_SEL
 +    signal(SIGHUP, hupHandle);
- #endif
++#endif
++
      io.run();
  
+     return 0;
 -- 
-2.33.0
+2.17.1
 

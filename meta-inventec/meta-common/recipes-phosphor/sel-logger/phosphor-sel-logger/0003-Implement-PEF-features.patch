@@ -1,7 +1,7 @@
-From d069f1dfc7fca3801c0165f4fec710de7e1518b8 Mon Sep 17 00:00:00 2001
+From a66a6ef79e422534117ae03f0e1ead6ab84dff88 Mon Sep 17 00:00:00 2001
 From: Tommy Lin <lin.tommysc@inventec.com>
 Date: Fri, 27 May 2022 07:45:11 +0000
-Subject: [PATCH 3/7] Implement PEF features
+Subject: [PATCH] Implement PEF features
 
 Symptom/Reason:
 - Implement PEF features
@@ -42,7 +42,7 @@ index 180f671..adf4b18 100644
  static constexpr char const* SettingService = "xyz.openbmc_project.Settings";
  static constexpr char const* GlobalEnableObj = "/xyz/openbmc_project/ipmi/global_enables";
 diff --git a/include/threshold_alarm_event_monitor.hpp b/include/threshold_alarm_event_monitor.hpp
-index 21cd29d..153f96e 100644
+index 0de281d..16d1cc1 100644
 --- a/include/threshold_alarm_event_monitor.hpp
 +++ b/include/threshold_alarm_event_monitor.hpp
 @@ -45,6 +45,7 @@ static boost::container::flat_map<std::string, sdbusMatch> matchers = {
@@ -50,10 +50,10 @@ index 21cd29d..153f96e 100644
  void generateEvent(std::string signalName,
                     std::shared_ptr<sdbusplus::asio::connection> conn,
 +                   std::shared_ptr<sdbusplus::asio::dbus_interface> ifaceAddSel,
-                    sdbusplus::message::message& msg)
+                    sdbusplus::message_t& msg)
  {
      double assertValue;
-@@ -239,23 +240,40 @@ void generateEvent(std::string signalName,
+@@ -238,23 +239,40 @@ void generateEvent(std::string signalName,
                             ". Reading=" + std::to_string(assertValue) +
                             " Threshold=" + std::to_string(thresholdVal) + ".");
  
@@ -88,37 +88,37 @@ index 21cd29d..153f96e 100644
  {
      for (auto iter = matchers.begin(); iter != matchers.end(); iter++)
      {
-         iter->second = std::make_shared<sdbusplus::bus::match::match>(
-             static_cast<sdbusplus::bus::bus&>(*conn),
+         iter->second = std::make_shared<sdbusplus::bus::match_t>(
+             static_cast<sdbusplus::bus_t&>(*conn),
              "type='signal',member=" + iter->first,
--            [conn, iter](sdbusplus::message::message& msg) {
+-            [conn, iter](sdbusplus::message_t& msg) {
 -                generateEvent(iter->first, conn, msg);
-+            [conn, ifaceAddSel, iter](sdbusplus::message::message& msg) {
++            [conn, iter, ifaceAddSel](sdbusplus::message_t& msg) {
 +                generateEvent(iter->first, conn, ifaceAddSel, msg);
              });
      }
  }
 diff --git a/include/threshold_event_monitor.hpp b/include/threshold_event_monitor.hpp
-index cd5397a..2b601b8 100644
+index 6943d28..9af7c3e 100644
 --- a/include/threshold_event_monitor.hpp
 +++ b/include/threshold_event_monitor.hpp
 @@ -35,9 +35,10 @@ static constexpr const uint8_t thresholdEventDataTriggerReadingByte3 = (1 << 4);
  static const std::string openBMCMessageRegistryVersion("0.1");
  
- inline static sdbusplus::bus::match::match startThresholdAssertMonitor(
+ inline static sdbusplus::bus::match_t startThresholdAssertMonitor(
 -    std::shared_ptr<sdbusplus::asio::connection> conn)
 +    std::shared_ptr<sdbusplus::asio::connection> conn,
 +    std::shared_ptr<sdbusplus::asio::dbus_interface> ifaceAddSel)
  {
--    auto thresholdAssertMatcherCallback = [conn](sdbusplus::message::message&
-+    auto thresholdAssertMatcherCallback = [conn, ifaceAddSel](sdbusplus::message::message&
-                                                      msg) {
+-    auto thresholdAssertMatcherCallback = [conn](sdbusplus::message_t& msg) {
++    auto thresholdAssertMatcherCallback = [conn, ifaceAddSel](sdbusplus::message_t& msg) {
          // This static set of std::pair<path, event> tracks asserted events to
          // avoid duplicate logs or deasserts logged without an assert
-@@ -269,11 +270,27 @@ inline static sdbusplus::bus::match::match startThresholdAssertMonitor(
-                                " Threshold=" + std::to_string(thresholdVal) +
-                                ".");
- 
+         static boost::container::flat_set<std::pair<std::string, std::string>>
+@@ -324,11 +325,27 @@ inline static sdbusplus::bus::match_t startThresholdAssertMonitor(
+             conn->call(AddToLog);
+         }
+ #else
 -        selAddSystemRecord(
 +        uint16_t recordId = selAddSystemRecord(
              journalMsg, std::string(msg.get_path()), eventData, assert,
@@ -141,11 +141,11 @@ index cd5397a..2b601b8 100644
 +            std::cerr
 +                << "Failed to send SignalEvent signal with assertValue\n";
 +        }
+ #endif
      };
-     sdbusplus::bus::match::match thresholdAssertMatcher(
-         static_cast<sdbusplus::bus::bus&>(*conn),
+     sdbusplus::bus::match_t thresholdAssertMatcher(
 diff --git a/include/watchdog_event_monitor.hpp b/include/watchdog_event_monitor.hpp
-index 84b8cb7..0bc00b3 100644
+index facb282..abf2043 100644
 --- a/include/watchdog_event_monitor.hpp
 +++ b/include/watchdog_event_monitor.hpp
 @@ -55,6 +55,7 @@ static constexpr int interruptTypeBits = 4;
@@ -153,10 +153,10 @@ index 84b8cb7..0bc00b3 100644
  inline static void sendWatchdogEventLog(
      std::shared_ptr<sdbusplus::asio::connection> conn,
 +    std::shared_ptr<sdbusplus::asio::dbus_interface> ifaceAddSel,
-     sdbusplus::message::message& msg, bool assert,
+     sdbusplus::message_t& msg, bool assert,
      std::optional<std::string_view> expireAction = std::nullopt)
  {
-@@ -227,18 +228,35 @@ inline static void sendWatchdogEventLog(
+@@ -227,17 +228,34 @@ inline static void sendWatchdogEventLog(
  
          std::string redfishMessageID = "OpenBMC.0.1.IPMIWatchdog";
  
@@ -184,31 +184,30 @@ index 84b8cb7..0bc00b3 100644
      }
  }
  
- inline static sdbusplus::bus::match::match
+ inline static sdbusplus::bus::match_t
 -    startWatchdogEventMonitor(std::shared_ptr<sdbusplus::asio::connection> conn)
 +    startWatchdogEventMonitor(std::shared_ptr<sdbusplus::asio::connection> conn,
 +                                std::shared_ptr<sdbusplus::asio::dbus_interface> ifaceAddSel)
  {
-     auto watchdogEventMatcherCallback =
--        [conn](sdbusplus::message::message& msg) {
-+        [conn, ifaceAddSel](sdbusplus::message::message& msg) {
-             std::string expiredAction;
-             msg.read(expiredAction);
+-    auto watchdogEventMatcherCallback = [conn](sdbusplus::message_t& msg) {
++    auto watchdogEventMatcherCallback = [conn, ifaceAddSel](sdbusplus::message_t& msg) {
+         std::string expiredAction;
+         msg.read(expiredAction);
  
-@@ -246,7 +264,7 @@ inline static sdbusplus::bus::match::match
-             action.remove_prefix(
-                 std::min(action.find_last_of(".") + 1, action.size()));
+@@ -245,7 +263,7 @@ inline static sdbusplus::bus::match_t
+         action.remove_prefix(
+             std::min(action.find_last_of(".") + 1, action.size()));
  
--            sendWatchdogEventLog(conn, msg, true, action);
-+            sendWatchdogEventLog(conn, ifaceAddSel, msg, true, action);
-         };
+-        sendWatchdogEventLog(conn, msg, true, action);
++        sendWatchdogEventLog(conn, ifaceAddSel, msg, true, action);
+     };
  
-     sdbusplus::bus::match::match watchdogEventMatcher(
+     sdbusplus::bus::match_t watchdogEventMatcher(
 diff --git a/src/sel_logger.cpp b/src/sel_logger.cpp
-index 0701073..07ab81b 100644
+index e785c9d..3bb9c91 100644
 --- a/src/sel_logger.cpp
 +++ b/src/sel_logger.cpp
-@@ -359,11 +359,12 @@ int main(int, char*[])
+@@ -362,11 +362,12 @@ int main(int, char*[])
      ifaceAddSel->register_method("Clear", []() { clearSelLogFiles(); });
  #endif
  #endif
@@ -216,16 +215,16 @@ index 0701073..07ab81b 100644
      ifaceAddSel->initialize();
  
  #ifdef SEL_LOGGER_MONITOR_THRESHOLD_EVENTS
-     sdbusplus::bus::match::match thresholdAssertMonitor =
+     sdbusplus::bus::match_t thresholdAssertMonitor =
 -        startThresholdAssertMonitor(conn);
 +        startThresholdAssertMonitor(conn, ifaceAddSel);
  #endif
  
  #ifdef REDFISH_LOG_MONITOR_PULSE_EVENTS
-@@ -373,11 +374,11 @@ int main(int, char*[])
+@@ -375,11 +376,11 @@ int main(int, char*[])
  
  #ifdef SEL_LOGGER_MONITOR_WATCHDOG_EVENTS
-     sdbusplus::bus::match::match watchdogEventMonitor =
+     sdbusplus::bus::match_t watchdogEventMonitor =
 -        startWatchdogEventMonitor(conn);
 +        startWatchdogEventMonitor(conn, ifaceAddSel);
  #endif
@@ -234,8 +233,8 @@ index 0701073..07ab81b 100644
 -    startThresholdAlarmMonitor(conn);
 +    startThresholdAlarmMonitor(conn, ifaceAddSel);
  #endif
-     io.run();
  
+ #ifdef SEL_LOGGER_MONITOR_HOST_ERROR_EVENTS
 -- 
-2.33.0
+2.17.1
 
