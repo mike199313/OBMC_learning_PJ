@@ -1,7 +1,7 @@
-From ea9a0d2df52785fd94b3b379c60f213f333196bd Mon Sep 17 00:00:00 2001
+From a1920a6290288d302d3690a00e1434c287e7122c Mon Sep 17 00:00:00 2001
 From: Tommy Lin <lin.tommysc@inventec.com>
 Date: Tue, 15 Mar 2022 01:30:46 +0000
-Subject: [PATCH] support mmap smbios table from video shared memory
+Subject: [PATCH 1/3] support mmap smbios table from video shared memory
  automatically.
 
 Symptom/Reason :
@@ -46,38 +46,36 @@ Entry Test:
 				|-/xyz/openbmc_project/inventory/system/chassis/motherboard/dimm8
 				`-/xyz/openbmc_project/inventory/system/chassis/motherboard/dimm9
 ---
- include/mdrv2.hpp        |  7 ++++
+ include/mdrv2.hpp        |  5 +++
  include/smbios_mdrv2.hpp | 58 ++++++++++++++++++++++++++++++-
  src/mdrv2.cpp            | 73 ++++++++++++++++++++++++++++++++++++++--
- 3 files changed, 135 insertions(+), 3 deletions(-)
+ 3 files changed, 133 insertions(+), 3 deletions(-)
 
 diff --git a/include/mdrv2.hpp b/include/mdrv2.hpp
-index baacd0c..b698155 100644
+index c9396e2..86de51a 100644
 --- a/include/mdrv2.hpp
 +++ b/include/mdrv2.hpp
-@@ -50,6 +50,12 @@ static constexpr const char* smbiosInterfaceName =
-     "xyz.openbmc_project.Smbios.GetRecordType";
+@@ -59,6 +59,10 @@ static constexpr const char* systemInterface =
+     "xyz.openbmc_project.Inventory.Item.System";
  constexpr const int limitEntryLen = 0xff;
  
-+//static constexpr const char* vgaMemPath = "/dev/mem";
-+//static constexpr const uint32_t vgaMemPhyAddr = 0xbff00000;
 +static constexpr const char* vgaMemPath = "/dev/vgasharedmem";
 +static constexpr const uint32_t vgaMemPhyAddr = 0x0;
 +static constexpr const uint32_t vgaMemPhySize = 64 * 1024;
 +
- class MDR_V2 :
-     sdbusplus::server::object::object<
-         sdbusplus::xyz::openbmc_project::Smbios::server::MDR_V2>
-@@ -124,6 +130,7 @@ class MDR_V2 :
-     Mdr2DirStruct smbiosDir;
+ class MDRV2 :
+     sdbusplus::server::object_t<
+         sdbusplus::server::xyz::openbmc_project::smbios::MDRV2>
+@@ -134,6 +138,7 @@ class MDRV2 :
  
      bool readDataFromFlash(MDRSMBIOSHeader* mdrHdr, uint8_t* data);
+     bool checkSMBIOSVersion(uint8_t* dataIn);
 +    bool readDataFromMem(MDRSMBIOSHeader* mdrHdr, uint8_t* data);
  
      const std::array<uint8_t, 16> smbiosTableId{
          40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 0x42};
 diff --git a/include/smbios_mdrv2.hpp b/include/smbios_mdrv2.hpp
-index 0d8ec30..774f057 100644
+index 0ac77b9..1a3db5f 100644
 --- a/include/smbios_mdrv2.hpp
 +++ b/include/smbios_mdrv2.hpp
 @@ -20,6 +20,9 @@
@@ -90,7 +88,7 @@ index 0d8ec30..774f057 100644
  static constexpr const char* mdrType2File = "/var/lib/smbios/smbios2";
  static constexpr const char* smbiosPath = "/var/lib/smbios";
  
-@@ -153,6 +156,36 @@ typedef enum
+@@ -192,6 +195,36 @@ typedef enum
      memoryDeviceType = 17,
  } SmbiosType;
  
@@ -127,7 +125,7 @@ index 0d8ec30..774f057 100644
  static constexpr uint8_t separateLen = 2;
  
  static inline uint8_t* smbiosNextPtr(uint8_t* smbiosDataIn)
-@@ -185,9 +218,32 @@ static inline uint8_t* getSMBIOSTypePtr(uint8_t* smbiosDataIn, uint8_t typeId,
+@@ -224,9 +257,32 @@ static inline uint8_t* getSMBIOSTypePtr(uint8_t* smbiosDataIn, uint8_t typeId,
          return nullptr;
      }
      char* smbiosData = reinterpret_cast<char*>(smbiosDataIn);
@@ -162,7 +160,7 @@ index 0d8ec30..774f057 100644
          {
  
 diff --git a/src/mdrv2.cpp b/src/mdrv2.cpp
-index 75842fc..97094ea 100644
+index 373978a..f911067 100644
 --- a/src/mdrv2.cpp
 +++ b/src/mdrv2.cpp
 @@ -19,6 +19,7 @@
@@ -173,7 +171,7 @@ index 75842fc..97094ea 100644
  
  #include <phosphor-logging/elog-errors.hpp>
  #include <sdbusplus/exception.hpp>
-@@ -212,7 +213,8 @@ bool MDR_V2::readDataFromFlash(MDRSMBIOSHeader* mdrHdr, uint8_t* data)
+@@ -221,7 +222,8 @@ bool MDRV2::readDataFromFlash(MDRSMBIOSHeader* mdrHdr, uint8_t* data)
      {
          phosphor::logging::log<phosphor::logging::level::ERR>(
              "Read data from flash error - Open MDRV2 table file failure");
@@ -183,7 +181,7 @@ index 75842fc..97094ea 100644
      }
      smbiosFile.clear();
      smbiosFile.seekg(0, std::ios_base::end);
-@@ -222,7 +224,8 @@ bool MDR_V2::readDataFromFlash(MDRSMBIOSHeader* mdrHdr, uint8_t* data)
+@@ -231,7 +233,8 @@ bool MDRV2::readDataFromFlash(MDRSMBIOSHeader* mdrHdr, uint8_t* data)
      {
          phosphor::logging::log<phosphor::logging::level::ERR>(
              "MDR V2 file size is smaller than mdr header");
@@ -193,11 +191,11 @@ index 75842fc..97094ea 100644
      }
      smbiosFile.read(reinterpret_cast<char*>(mdrHdr), sizeof(MDRSMBIOSHeader));
      if (mdrHdr->dataSize > smbiosTableStorageSize)
-@@ -245,6 +248,66 @@ bool MDR_V2::readDataFromFlash(MDRSMBIOSHeader* mdrHdr, uint8_t* data)
-     return true;
+@@ -309,6 +312,66 @@ bool MDRV2::sendDirectoryInformation(uint8_t dirVersion, uint8_t dirIndex,
+     return teminate;
  }
  
-+bool MDR_V2::readDataFromMem(MDRSMBIOSHeader* mdrHdr, uint8_t* data)
++bool MDRV2::readDataFromMem(MDRSMBIOSHeader* mdrHdr, uint8_t* data)
 +{
 +    if (mdrHdr == nullptr)
 +    {
@@ -257,22 +255,22 @@ index 75842fc..97094ea 100644
 +    return true;
 +}
 +
- bool MDR_V2::sendDirectoryInformation(uint8_t dirVersion, uint8_t dirIndex,
-                                       uint8_t returnedEntries,
-                                       uint8_t remainingEntries,
-@@ -575,6 +638,12 @@ bool MDR_V2::agentSynchronizeData()
+ bool MDRV2::sendDataInformation(uint8_t idIndex, uint8_t flag, uint32_t dataLen,
+                                 uint32_t dataVer, uint32_t timeStamp)
+ {
+@@ -707,6 +770,12 @@ bool MDRV2::agentSynchronizeData()
+         return false;
      }
-     else
-     {
-+        uint32_t mark = *(reinterpret_cast<uint32_t*>(smbiosDir.dir[smbiosDirIndex].dataStorage));
-+        if(mark != SMBIOS_MAGIC_WORD_V2 && mark != SMBIOS_MAGIC_WORD_V3) {
-+            phosphor::logging::log<phosphor::logging::level::ERR>(
-+                "agent data sync failed - smbios format error: not start from \"_SM_\" or \"_SM3_\".");
-+            return false;
-+        }
-         systemInfoUpdate();
-         smbiosDir.dir[smbiosDirIndex].common.dataVersion = mdr2SMBIOS.dirVer;
-         smbiosDir.dir[smbiosDirIndex].common.timestamp = mdr2SMBIOS.timestamp;
+ 
++    uint32_t mark = *(reinterpret_cast<uint32_t*>(smbiosDir.dir[smbiosDirIndex].dataStorage));
++    if(mark != SMBIOS_MAGIC_WORD_V2 && mark != SMBIOS_MAGIC_WORD_V3) {
++        phosphor::logging::log<phosphor::logging::level::ERR>(
++            "agent data sync failed - smbios format error: not start from \"_SM_\" or \"_SM3_\".");
++        return false;
++    }
+     systemInfoUpdate();
+     smbiosDir.dir[smbiosDirIndex].common.dataVersion = mdr2SMBIOS.dirVer;
+     smbiosDir.dir[smbiosDirIndex].common.timestamp = mdr2SMBIOS.timestamp;
 -- 
 2.17.1
 

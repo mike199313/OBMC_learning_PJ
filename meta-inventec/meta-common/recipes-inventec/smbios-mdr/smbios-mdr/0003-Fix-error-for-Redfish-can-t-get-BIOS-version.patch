@@ -1,7 +1,7 @@
-From 17ae362beac68f3977194c1a686a3590a154af58 Mon Sep 17 00:00:00 2001
+From 21013184ffbfc1834d2712a60975f7d408cb5da9 Mon Sep 17 00:00:00 2001
 From: cynthia <wu.cynthia@inventec.com>
 Date: Thu, 16 Jun 2022 10:03:56 +0800
-Subject: [PATCH] Fix error for Redfish can't get BIOS version
+Subject: [PATCH 3/3] Fix error for Redfish can't get BIOS version
 
 Sympton/Reason:
      BMC updater can't get BIOS version, so Redfish can't get
@@ -21,8 +21,8 @@ Entry Test:
     curl -basic -u root:$PASSWORD -X GET https://$IP/redfish/v1/UpdateService/FirmwareInventory/bios_active -k -l
 ---
  service_files/smbios-mdrv2.service |  1 +
- src/system.cpp                     | 24 ++++++++++++++++++++++++
- 2 files changed, 25 insertions(+)
+ src/system.cpp                     | 23 +++++++++++++++++++++++
+ 2 files changed, 24 insertions(+)
 
 diff --git a/service_files/smbios-mdrv2.service b/service_files/smbios-mdrv2.service
 index b30f797..feeb047 100644
@@ -37,22 +37,21 @@ index b30f797..feeb047 100644
  [Service]
  Restart=always
 diff --git a/src/system.cpp b/src/system.cpp
-index 81c6ef5..27a077f 100644
+index 1ebaf2c..047436f 100644
 --- a/src/system.cpp
 +++ b/src/system.cpp
-@@ -22,6 +22,9 @@
- #include <iomanip>
+@@ -23,6 +23,8 @@
  #include <iostream>
  #include <sstream>
-+
+ 
 +#include <sdbusplus/asio/connection.hpp>
 +
- namespace phosphor
- {
- namespace smbios
-@@ -93,6 +96,27 @@ std::string System::version(std::string value)
-         result = tempS;
+ static constexpr const char* biosActiveObjPath =
+     "/xyz/openbmc_project/software/bios_active";
+ static constexpr const char* biosVersionIntf =
+@@ -155,6 +157,27 @@ std::string System::version(std::string value)
      }
+     lg2::info("VERSION INFO - BIOS - {VER}", "VER", result);
  
 +    boost::asio::io_context io;
 +    auto connection = std::make_shared<sdbusplus::asio::connection>(io);
@@ -75,9 +74,9 @@ index 81c6ef5..27a077f 100644
 +        return result;
 +    }
 +
-     return sdbusplus::xyz::openbmc_project::Inventory::Decorator::server::
+     return sdbusplus::server::xyz::openbmc_project::inventory::decorator::
          Revision::version(result);
  }
 -- 
-2.33.0
+2.17.1
 

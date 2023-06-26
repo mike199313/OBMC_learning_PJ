@@ -1,7 +1,7 @@
-From c3d5badb975c3cee03c1cda3bbe637b8af901974 Mon Sep 17 00:00:00 2001
+From 9522aa00021cd61e2b994a7ed1b5c9767442f41a Mon Sep 17 00:00:00 2001
 From: Tommy Lin <lin.tommysc@inventec.com>
 Date: Tue, 22 Feb 2022 05:24:56 +0000
-Subject: [PATCH] Implement OperationalStatus dbus interface
+Subject: [PATCH 2/3] Implement OperationalStatus dbus interface
 
 Symptom/Reason:
     - ProcessorSummary state should be "Enable" and count more than 0.
@@ -22,7 +22,7 @@ Entry Test:
  2 files changed, 6 insertions(+), 2 deletions(-)
 
 diff --git a/include/cpu.hpp b/include/cpu.hpp
-index 276e64a..2650888 100644
+index 6328393..d857330 100644
 --- a/include/cpu.hpp
 +++ b/include/cpu.hpp
 @@ -24,6 +24,7 @@
@@ -30,19 +30,19 @@ index 276e64a..2650888 100644
  #include <xyz/openbmc_project/Inventory/Item/Cpu/server.hpp>
  #include <xyz/openbmc_project/Inventory/Item/server.hpp>
 +#include <xyz/openbmc_project/State/Decorator/OperationalStatus/server.hpp>
-
+ 
  namespace phosphor
  {
-@@ -43,6 +44,7 @@ using processor = sdbusplus::xyz::openbmc_project::Inventory::Item::server::Cpu;
- using Item = sdbusplus::xyz::openbmc_project::Inventory::server::Item;
+@@ -43,6 +44,7 @@ using processor = sdbusplus::server::xyz::openbmc_project::inventory::item::Cpu;
+ using Item = sdbusplus::server::xyz::openbmc_project::inventory::Item;
  using association =
-     sdbusplus::xyz::openbmc_project::Association::server::Definitions;
+     sdbusplus::server::xyz::openbmc_project::association::Definitions;
 +using func = sdbusplus::xyz::openbmc_project::State::Decorator::server::OperationalStatus;
-
+ 
  // Definition follow smbios spec DSP0134 3.0.0
  static const std::map<uint8_t, const char*> familyTable = {
-@@ -108,7 +110,7 @@ static const std::array<std::optional<processor::Capability>, 16>
-
+@@ -113,7 +115,7 @@ static const std::array<std::optional<processor::Capability>, 16>
+ 
  class Cpu :
      sdbusplus::server::object_t<processor, asset, location, connector, rev,
 -                                Item, association>
@@ -50,9 +50,9 @@ index 276e64a..2650888 100644
  {
    public:
      Cpu() = delete;
-@@ -122,7 +124,7 @@ class Cpu :
-         const uint8_t& cpuId, uint8_t* smbiosTableStorage,
-         const std::string& motherboard) :
+@@ -126,7 +128,7 @@ class Cpu :
+     Cpu(sdbusplus::bus_t& bus, const std::string& objPath, const uint8_t& cpuId,
+         uint8_t* smbiosTableStorage, const std::string& motherboard) :
          sdbusplus::server::object_t<processor, asset, location, connector, rev,
 -                                    Item, association>(bus, objPath.c_str()),
 +                                    Item, association, func>(bus, objPath.c_str()),
@@ -60,10 +60,10 @@ index 276e64a..2650888 100644
      {
          infoUpdate();
 diff --git a/src/cpu.cpp b/src/cpu.cpp
-index daab15b..26c48ca 100644
+index 7c10a09..c5672ec 100644
 --- a/src/cpu.cpp
 +++ b/src/cpu.cpp
-@@ -150,6 +150,7 @@ void Cpu::infoUpdate(void)
+@@ -152,6 +152,7 @@ void Cpu::infoUpdate(void)
      {
          // Don't attempt to fill in any other details if the CPU is not present.
          present(false);
@@ -71,12 +71,12 @@ index daab15b..26c48ca 100644
          return;
      }
      present(true);
-@@ -184,6 +185,7 @@ void Cpu::infoUpdate(void)
+@@ -230,6 +231,7 @@ void Cpu::infoUpdate(void)
      }
-
+ 
      characteristics(cpuInfo->characteristics); // offset 26h
 +    functional(true);
-
+ 
      if (!motherboardPath.empty())
      {
 -- 
