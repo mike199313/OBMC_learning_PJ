@@ -1,11 +1,7 @@
-From 5591da581574cc31561ed2941837db8dfc8deb84 Mon Sep 17 00:00:00 2001
+From 5213187b3634199914a9b208e719541a4afbd6ff Mon Sep 17 00:00:00 2001
 From: Matt Cheng <cheng.matt@inventec.com>
 Date: Sat, 17 Dec 2022 14:53:27 +0800
-Subject: [PATCH] =?UTF-8?q?Bug=C2=A01433=20-=20[Transformers][OpenBMC]=20B?=
- =?UTF-8?q?MC=20crash=20after=20setting=20date=20to=20"2038-01-18"?=
-MIME-Version: 1.0
-Content-Type: text/plain; charset=UTF-8
-Content-Transfer-Encoding: 8bit
+Subject: [PATCH 1/2] Bug 1433 - [Transformers][OpenBMC] BMC crash after setting date to "2038-01-18"
 
 Symptom/Reason:
 	Setting date time over 2038-01-18 00:00:00 will cause system crash.
@@ -21,6 +17,8 @@ Solution/Change:
 
 Entry Test:
         timedatectl set-time "2038-01-18 00:00:00"
+
+%% original patch: 0001-Fix-Y2K38-issue.patch
 ---
  src/basic/time-util.h              | 6 +++++-
  src/libsystemd/sd-event/sd-event.c | 5 ++++-
@@ -33,10 +31,10 @@ Entry Test:
 diff --git a/src/basic/time-util.h b/src/basic/time-util.h
 old mode 100644
 new mode 100755
-index 895af88299..dea5e8190a
+index c5ae0c98d4..9158cf4d48
 --- a/src/basic/time-util.h
 +++ b/src/basic/time-util.h
-@@ -173,7 +173,11 @@ static inline usec_t usec_add(usec_t a, usec_t b) {
+@@ -177,7 +177,11 @@ static inline usec_t usec_add(usec_t a, usec_t b) {
          if (a > USEC_INFINITY - b) /* overflow check */
                  return USEC_INFINITY;
  
@@ -52,10 +50,10 @@ index 895af88299..dea5e8190a
 diff --git a/src/libsystemd/sd-event/sd-event.c b/src/libsystemd/sd-event/sd-event.c
 old mode 100644
 new mode 100755
-index 426a7807f7..35dfe95e24
+index d3c2d3ae22..8d89d8aaf8
 --- a/src/libsystemd/sd-event/sd-event.c
 +++ b/src/libsystemd/sd-event/sd-event.c
-@@ -2985,7 +2985,10 @@ fail:
+@@ -3059,7 +3059,10 @@ fail:
  static usec_t sleep_between(sd_event *e, usec_t a, usec_t b) {
          usec_t c;
          assert(e);
@@ -70,10 +68,10 @@ index 426a7807f7..35dfe95e24
 diff --git a/src/timedate/timedated.c b/src/timedate/timedated.c
 old mode 100644
 new mode 100755
-index 66b454269d..009a73f94a
+index ad483301ef..e27f31b19a
 --- a/src/timedate/timedated.c
 +++ b/src/timedate/timedated.c
-@@ -867,9 +867,15 @@ static int method_set_time(sd_bus_message *m, void *userdata, sd_bus_error *erro
+@@ -862,9 +862,15 @@ static int method_set_time(sd_bus_message *m, void *userdata, sd_bus_error *erro
                      (utc < 0 && x > n))
                          return sd_bus_error_set(error, SD_BUS_ERROR_INVALID_ARGS, "Time value overflow");
  
@@ -91,5 +89,5 @@ index 66b454269d..009a73f94a
          r = bus_verify_polkit_async(
                          m,
 -- 
-2.25.1
+2.34.1
 

@@ -1,13 +1,4 @@
 FILESEXTRAPATHS:prepend := "${THISDIR}/${PN}:"
 
-SRC_URI += " file://wait_interface.conf \
-             file://0001-Fix-Y2K38-issue.patch \
+SRC_URI += " file://0001-Bug-1433-Transformers-OpenBMC-BMC-crash-after-settin.patch \
 "
-
-
-FILES:${PN} += "${sysconfdir}/systemd/wait_interface.conf"
-
-do_install:append() {
-    install -d ${D}${sysconfdir}/systemd
-    install -m 0644 ${WORKDIR}/wait_interface.conf ${D}${sysconfdir}/systemd/wait_interface.conf
-}
