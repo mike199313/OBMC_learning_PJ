@@ -1,9 +1,10 @@
-From 55746b24c23c83d3017afa8d98e55358fd80b893 Mon Sep 17 00:00:00 2001
+From eec3ae61695ae22cb08f6339545611d54f4964e1 Mon Sep 17 00:00:00 2001
 From: cynthia <wu.cynthia@inventec.com>
 Date: Mon, 25 Apr 2022 10:48:21 +0800
 Subject: [PATCH] Remove extra '"' in config-static-bmc-reboot.json.in to fix
  json format error
 
+%% original patch: 0001-Remove-extra-in-config-static-bmc-reboot.json.in-to-.patch
 ---
  bmc/firmware-handler/config-static-bmc-reboot.json.in | 6 +++---
  1 file changed, 3 insertions(+), 3 deletions(-)
@@ -33,5 +34,5 @@ index e2618e8..fafc3ab 100644
  		"update": {
  			"type": "reboot"
 -- 
-2.17.1
+2.34.1
 
