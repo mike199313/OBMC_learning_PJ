@@ -18,36 +18,17 @@ Entry Test:
 - sync time
   - ipmbtimesync
 ---
- CMakeLists.txt   |  11 +
- ipmbtimesync.cpp | 851 +++++++++++++++++++++++++++++++++++++++++++++++
- 2 files changed, 862 insertions(+)
+ ipmbtimesync.cpp | 899 +++++++++++++++++++++++++++++++++++++++++++++++
+ meson.build      |  13 +
+ 2 files changed, 912 insertions(+)
  create mode 100644 ipmbtimesync.cpp
 
-diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 4acdccf..9303927 100644
---- a/CMakeLists.txt
-+++ b/CMakeLists.txt
-@@ -48,3 +48,14 @@ set (CONFIG_FILES ${PROJECT_SOURCE_DIR}/ipmb-channels.json)
- install (TARGETS ${PROJECT_NAME} DESTINATION bin)
- install (FILES ${SERVICE_FILES} DESTINATION /lib/systemd/system/)
- install (FILES ${CONFIG_FILES} DESTINATION /usr/share/ipmbbridge/)
-+
-+# build ipmbtimesync
-+set (SRC_FILES ipmbtimesync.cpp ipmbutils.cpp)
-+add_executable (ipmbtimesync ${SRC_FILES})
-+target_link_libraries (ipmbtimesync systemd)
-+target_link_libraries (ipmbtimesync boost_coroutine)
-+target_link_libraries (ipmbtimesync sdbusplus -lstdc++fs)
-+target_link_libraries (ipmbtimesync ${Boost_LIBRARIES})
-+target_link_libraries (ipmbtimesync i2c)
-+link_directories (${EXTERNAL_INSTALL_LOCATION}/lib)
-+install (TARGETS ipmbtimesync DESTINATION bin)
 diff --git a/ipmbtimesync.cpp b/ipmbtimesync.cpp
 new file mode 100644
-index 0000000..47feb0b
+index 0000000..bea5ab2
 --- /dev/null
 +++ b/ipmbtimesync.cpp
-@@ -0,0 +1,851 @@
+@@ -0,0 +1,899 @@
 +/* Copyright 2018 Intel
 + *
 + * Licensed under the Apache License, Version 2.0 (the "License");
@@ -74,7 +55,9 @@ index 0000000..47feb0b
 +#include <filesystem>
 +#include <fstream>
 +#include <linux/rtc.h>
++#include <list>
 +#include <nlohmann/json.hpp>
++#include <phosphor-logging/log.hpp>
 +#include <tuple>
 +#include <unordered_map>
 +#include <iomanip>
@@ -94,10 +77,13 @@ index 0000000..47feb0b
 +const static constexpr char* selAddOem = "IpmiSelAddOem";
 +const static constexpr char* RTC_DEV = "/dev/rtc";
 +
-+boost::asio::io_service io;
++boost::asio::io_context io;
 +auto conn = std::make_shared<sdbusplus::asio::connection>(io);
 +
 +static std::list<IpmbChannel> ipmbChannels;
++static const std::unordered_map<std::string, ipmbChannelType>
++    ipmbChannelTypeMap = {{"me", ipmbChannelType::me},
++                          {"ipmb", ipmbChannelType::ipmb}};
 +
 +/**
 + * @brief Ipmb request class methods
@@ -312,7 +298,7 @@ index 0000000..47feb0b
 +    boost::asio::async_write(
 +        i2cSlaveDescriptor, boost::asio::buffer(*buffer),
 +        [this, buffer, retriesAttempted,
-+         targetAddr](const boost::system::error_code &ec, size_t bytesSent) {
++         targetAddr](const boost::system::error_code &ec, size_t /* bytesSent */) {
 +            if (ec)
 +            {
 +                size_t currentRetryCnt = retriesAttempted;
@@ -358,11 +344,7 @@ index 0000000..47feb0b
 +
 +    for (int i = 0; i < ipmbMaxOutstandingRequestsCount; i++)
 +    {
-+        seqNum = ++seqNum & ipmbSeqMask;
-+        if (seqNum == ipmbMaxOutstandingRequestsCount)
-+        {
-+            seqNum = 0;
-+        }
++        seqNum = (seqNum + 1) % ipmbMaxOutstandingRequestsCount;
 +
 +        if (outstandingRequests[seqNum] == nullptr)
 +        {
@@ -476,7 +458,7 @@ index 0000000..47feb0b
 +        });
 +}
 +
-+IpmbChannel::IpmbChannel(boost::asio::io_service &io,
++IpmbChannel::IpmbChannel(boost::asio::io_context &io,
 +                         uint8_t ipmbBmcSlaveAddress,
 +                         uint8_t ipmbRqSlaveAddress, uint8_t channelIdx,
 +                         std::shared_ptr<IpmbCommandFilter> commandFilter) :
@@ -649,6 +631,14 @@ index 0000000..47feb0b
 +    return static_cast<ipmbChannelType>((channelIdx & 3));
 +}
 +
++void IpmbChannel::addFilter(const uint8_t respNetFn, const uint8_t cmd)
++{
++    if (commandFilter)
++    {
++        commandFilter->addFilter(respNetFn, cmd);
++    }
++}
++
 +std::tuple<int, uint8_t, uint8_t, uint8_t, uint8_t, std::vector<uint8_t>>
 +    IpmbChannel::requestAdd(boost::asio::yield_context &yield,
 +                            std::shared_ptr<IpmbRequest> request)
@@ -765,11 +755,10 @@ index 0000000..47feb0b
 +
 +static IpmbChannel *getChannel(uint8_t reqChannel)
 +{
-+    auto channel =
-+        std::find_if(ipmbChannels.begin(), ipmbChannels.end(),
-+                     [reqChannel](IpmbChannel &channel) {
-+                         return channel.getChannelIdx() == reqChannel;
-+                     });
++    auto channel = std::find_if(ipmbChannels.begin(), ipmbChannels.end(),
++                                [reqChannel](IpmbChannel& channel) {
++        return channel.getChannelIdx() == reqChannel;
++    });
 +    if (channel != ipmbChannels.end())
 +    {
 +        return &(*channel);
@@ -783,12 +772,54 @@ index 0000000..47feb0b
 +    std::shared_ptr<IpmbCommandFilter> commandFilter =
 +        std::make_shared<IpmbCommandFilter>();
 +
-+    auto channel = ipmbChannels.emplace(
-+        ipmbChannels.end(), io, 0x20, 0x2c,
-+        static_cast<uint8_t>(ipmbChannelType::me), commandFilter);
-+    if (channel->ipmbChannelInit("/dev/ipmb-0") < 0)
++    constexpr const char* configFilePath =
++        "/usr/share/ipmbbridge/ipmb-channels.json";
++    std::ifstream configFile(configFilePath);
++    if (!configFile.is_open())
 +    {
-+        std::cerr << "initializeChannels: channel initialization failed" << std::endl;
++        phosphor::logging::log<phosphor::logging::level::ERR>(
++            "initializeChannels: Cannot open config path");
++        return -1;
++    }
++    try
++    {
++        uint8_t devIndex = 0;
++        auto data = nlohmann::json::parse(configFile, nullptr);
++        for (const auto& channelConfig : data["channels"])
++        {
++            const std::string& typeConfig = channelConfig["type"];
++            const std::string& slavePath = channelConfig["slave-path"];
++            uint8_t bmcAddr = channelConfig["bmc-addr"];
++            uint8_t reqAddr = channelConfig["remote-addr"];
++
++            ipmbChannelType type = ipmbChannelTypeMap.at(typeConfig);
++
++            if (channelConfig.contains("devIndex"))
++            {
++                devIndex = channelConfig["devIndex"];
++            }
++
++            auto channel = ipmbChannels.emplace(
++                ipmbChannels.end(), io, bmcAddr, reqAddr,
++                ((devIndex << 2) | static_cast<uint8_t>(type)), commandFilter);
++            if (channel->ipmbChannelInit(slavePath.c_str()) < 0)
++            {
++                phosphor::logging::log<phosphor::logging::level::ERR>(
++                    "initializeChannels: channel initialization failed");
++                return -1;
++            }
++        }
++    }
++    catch (const nlohmann::json::exception& e)
++    {
++        phosphor::logging::log<phosphor::logging::level::ERR>(
++            "initializeChannels: Error parsing config file");
++        return -1;
++    }
++    catch (const std::out_of_range& e)
++    {
++        phosphor::logging::log<phosphor::logging::level::ERR>(
++            "initializeChannels: Error invalid type");
 +        return -1;
 +    }
 +    return 0;
@@ -798,8 +829,6 @@ index 0000000..47feb0b
 + */
 +void addTimestampSELEntry(IpmbChannel *channel)
 +{
-+    uint16_t responseID = 0xFFFF;
-+
 +    std::vector<uint8_t> eventData(9, 0xFF);
 +    eventData[0] = channel->getBmcSlaveAddress();    //Generator ID
 +    eventData[1] = channel->getChannelIdx();             //Generator ID
@@ -886,7 +915,7 @@ index 0000000..47feb0b
 +/**
 + * @brief Main
 + */
-+int main(int argc, char *argv[])
++int main()
 +{
 +    if (initializeChannels() < 0)
 +    {
@@ -899,6 +928,26 @@ index 0000000..47feb0b
 +    io.run();
 +    return 0;
 +}
+diff --git a/meson.build b/meson.build
+index 533cf8f..33942da 100644
+--- a/meson.build
++++ b/meson.build
+@@ -68,3 +68,16 @@ install_data(
+   'ipmb-channels.json',
+   install_dir: get_option('datadir') / 'ipmbbridge',
+ )
++
++executable(
++  'ipmbtimesync',
++  'ipmbtimesync.cpp',
++  'ipmbutils.cpp',
++  dependencies: [
++    systemd_dep,
++    boost_dep,
++    sdbusplus_dep,
++    i2c_dep,
++  ],
++  install: true,
++)
 -- 
-2.17.1
-
+2.25.1
