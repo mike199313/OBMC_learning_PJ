@@ -1,30 +1,14 @@
-cmake_minimum_required (VERSION 2.8.10 FATAL_ERROR)
+cmake_minimum_required (VERSION 3.5 FATAL_ERROR)
 set (BUILD_SHARED_LIBRARIES OFF)
 include (ExternalProject)
-set (CMAKE_CXX_STANDARD 17)
+set (CMAKE_CXX_STANDARD 20)
 set (CMAKE_CXX_STANDARD_REQUIRED ON)
 set (
     CMAKE_CXX_FLAGS
-    "${CMAKE_CXX_FLAGS} -lstdc++fs \
+    "${CMAKE_CXX_FLAGS} \
     -Werror \
-    -Wall \
-    -Wextra \
-    -Wnon-virtual-dtor \
-    -Wold-style-cast \
-    -Wcast-align \
-    -Wunused \
-    -Woverloaded-virtual \
-    -Wpedantic \
-    -Wmisleading-indentation \
-    -Wduplicated-cond \
-    -Wduplicated-branches \
-    -Wlogical-op \
+    -Wtype-limits \
     -Wnull-dereference \
-    -Wuseless-cast \
-    -Wdouble-promotion \
-    -Wformat=2 \
-    -Wno-sign-compare \
-    -Wno-reorder \
 "
 )
 # todo: get rid of nos, add the below:

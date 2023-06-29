@@ -5,7 +5,8 @@
 #include "mac_util.hpp"
 #include <utility>
 
-#include <boost/asio/io_service.hpp>
+#include <boost/asio/io_context.hpp>
+#include <sdbusplus/asio/connection.hpp>
 #include <sdbusplus/asio/object_server.hpp>
 
 static IntfInfo *findIntfInfo(char *intfName)
@@ -363,7 +364,7 @@ bool setNicInfo(const std::vector<uint8_t>& data)
 int main(int, char*[])
 {
     // setup connection to dbus
-    boost::asio::io_service io;
+    boost::asio::io_context io;
     auto conn = std::make_shared<sdbusplus::asio::connection>(io);
 
     // EepromDevice

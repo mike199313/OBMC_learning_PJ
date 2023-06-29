@@ -6,7 +6,6 @@
 #include "mac_util.hpp"
 
 #include <sdbusplus/bus.hpp>
-#include <sdbusplus/message.hpp>
 
 using namespace std;
 
@@ -26,7 +25,7 @@ static void doMSBmcHealthSEL(std::vector<uint8_t>& eventData, bool isAsserted)
 	try{
 		auto bus = sdbusplus::bus::new_default();
 
-		sdbusplus::message::message writeSEL = bus.new_method_call(
+		auto writeSEL = bus.new_method_call(
 			ipmiSELService, ipmiSELPath, ipmiSELAddInterface, "IpmiSelAdd");
 		writeSEL.append(std::string("BMC Health"),
 						DBUS_OBJPATH_BMC_HEALTH,
