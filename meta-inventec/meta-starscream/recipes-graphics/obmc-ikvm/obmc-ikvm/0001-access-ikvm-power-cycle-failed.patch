@@ -1,13 +1,7 @@
 From 9407aaf589282c208fd4cef742a2187eb5fcc064 Mon Sep 17 00:00:00 2001
 From: "sun.cwsun" <sun.cwsun@inventec.com>
 Date: Wed, 23 Mar 2022 10:48:18 +0800
-Subject: [PATCH] =?UTF-8?q?Bug=20707=20-=20[Transformers][OpenBMC][WebUI]W?=
- =?UTF-8?q?hen=20login=20to=20OS=20from=20new=20windows=20via=20iKVM=20the?=
- =?UTF-8?q?n=20power=20cycle=20via=20ipmi,=20DUT=20won=E2=80=99t=20boot=20?=
- =?UTF-8?q?up.?=
-MIME-Version: 1.0
-Content-Type: text/plain; charset=UTF-8
-Content-Transfer-Encoding: 8bit
+Subject: [PATCH] Bug 707 - [Transformers][OpenBMC][WebUI]When login to OS from new windows via iKVM then power cycle via ipmi, DUT won't boot up.
 
     Symptom/Reason :
         - When using browser access ikvm. The ipmitool power cycle will make the host down successfully but host up failed
@@ -25,115 +19,89 @@ Content-Transfer-Encoding: 8bit
         - 4. When power ok, The ikvm video capturing is up and working.
         - 5. The user can get the bios screen and enter bios.
 ---
- ikvm_manager.cpp | 178 ++++++++++++++++++++++++++++-------------------
- ikvm_manager.hpp |  13 ++++
- 2 files changed, 119 insertions(+), 72 deletions(-)
+ ikvm_manager.cpp | 74 +++++++++++++++++++++++++++++++++++-------------
+ ikvm_manager.hpp |  7 +++++
+ 2 files changed, 61 insertions(+), 20 deletions(-)
 
 diff --git a/ikvm_manager.cpp b/ikvm_manager.cpp
-index 33e7b17..92b6e2f 100644
+index 2f66fd5..bad0566 100644
 --- a/ikvm_manager.cpp
 +++ b/ikvm_manager.cpp
-@@ -1,101 +1,135 @@
- #include "ikvm_manager.hpp"
- 
- #include <thread>
--
- namespace ikvm
- {
- 
--Manager::Manager(const Args& args) :
--    continueExecuting(true), serverDone(false), videoDone(true),
--    input(args.getKeyboardPath(), args.getPointerPath()),
--    video(args.getVideoPath(), input, args.getFrameRate(), args.getSubsampling()),
+@@ -7,41 +7,75 @@ namespace ikvm
+ Manager::Manager(const Args& args) :
+     continueExecuting(true), serverDone(false), videoDone(true),
+     input(args.getKeyboardPath(), args.getPointerPath(), args.getUdcName()),
+-    video(args.getVideoPath(), input, args.getFrameRate(),
+-          args.getSubsampling()),
 -    server(args, input, video)
--{
--}
--
--void Manager::run()
--{
--    std::thread run(serverThread, this);
-+    Manager::Manager(const Args &args) : continueExecuting(true), serverDone(false), videoDone(true),
-+                                         input(args.getKeyboardPath(), args.getPointerPath()),
-+                                         video(args.getVideoPath(), input, args.getFrameRate()),
-+                                         server(args, input, video), videoRun(true)
-+    {
-+    }
++    video(args.getVideoPath(), input, args.getFrameRate()),
++    server(args, input, video), videoRun(true)
+ {}
  
--    while (continueExecuting)
-+    void Manager::run()
+ void Manager::run()
+ {
+     std::thread run(serverThread, this);
+ 
++    auto conn = std::make_shared<sdbusplus::asio::connection>(this->io);
++    conn->request_name("xyz.openbmc_project.IKVM");
++
++    auto objServer = sdbusplus::asio::object_server(conn);
++    std::shared_ptr<sdbusplus::asio::dbus_interface> iface =
++        objServer.add_interface("/xyz/openbmc_project/ikvm",
++                                "xyz.openbmc_project.ikvm");
++
++    iface->register_method("stopVideoCapture",
++                                [&]()
++                                {
++                                    this->videoRun = false;
++                                    fprintf(stderr, "stopVideoCapture \n");
++                                });
++
++    iface->register_method("startVideoCapture",
++                                [&]()
++                                {
++                                    this->videoRun = true;
++                                    fprintf(stderr, "startVideoCapture \n");
++                                });
++
++    iface->initialize();
++
+     while (continueExecuting)
      {
 -        if (server.wantsFrame())
--        {
++        if(this->videoRun)
+         {
 -            video.start();
 -            video.getFrame();
 -            server.sendFrame();
--        }
--        else
-+        std::thread run(serverThread, this);
-+        
-+        auto conn = std::make_shared<sdbusplus::asio::connection>(this->io);
-+        conn->request_name("xyz.openbmc_project.IKVM");
-+
-+        auto objServer = sdbusplus::asio::object_server(conn);
-+        std::shared_ptr<sdbusplus::asio::dbus_interface> iface =
-+            objServer.add_interface("/xyz/openbmc_project/ikvm",
-+                                    "xyz.openbmc_project.ikvm");
-+
-+        iface->register_method("stopVideoCapture", 
-+                                    [&]()
-+                                    { 
-+                                        this->videoRun = false;
-+                                        fprintf(stderr, "stopVideoCapture \n");
-+                                    });
-+
-+        
-+        iface->register_method("startVideoCapture", 
-+                                    [&]()
-+                                    { 
-+                                        this->videoRun = true;
-+                                        fprintf(stderr, "startVideoCapture \n");
-+                                    });
-+        
-+        iface->initialize();
-+
-+        while (continueExecuting)
-         {
--            video.stop();
-+            if(this->videoRun)
++            if (server.wantsFrame())
 +            {
-+                if (server.wantsFrame())
-+                {
-+                    video.start();
-+                    video.getFrame();
-+                    server.sendFrame();
-+                }
-+                else
-+                {
-+                    video.stop();
-+                }
-+
-+                if (video.needsResize())
-+                {
-+                    videoDone = false;
-+                    waitServer();
-+                    video.resize();
-+                    server.resize();
-+                    setVideoDone();
-+                }
-+                else
-+                {
-+                    setVideoDone();
-+                    waitServer();
-+                }
++                video.start();
++                video.getFrame();
++                server.sendFrame();
 +            }
 +            else
-+            {   
++            {
 +                video.stop();
 +            }
 +
-+            //runs handlers that are ready to run, 
-+            //without blocking, until the io_context has been stopped or there are no more ready handlers.
-+            io.poll();
++            if (video.needsResize())
++            {
++                videoDone = false;
++                waitServer();
++                video.resize();
++                server.resize();
++                setVideoDone();
++            }
++            else
++            {
++                setVideoDone();
++                waitServer();
++            }
+         }
+         else
+         {
+             video.stop();
          }
  
 -        if (video.needsResize())
@@ -145,124 +113,32 @@ index 33e7b17..92b6e2f 100644
 -            setVideoDone();
 -        }
 -        else
-+        run.join();
-+    }
-+
-+    void Manager::serverThread(Manager *manager)
-+    {
-+        while (manager->continueExecuting)
-         {
+-        {
 -            setVideoDone();
 -            waitServer();
-+            manager->server.run();
-+            manager->setServerDone();
-+            manager->waitVideo();
-         }
+-        }
++        //runs handlers that are ready to run,
++        //without blocking, until the io_context has been stopped or there are no more ready handlers.
++        io.poll();
      }
  
--    run.join();
--}
--
--void Manager::serverThread(Manager* manager)
--{
--    while (manager->continueExecuting)
-+    void Manager::setServerDone()
-     {
--        manager->server.run();
--        manager->setServerDone();
--        manager->waitVideo();
--    }
--}
-+        std::unique_lock<std::mutex> ulock(lock);
- 
--void Manager::setServerDone()
--{
--    std::unique_lock<std::mutex> ulock(lock);
-+        serverDone = true;
-+        sync.notify_all();
-+    }
- 
--    serverDone = true;
--    sync.notify_all();
--}
-+    void Manager::setVideoDone()
-+    {
-+        std::unique_lock<std::mutex> ulock(lock);
- 
--void Manager::setVideoDone()
--{
--    std::unique_lock<std::mutex> ulock(lock);
-+        videoDone = true;
-+        sync.notify_all();
-+    }
- 
--    videoDone = true;
--    sync.notify_all();
--}
-+    void Manager::waitServer()
-+    {
-+        std::unique_lock<std::mutex> ulock(lock);
- 
--void Manager::waitServer()
--{
--    std::unique_lock<std::mutex> ulock(lock);
-+        while (!serverDone)
-+        {
-+            sync.wait(ulock);
-+        }
- 
--    while (!serverDone)
--    {
--        sync.wait(ulock);
-+        serverDone = false;
-     }
- 
--    serverDone = false;
--}
-+    void Manager::waitVideo()
-+    {
-+        std::unique_lock<std::mutex> ulock(lock);
- 
--void Manager::waitVideo()
--{
--    std::unique_lock<std::mutex> ulock(lock);
-+        while (!videoDone)
-+        {
-+            sync.wait(ulock);
-+        }
- 
--    while (!videoDone)
--    {
--        sync.wait(ulock);
-+        // don't reset videoDone
-     }
- 
--    // don't reset videoDone
--}
--
- } // namespace ikvm
+     run.join();
 diff --git a/ikvm_manager.hpp b/ikvm_manager.hpp
-index 67d5a68..a6e6504 100644
+index c6750e6..04ad82e 100644
 --- a/ikvm_manager.hpp
 +++ b/ikvm_manager.hpp
-@@ -8,6 +8,16 @@
+@@ -8,6 +8,10 @@
  #include <condition_variable>
  #include <mutex>
  
 +#include <boost/asio.hpp>
-+#include <boost/asio/spawn.hpp>
 +#include <sdbusplus/asio/connection.hpp>
 +#include <sdbusplus/asio/object_server.hpp>
-+#include <sdbusplus/asio/sd_event.hpp>
-+#include <sdbusplus/bus.hpp>
-+#include <sdbusplus/exception.hpp>
-+#include <sdbusplus/server.hpp>
-+#include <sdbusplus/timer.hpp>
 +
  namespace ikvm
  {
- 
-@@ -70,6 +80,9 @@ class Manager
+ /*
+@@ -69,6 +73,9 @@ class Manager
      std::condition_variable sync;
      /* @brief Mutex for waiting on condition variable safely */
      std::mutex lock;
@@ -273,5 +149,4 @@ index 67d5a68..a6e6504 100644
  
  } // namespace ikvm
 -- 
-2.33.0
-
+2.25.1
