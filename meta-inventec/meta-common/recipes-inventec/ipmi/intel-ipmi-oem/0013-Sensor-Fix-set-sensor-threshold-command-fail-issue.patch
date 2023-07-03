@@ -1,7 +1,7 @@
-From 3739ef8005e9e80c48a1cca2d238d7ec52adcea9 Mon Sep 17 00:00:00 2001
+From a5e0f09341f4fc207d862af0e86bdf7149e2afd5 Mon Sep 17 00:00:00 2001
 From: "pj.chen" <chen.pj@inventec.com>
 Date: Mon, 7 Mar 2022 07:27:52 +0000
-Subject: [PATCH] Sensor - Fix set sensor threshold command fail issue
+Subject: [PATCH 13/30] Sensor - Fix set sensor threshold command fail issue
 
 Symptom/Reason :
     - Set sensor threshold command may fail under intensive test
@@ -24,22 +24,27 @@ Entry Test:
       ipmitool sensor thresh THERMAL_U95 unc 65.000
       ipmitool sensor thresh THERMAL_U95 ucr 70.000
 ---
- src/sensorcommands.cpp | 10 +++++++++-
- 1 file changed, 9 insertions(+), 1 deletion(-)
+ src/sensorcommands.cpp | 12 ++++++++++--
+ 1 file changed, 10 insertions(+), 2 deletions(-)
 
 diff --git a/src/sensorcommands.cpp b/src/sensorcommands.cpp
-index 436eddb..1a3e671 100644
+index be21cbb..3f9a0e6 100644
 --- a/src/sensorcommands.cpp
 +++ b/src/sensorcommands.cpp
-@@ -90,7 +90,6 @@ const static boost::container::flat_map<const char*, SensorUnits, CmpStr>
-     sensorUnits{{{"temperature", SensorUnits::degreesC},
-                  {"voltage", SensorUnits::volts},
-                  {"current", SensorUnits::amps},
--                 {"cfm", SensorUnits::cfm},
-                  {"fan_tach", SensorUnits::rpm},
-                  {"power", SensorUnits::watts}}};
+@@ -78,11 +78,10 @@ SensorSubTree sensorTree;
  
-@@ -1779,10 +1778,13 @@ ipmi::RspType<uint16_t,            // next record ID
+ static boost::container::flat_map<std::string, ManagedObjectType> SensorCache;
+ 
+-constexpr static std::array<std::pair<const char*, SensorUnits>, 6> sensorUnits{
++constexpr static std::array<std::pair<const char*, SensorUnits>, 5> sensorUnits{
+     {{"temperature", SensorUnits::degreesC},
+      {"voltage", SensorUnits::volts},
+      {"current", SensorUnits::amps},
+-     {"cfm", SensorUnits::cfm},
+      {"fan_tach", SensorUnits::rpm},
+      {"power", SensorUnits::watts}}};
+ 
+@@ -1814,10 +1813,13 @@ ipmi::RspType<uint16_t,            // next record ID
          return ipmi::response(ret);
      }
  
@@ -53,7 +58,7 @@ index 436eddb..1a3e671 100644
  
      if (!getSensorSubtree(sensorTree) && sensorTree.empty())
      {
-@@ -1791,6 +1793,12 @@ ipmi::RspType<uint16_t,            // next record ID
+@@ -1826,6 +1828,12 @@ ipmi::RspType<uint16_t,            // next record ID
          return ipmi::responseResponseError();
      }
  
@@ -67,5 +72,5 @@ index 436eddb..1a3e671 100644
      if (getSensorDataRecord(ctx, record, recordID))
      {
 -- 
-2.33.0
+2.34.1
 

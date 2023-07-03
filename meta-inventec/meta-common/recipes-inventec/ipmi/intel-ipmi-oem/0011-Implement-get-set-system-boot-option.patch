@@ -1,7 +1,7 @@
-From f282be87a3ca6f88332af31665f5cd4f86897db7 Mon Sep 17 00:00:00 2001
+From bdd540e31a2c85ae4bdd48d5972c66ac1bf6e92e Mon Sep 17 00:00:00 2001
 From: cynthia <wu.cynthia@inventec.com>
 Date: Tue, 10 Aug 2021 11:00:55 +0800
-Subject: [PATCH] Implement get/set system boot option
+Subject: [PATCH 11/30] Implement get/set system boot option
 
 Symptom/Reason :
 	Support get/set system boot option feature
@@ -25,6 +25,8 @@ Entry test:
 	  ex: ipmitool raw 0x0 0x8 0x5 0x80 0x80 0x0 0x0 0x0
 	4.ipmitool raw 0x0 0x9
 	  ex: ipmitool raw 0x0 0x9 0x0 0x0 0x0
+
+%% original patch: 0011-Implement-get-set-system-boot-option.patch
 ---
  include/chassiscommand.hpp |  85 ++++++
  src/chassiscommands.cpp    | 526 +++++++++++++++++++++++++++++++++++++
@@ -123,7 +125,7 @@ index 0000000..880e03a
 +    };
 +}// namespace ipmi::chassis*/
 diff --git a/src/chassiscommands.cpp b/src/chassiscommands.cpp
-index a6df1ac..12cd5ad 100644
+index 4f748ff..c8876c7 100644
 --- a/src/chassiscommands.cpp
 +++ b/src/chassiscommands.cpp
 @@ -29,6 +29,8 @@
@@ -135,7 +137,7 @@ index a6df1ac..12cd5ad 100644
  using namespace phosphor::logging;
  
  namespace ipmi::chassis
-@@ -634,6 +636,520 @@ ipmi::RspType<> ipmiSetFrontPanelButtonEnables(bool disablePowerButton,
+@@ -653,6 +655,520 @@ ipmi::RspType<> ipmiSetFrontPanelButtonEnables(bool disablePowerButton,
      return ipmi::responseSuccess();
  }
  
@@ -656,7 +658,7 @@ index a6df1ac..12cd5ad 100644
  static void registerChassisFunctions(void)
  {
      log<level::INFO>("Registering Chassis commands");
-@@ -669,6 +1185,16 @@ static void registerChassisFunctions(void)
+@@ -688,6 +1204,16 @@ static void registerChassisFunctions(void)
                            ipmi::chassis::cmdSetFrontPanelButtonEnables,
                            ipmi::Privilege::Admin,
                            ipmiSetFrontPanelButtonEnables);
@@ -674,5 +676,5 @@ index a6df1ac..12cd5ad 100644
  
  } // namespace ipmi::chassis
 -- 
-2.33.0
+2.34.1
 

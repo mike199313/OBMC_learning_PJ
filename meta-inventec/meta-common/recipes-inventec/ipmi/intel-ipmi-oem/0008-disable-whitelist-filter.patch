@@ -1,36 +1,36 @@
-From 096cf5799a53119e3d24cae10b7cc18ceefaa36f Mon Sep 17 00:00:00 2001
+From 0c75384bc59011d8589b8e42c99889934d44c3e2 Mon Sep 17 00:00:00 2001
 From: "Alang.Huang" <Huang.Alang@inventec.com>
 Date: Sat, 6 Mar 2021 01:59:30 +0000
-Subject: [PATCH 08/25] disable whitelist filter by commenting out
+Subject: [PATCH 08/30] disable whitelist filter by commenting out
  registerFilter()
 
 ---
- src/whitelist-filter.cpp | 6 +++++-
- 1 file changed, 5 insertions(+), 1 deletion(-)
+ src/allowlist-filter.cpp | 5 +++++
+ 1 file changed, 5 insertions(+)
 
-diff --git a/src/whitelist-filter.cpp b/src/whitelist-filter.cpp
-index 5b8eb27..9ac9289 100644
---- a/src/whitelist-filter.cpp
-+++ b/src/whitelist-filter.cpp
-@@ -107,13 +107,17 @@ WhitelistFilter::WhitelistFilter()
+diff --git a/src/allowlist-filter.cpp b/src/allowlist-filter.cpp
+index aed090c..aa8cc12 100644
+--- a/src/allowlist-filter.cpp
++++ b/src/allowlist-filter.cpp
+@@ -107,13 +107,18 @@ AllowlistFilter::AllowlistFilter()
  {
      bus = getSdBus();
  
 +    #if 0
-     log<level::INFO>("Loading whitelist filter");
--
+     log<level::INFO>("Loading Allowlist filter");
+ 
      ipmi::registerFilter(ipmi::prioOpenBmcBase,
                           [this](ipmi::message::Request::ptr request) {
                               return filterMessage(request);
                           });
 +    #else
-+
-+    log<level::INFO>("Disable whitelist filter");
  
++    log<level::INFO>("Disable whitelist filter");
++
 +    #endif
      channelSMM = getSMMChannel();
      // wait until io->run is going to fetch RestrictionMode
      post_work([this]() { postInit(); });
 -- 
-2.33.0
+2.34.1
 

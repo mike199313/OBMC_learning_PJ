@@ -1,7 +1,7 @@
-From c28a9fb61225447502439b4563669ac2b9a9b9f3 Mon Sep 17 00:00:00 2001
+From 5f5a0e097c2819bdfa72513471eb1b4c3626ce8f Mon Sep 17 00:00:00 2001
 From: Tommy Lin <lin.tommysc@inventec.com>
 Date: Thu, 2 Jun 2022 07:59:16 +0000
-Subject: [PATCH 24/25] Implement SEL timestamp correction
+Subject: [PATCH 24/30] Implement SEL timestamp correction
 
 Symptom/Reason:
 - Implement SEL timestamp correction
@@ -16,15 +16,17 @@ Solution/Change:
 Entry Test:
 - Get PEF list
   - ipmitool sel list
+
+%% original patch: 0024-Implement-SEL-timestamp-correction.patch
 ---
  src/storagecommands.cpp | 162 ++++++++++++++++++++++++++++++++++++++++
  1 file changed, 162 insertions(+)
 
 diff --git a/src/storagecommands.cpp b/src/storagecommands.cpp
-index c5830b6..d5184f2 100644
+index 1c6071a..03ce798 100644
 --- a/src/storagecommands.cpp
 +++ b/src/storagecommands.cpp
-@@ -146,6 +146,9 @@ static const uint16_t FRU_MAX_SIZE = 0x400;
+@@ -143,6 +143,9 @@ static const uint16_t FRU_MAX_SIZE = 0x400;
  static const uint8_t FRU_UPDATE_TIME = 60;
  static const int BUFFER_LENGTH = 20;
  
@@ -34,7 +36,7 @@ index c5830b6..d5184f2 100644
  ManagedObjectType frus;
  
  // we unfortunately have to build a map of hashes in case there is a
-@@ -1151,6 +1154,134 @@ static bool findSELEntry(const int recordID,
+@@ -1168,6 +1171,134 @@ static bool findSELEntry(const int recordID,
      return false;
  }
  
@@ -169,7 +171,7 @@ index c5830b6..d5184f2 100644
  static uint16_t
      getNextRecordID(const uint16_t recordID,
                      const std::vector<std::filesystem::path>& selLogFiles)
-@@ -1357,6 +1488,34 @@ ipmi::RspType<uint16_t, // Next Record ID
+@@ -1374,6 +1505,34 @@ ipmi::RspType<uint16_t, // Next Record ID
              timestamp = std::mktime(&timeStruct);
          }
  
@@ -204,7 +206,7 @@ index c5830b6..d5184f2 100644
          // For "Add SEL command" from IpmiSelAddOem log 9 Bytes data
          if ((targetEntryFields.size() == 4) && (eventDataBytes.size() == 9))
          {
-@@ -1539,6 +1698,9 @@ ipmi::RspType<uint8_t> ipmiStorageClearSEL(ipmi::Context::ptr ctx,
+@@ -1556,6 +1715,9 @@ ipmi::RspType<uint8_t> ipmiStorageClearSEL(ipmi::Context::ptr ctx,
      // cleared
      cancelSELReservation();
  
@@ -215,5 +217,5 @@ index c5830b6..d5184f2 100644
      intel_oem::ipmi::sel::erase_time::save();
  
 -- 
-2.33.0
+2.34.1
 

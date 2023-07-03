@@ -1,7 +1,7 @@
-From 22f2cb922fb165a6a4831e050215efec57c3e7c5 Mon Sep 17 00:00:00 2001
+From 15e73af589c5bbd913ed1a69502eb96e0fb439cb Mon Sep 17 00:00:00 2001
 From: Tommy Lin <lin.tommysc@inventec.com>
 Date: Mon, 6 Dec 2021 06:39:07 +0000
-Subject: [PATCH 18/25] Implement Get Sensor Reading Factors Command
+Subject: [PATCH 18/30] Implement Get Sensor Reading Factors Command
 
 Symptom/Reason:
     - Get Sensor Reading Factors command failed
@@ -16,23 +16,25 @@ Solution/Change:
 Entry Test:
     - Get sensor reading:
     ipmitool raw 0x04 0x23 {sensor_number} {reading_byte}
+
+%% original patch: 0018-Implement-Get-Sensor-Reading-Factors-Command.patch
 ---
  src/sensorcommands.cpp | 77 ++++++++++++++++++++++++++++++++++++++++++
  1 file changed, 77 insertions(+)
 
 diff --git a/src/sensorcommands.cpp b/src/sensorcommands.cpp
-index d091402..bef0f9f 100644
+index a0dfbe0..d69ab16 100644
 --- a/src/sensorcommands.cpp
 +++ b/src/sensorcommands.cpp
-@@ -459,6 +459,78 @@ ipmi::RspType<> ipmiSenPlatformEvent(ipmi::Context::ptr ctx,
+@@ -455,6 +455,78 @@ ipmi::RspType<> ipmiSenPlatformEvent(ipmi::Context::ptr ctx,
      return ipmi::responseSuccess();
  }
  
 +ipmi::RspType<uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t>
 +    ipmiSenGetSensorReadingFactors(ipmi::Context::ptr ctx, uint8_t sensnum, uint8_t readingByte)
 +{
-+    get_sdr::GetSensorReadingFactorsResponse resp{};
-+    memset(&resp, 0, sizeof(get_sdr::GetSensorThresholdsResponse));
++    //get_sdr::GetSensorReadingFactorsResponse resp{};
++    //memset(&resp, 0, sizeof(get_sdr::GetSensorThresholdsResponse));
 +    std::string connection;
 +    std::string path;
 +
@@ -63,25 +65,25 @@ index d091402..bef0f9f 100644
 +        return ipmi::responseResponseError();
 +    }
 +
-+    resp.next_reading = 0xFF;
++    uint8_t next_reading = 0xFF;
 +    // apply M, B, and exponents, M and B are 10 bit values, exponents are 4
-+    resp.m_lsb = mValue & 0xFF;
++    uint8_t m_lsb = mValue & 0xFF;
 +
 +    uint8_t mBitSign = (mValue < 0) ? 1 : 0;
 +    uint8_t mBitNine = (mValue & 0x0100) >> 8;
 +
 +    // move the smallest bit of the MSB into place (bit 9)
 +    // the MSbs are bits 7:8 in m_msb_and_tolerance
-+    resp.m_msb_and_tolerance = (mBitSign << 7) | (mBitNine << 6);
++    uint8_t m_msb_and_tolerance = (mBitSign << 7) | (mBitNine << 6);
 +
-+    resp.b_lsb = bValue & 0xFF;
++    uint8_t b_lsb = bValue & 0xFF;
 +
 +    uint8_t bBitSign = (bValue < 0) ? 1 : 0;
 +    uint8_t bBitNine = (bValue & 0x0100) >> 8;
 +
 +    // move the smallest bit of the MSB into place (bit 9)
 +    // the MSbs are bits 7:8 in b_msb_and_accuracy_lsb
-+    resp.b_msb_and_accuracy_lsb = (bBitSign << 7) | (bBitNine << 6);
++    uint8_t b_msb_and_accuracy_lsb = (bBitSign << 7) | (bBitNine << 6);
 +
 +    uint8_t rExpSign = (rExp < 0) ? 1 : 0;
 +    uint8_t rExpBits = rExp & 0x07;
@@ -90,20 +92,20 @@ index d091402..bef0f9f 100644
 +    uint8_t bExpBits = bExp & 0x07;
 +
 +    // move rExp and bExp into place
-+    resp.r_b_exponents =
++    uint8_t r_b_exponents =
 +        (rExpSign << 7) | (rExpBits << 4) | (bExpSign << 3) | bExpBits;
 +
-+    return ipmi::responseSuccess(resp.next_reading, resp.m_lsb,
-+                                 resp.m_msb_and_tolerance, resp.b_lsb,
-+                                 resp.b_msb_and_accuracy_lsb,
-+                                 resp.accuracy_and_accuracy_exp,
-+                                 resp.r_b_exponents);
++    return ipmi::responseSuccess(next_reading, m_lsb,
++                                 m_msb_and_tolerance, b_lsb,
++                                 b_msb_and_accuracy_lsb,
++                                 0,
++                                 r_b_exponents);
 +}
 +
  ipmi::RspType<uint8_t, uint8_t, uint8_t, std::optional<uint8_t>>
      ipmiSenGetSensorReading(ipmi::Context::ptr ctx, uint8_t sensnum)
  {
-@@ -1859,6 +1931,11 @@ void registerSensorFunctions()
+@@ -1901,6 +1973,11 @@ void registerSensorFunctions()
                            ipmi::sensor_event::cmdPlatformEvent,
                            ipmi::Privilege::Operator, ipmiSenPlatformEvent);
  
@@ -116,5 +118,5 @@ index d091402..bef0f9f 100644
      ipmi::registerHandler(ipmi::prioOemBase, ipmi::netFnSensor,
                            ipmi::sensor_event::cmdGetSensorReading,
 -- 
-2.33.0
+2.34.1
 

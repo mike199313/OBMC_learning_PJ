@@ -1,7 +1,7 @@
-From c527f32f2669e42f25794dbe1cf1d81f71cad75c Mon Sep 17 00:00:00 2001
+From 6e29fc43b941e64aad10440d3d84118c021be648 Mon Sep 17 00:00:00 2001
 From: cynthia <wu.cynthia@inventec.com>
 Date: Fri, 12 Nov 2021 11:19:50 +0800
-Subject: [PATCH 15/25] Implement Get system GUID function
+Subject: [PATCH 15/30] Implement Get system GUID function
 
     Sympton/Reason:
             Implement Get system GUID function
@@ -17,6 +17,8 @@ Subject: [PATCH 15/25] Implement Get system GUID function
     Entry Test:
 	    1. ipmitool mc guid
 	    2. ipmitool raw 0x6 0x37
+
+%% original patch: 0015-Implement-Get-system-GUID-function.patch
 ---
  include/appcommands.hpp |  7 ++++
  src/appcommands.cpp     | 83 +++++++++++++++++++++++++++++++++++++++++
@@ -41,18 +43,18 @@ index 541936b..23daacb 100644
                                          const std::string& reqVersionPurpose,
                                          std::string& version);
 diff --git a/src/appcommands.cpp b/src/appcommands.cpp
-index 14aa796..f8dd8a3 100644
+index 66c3a75..2dbb8a5 100644
 --- a/src/appcommands.cpp
 +++ b/src/appcommands.cpp
-@@ -55,6 +55,7 @@ static constexpr const char* bmcStateReadyStr =
+@@ -56,6 +56,7 @@ static constexpr const char* bmcStateReadyStr =
  
- static std::unique_ptr<sdbusplus::bus::match::match> bmcStateChangedSignal;
+ static std::unique_ptr<sdbusplus::bus::match_t> bmcStateChangedSignal;
  static uint8_t bmcDeviceBusy = true;
 +static int GUID_ONE_BYTE_DATA_LEN = 2;
  
  int initBMCDeviceState(ipmi::Context::ptr ctx)
  {
-@@ -524,6 +525,82 @@ auto ipmiAppGetSelfTestResults(ipmi::Context::ptr ctx) -> ipmi::RspType<uint8_t,
+@@ -525,6 +526,82 @@ auto ipmiAppGetSelfTestResults(ipmi::Context::ptr ctx) -> ipmi::RspType<uint8_t,
      return ipmi::responseSuccess(bmcSelfTestResult == 0x00 ? 0x55 : 0x57, bmcSelfTestResult);
  }
  
@@ -135,7 +137,7 @@ index 14aa796..f8dd8a3 100644
  static void registerAPPFunctions(void)
  {
      // <Get Device ID>
-@@ -535,6 +612,12 @@ static void registerAPPFunctions(void)
+@@ -536,6 +613,12 @@ static void registerAPPFunctions(void)
      ipmi::registerHandler(ipmi::prioOemBase, ipmi::netFnApp,
                            ipmi::app::cmdGetSelfTestResults,
                            ipmi::Privilege::User, ipmiAppGetSelfTestResults);
@@ -149,5 +151,5 @@ index 14aa796..f8dd8a3 100644
  
  } // namespace ipmi
 -- 
-2.33.0
+2.34.1
 

@@ -1,8 +1,8 @@
-From de63f7a5b9a5413702b66c65c82079c7294efb6f Mon Sep 17 00:00:00 2001
+From 0b1bff36eb6aa7daaca3485e888d836c17c1737a Mon Sep 17 00:00:00 2001
 From: bonnie <Liu.Bonnie@inventec.com>
 Date: Wed, 30 Nov 2022 14:46:49 +0800
-Subject: [PATCH] Bug 1360 - [SW][Common]Modify Add/Delete SDR IPMI commands to
- create external sensor.
+Subject: [PATCH 26/30] Bug 1360 - [SW][Common]Modify Add/Delete SDR IPMI
+ commands to create external sensor.
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -56,6 +56,8 @@ Entry Test：
 	   2 | 11/23/22 | 16:07:44 UTC | Temperature #0xff |  | Asserted
 	   3 | 11/23/22 | 16:07:44 UTC | Temperature #0xff |  | Asserted
   	   4 | 11/23/22 | 16:07:44 UTC | Temperature #0xff |  | Deasserted
+
+%% original patch: 0026-Bug-1360-AddDeleteSDR-setSensorReadingAndEventStatus.patch
 ---
  include/dynamic_sdr.hpp    |   2 +-
  include/sensorcommands.hpp |  16 +++
@@ -110,7 +112,7 @@ index 858f1a1..4b0f513 100644
 diff --git a/src/dynamic_sdr.cpp b/src/dynamic_sdr.cpp
 old mode 100755
 new mode 100644
-index d6f0e79..3e76a23
+index d6f0e79..7762152
 --- a/src/dynamic_sdr.cpp
 +++ b/src/dynamic_sdr.cpp
 @@ -613,5 +613,17 @@ namespace ipmi
@@ -132,7 +134,7 @@ index d6f0e79..3e76a23
  }
  
 diff --git a/src/sensorcommands.cpp b/src/sensorcommands.cpp
-index 461225a..6bcd015 100644
+index 0165cf0..a3c9674 100644
 --- a/src/sensorcommands.cpp
 +++ b/src/sensorcommands.cpp
 @@ -16,7 +16,7 @@
@@ -154,7 +156,7 @@ index 461225a..6bcd015 100644
  namespace ipmi
  {
  using ManagedObjectType =
-@@ -1471,7 +1472,157 @@ ipmi::RspType<uint8_t,         // sensorEventStatus
+@@ -1479,7 +1480,157 @@ ipmi::RspType<uint8_t,         // sensorEventStatus
  
      return ipmi::responseSuccess(sensorEventStatus, assertions, deassertions);
  }
@@ -312,7 +314,7 @@ index 461225a..6bcd015 100644
  static inline uint16_t getNumberOfSensors(void)
  {
      return sensorTree.size() > maxIPMISensors ? maxIPMISensors
-@@ -2175,7 +2326,101 @@ ipmi::RspType<uint16_t,            // next record ID
+@@ -2191,7 +2342,101 @@ ipmi::RspType<uint16_t,            // next record ID
      return ipmi::responseSuccess(nextRecordId, recordData);
  }
  
@@ -414,7 +416,7 @@ index 461225a..6bcd015 100644
  /** @brief implements the Add SDR command
   *   Privilege Level: Operator
   *   IPMI v2.0 #33.2 Modal & non-modal SDR Repository
-@@ -2275,6 +2520,12 @@ ipmi::RspType<uint16_t>
+@@ -2291,6 +2536,12 @@ ipmi::RspType<uint16_t>
          return ipmi::responseResponseError();
      }
  
@@ -427,7 +429,7 @@ index 461225a..6bcd015 100644
      return ipmi::responseSuccess(newRecordId);
  }
  
-@@ -2290,6 +2541,17 @@ ipmi::RspType<uint16_t> ipmiStorageDeleteSDR(ipmi::Context::ptr ctx,
+@@ -2306,6 +2557,17 @@ ipmi::RspType<uint16_t> ipmiStorageDeleteSDR(ipmi::Context::ptr ctx,
                                               uint16_t reservationID,
                                               uint16_t recordID)
  {
@@ -445,7 +447,7 @@ index 461225a..6bcd015 100644
      if (!getSensorSubtree(sensorTree) && sensorTree.empty())
      {
          return ipmi::responseResponseError();
-@@ -2406,6 +2668,11 @@ void registerSensorFunctions()
+@@ -2422,6 +2684,11 @@ void registerSensorFunctions()
                            ipmi::sensor_event::cmdGetSensorEventStatus,
                            ipmi::Privilege::User, ipmiSenGetSensorEventStatus);
  
@@ -457,3 +459,6 @@ index 461225a..6bcd015 100644
      // register all storage commands for both Sensor and Storage command
      // versions
  
+-- 
+2.34.1
+

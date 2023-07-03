@@ -1,7 +1,7 @@
-From 1b0ec05f72a9c1540772b8587ddee5878f5ce6db Mon Sep 17 00:00:00 2001
+From 1acd02ed15dcad8d0d2e1adec54f12a8474d7c44 Mon Sep 17 00:00:00 2001
 From: "pj.chen" <chen.pj@inventec.com>
 Date: Wed, 12 Jan 2022 07:27:36 +0000
-Subject: [PATCH 10/25] Bug 755 - [SW][common][intel-ipmi-oem] - Add more
+Subject: [PATCH 10/30] Bug 755 - [SW][common][intel-ipmi-oem] - Add more
  sensor type and event type
 
 Sympton/Reason:
@@ -50,14 +50,14 @@ Sensor ID              : BMC_health (0xb1)
 ---
  include/sdrutils.hpp        | 194 +++++++++++++++++++++++++++++++++---
  include/storagecommands.hpp |   1 +
- src/sensorcommands.cpp      |   1 +
- 3 files changed, 180 insertions(+), 16 deletions(-)
+ src/sensorcommands.cpp      |   3 +-
+ 3 files changed, 181 insertions(+), 17 deletions(-)
 
 diff --git a/include/sdrutils.hpp b/include/sdrutils.hpp
-index f5d4895..d6e6704 100644
+index 6cbe144..1932f5d 100644
 --- a/include/sdrutils.hpp
 +++ b/include/sdrutils.hpp
-@@ -568,23 +568,108 @@ enum class SensorTypeCodes : uint8_t
+@@ -567,23 +567,108 @@ enum class SensorTypeCodes : uint8_t
      voltage = 0x2,
      current = 0x3,
      fan = 0x4,
@@ -173,7 +173,7 @@ index f5d4895..d6e6704 100644
      size_t typeEnd = path.rfind("/");
      if (typeEnd == std::string::npos)
      {
-@@ -603,13 +688,41 @@ inline static std::string getSensorTypeStringFromPath(const std::string& path)
+@@ -602,13 +687,41 @@ inline static std::string getSensorTypeStringFromPath(const std::string& path)
  inline static uint8_t getSensorTypeFromPath(const std::string& path)
  {
      uint8_t sensorType = 0;
@@ -220,7 +220,7 @@ index f5d4895..d6e6704 100644
      return sensorType;
  }
  
-@@ -652,10 +765,35 @@ enum class EventTypeCodes : uint8_t
+@@ -651,10 +764,35 @@ enum class EventTypeCodes : uint8_t
  inline static uint8_t getEventTypeStringFromPath(const std::string& path)
  {
      uint8_t eventType = 0xFF;
@@ -257,7 +257,7 @@ index f5d4895..d6e6704 100644
      }
      else if (path.find("unspecific") != std::string::npos)
      {
-@@ -665,11 +803,35 @@ inline static uint8_t getEventTypeStringFromPath(const std::string& path)
+@@ -664,11 +802,35 @@ inline static uint8_t getEventTypeStringFromPath(const std::string& path)
      {
          eventType = (uint8_t)EventTypeCodes::specific;
      }
@@ -297,10 +297,10 @@ index f5d4895..d6e6704 100644
  }
  
 diff --git a/include/storagecommands.hpp b/include/storagecommands.hpp
-index 5e2eccc..5bf3970 100644
+index 854a05d..1468ea3 100644
 --- a/include/storagecommands.hpp
 +++ b/include/storagecommands.hpp
-@@ -80,6 +80,7 @@ enum class SensorUnits : uint8_t
+@@ -81,6 +81,7 @@ enum class SensorUnits : uint8_t
      volts = 0x4,
      amps = 0x5,
      watts = 0x6,
@@ -309,17 +309,22 @@ index 5e2eccc..5bf3970 100644
  };
  
 diff --git a/src/sensorcommands.cpp b/src/sensorcommands.cpp
-index 787d320..436eddb 100644
+index c603d67..be21cbb 100644
 --- a/src/sensorcommands.cpp
 +++ b/src/sensorcommands.cpp
-@@ -90,6 +90,7 @@ const static boost::container::flat_map<const char*, SensorUnits, CmpStr>
-     sensorUnits{{{"temperature", SensorUnits::degreesC},
-                  {"voltage", SensorUnits::volts},
-                  {"current", SensorUnits::amps},
-+                 {"cfm", SensorUnits::cfm},
-                  {"fan_tach", SensorUnits::rpm},
-                  {"power", SensorUnits::watts}}};
+@@ -78,10 +78,11 @@ SensorSubTree sensorTree;
+ 
+ static boost::container::flat_map<std::string, ManagedObjectType> SensorCache;
+ 
+-constexpr static std::array<std::pair<const char*, SensorUnits>, 5> sensorUnits{
++constexpr static std::array<std::pair<const char*, SensorUnits>, 6> sensorUnits{
+     {{"temperature", SensorUnits::degreesC},
+      {"voltage", SensorUnits::volts},
+      {"current", SensorUnits::amps},
++     {"cfm", SensorUnits::cfm},
+      {"fan_tach", SensorUnits::rpm},
+      {"power", SensorUnits::watts}}};
  
 -- 
-2.33.0
+2.34.1
 

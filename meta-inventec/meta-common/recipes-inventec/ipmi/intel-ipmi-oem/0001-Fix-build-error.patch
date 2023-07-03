@@ -1,0 +1,25 @@
+From 1de0091d7bf5d6f105d229e61e36bbd7d8c84a3c Mon Sep 17 00:00:00 2001
+From: Tommy Lin <Lin.TommySC@inventec.com>
+Date: Mon, 3 Jul 2023 14:24:01 +0800
+Subject: [PATCH] Fix build error
+
+---
+ CMakeLists.txt | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 0e33cec..930219e 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -121,7 +121,7 @@ target_link_libraries (zinteloemcmds -lchannellayer)
+ target_link_libraries (zinteloemcmds ${OPENSSL_CRYPTO_LIBRARY})
+ target_link_libraries (zinteloemcmds gpiodcxx)
+ 
+-find_package (tinyxml2 REQUIRED)
++pkg_check_modules (LIBXML2 tinyxml2 REQUIRED)
+ target_link_libraries (zinteloemcmds tinyxml2)
+ 
+ install (TARGETS zinteloemcmds DESTINATION lib/ipmid-providers)
+-- 
+2.25.1
+

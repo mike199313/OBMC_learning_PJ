@@ -1,8 +1,8 @@
-From 7e564a81e14ed6715021a6020537c16363302be6 Mon Sep 17 00:00:00 2001
+From edb70378ca082f96bb75ec6bfdd8029fca85dba5 Mon Sep 17 00:00:00 2001
 From: "pj.chen" <chen.pj@inventec.com>
 Date: Mon, 7 Mar 2022 08:07:29 +0000
-Subject: [PATCH] Bug 629 - [SW][Transformers][OpenBMC] Support mc selftest on
- transformers
+Subject: [PATCH 14/30] Bug 629 - [SW][Transformers][OpenBMC] Support mc
+ selftest on transformers
 
 Solution/Change:
     [inv-ipmi-oem]
@@ -44,6 +44,8 @@ Entry Test:
      -> SDR repository not accessible
     SDR repository empty
     Internal Use Area corrupted
+
+%% original patch: 0014-Bug-629-SW-Transformers-OpenBMC-Support-mc-selftest-.patch
 ---
  include/appcommands.hpp      |  13 +++
  include/bridgingcommands.hpp |   2 +
@@ -79,7 +81,7 @@ index f4cd0d6..541936b 100644
 +
  } // namespace ipmi
 diff --git a/include/bridgingcommands.hpp b/include/bridgingcommands.hpp
-index 545d24a..6725670 100644
+index 73b4486..1d1df8f 100644
 --- a/include/bridgingcommands.hpp
 +++ b/include/bridgingcommands.hpp
 @@ -210,3 +210,5 @@ class Bridging
@@ -89,7 +91,7 @@ index 545d24a..6725670 100644
 +
 +uint8_t ipmbSelfTest(ipmi::Context::ptr ctx);
 diff --git a/include/sdrutils.hpp b/include/sdrutils.hpp
-index d6e6704..793d35d 100644
+index 1932f5d..c9f69bc 100644
 --- a/include/sdrutils.hpp
 +++ b/include/sdrutils.hpp
 @@ -219,10 +219,15 @@ class IPMIStatsTable
@@ -109,7 +111,7 @@ index d6e6704..793d35d 100644
      sd_bus* bus = NULL;
      int ret = sd_bus_default_system(&bus);
      if (ret < 0)
-@@ -281,7 +286,7 @@ inline static uint16_t getSensorSubtree(std::shared_ptr<SensorSubTree>& subtree)
+@@ -280,7 +285,7 @@ inline static uint16_t getSensorSubtree(std::shared_ptr<SensorSubTree>& subtree)
      catch (const sdbusplus::exception_t& e)
      {
          phosphor::logging::log<phosphor::logging::level::ERR>(e.what());
@@ -118,7 +120,7 @@ index d6e6704..793d35d 100644
      }
      subtree = sensorTreePtr;
      sensorUpdatedIndex++;
-@@ -540,10 +545,10 @@ inline static bool tryGetSensorNumByPath(std::shared_ptr<SensorNumMap>& sensorNu
+@@ -539,10 +544,10 @@ inline static bool tryGetSensorNumByPath(std::shared_ptr<SensorNumMap>& sensorNu
  }
  } // namespace details
  
@@ -143,7 +145,7 @@ index cb8b70d..e6ca8fb 100644
 +uint8_t sdrSelfTest(ipmi::Context::ptr ctx);
  } // namespace ipmi
 diff --git a/include/storagecommands.hpp b/include/storagecommands.hpp
-index dfbe98a..e1c7db4 100644
+index 1468ea3..0b4b3bf 100644
 --- a/include/storagecommands.hpp
 +++ b/include/storagecommands.hpp
 @@ -169,13 +169,25 @@ namespace ipmi
@@ -175,10 +177,10 @@ index dfbe98a..e1c7db4 100644
  std::vector<uint8_t> getNMDiscoverySDR(uint16_t index, uint16_t recordId);
  } // namespace storage
 diff --git a/src/appcommands.cpp b/src/appcommands.cpp
-index 0942d0c..14aa796 100644
+index acadd29..66c3a75 100644
 --- a/src/appcommands.cpp
 +++ b/src/appcommands.cpp
-@@ -15,14 +15,24 @@
+@@ -15,15 +15,25 @@
  */
  #include <byteswap.h>
  
@@ -191,6 +193,7 @@ index 0942d0c..14aa796 100644
  #include <ipmid/utils.hpp>
  #include <nlohmann/json.hpp>
  #include <phosphor-logging/log.hpp>
+ #include <types.hpp>
  
 +#include <openssl/md5.h>
 +#include <boost/algorithm/hex.hpp>
@@ -203,7 +206,7 @@ index 0942d0c..14aa796 100644
  
  namespace ipmi
  {
-@@ -383,6 +393,137 @@ RspType<uint8_t,  // Device ID
+@@ -384,6 +394,137 @@ RspType<uint8_t,  // Device ID
                                   devId.prodId, devId.aux);
  }
  
@@ -341,7 +344,7 @@ index 0942d0c..14aa796 100644
  static void registerAPPFunctions(void)
  {
      // <Get Device ID>
-@@ -390,6 +531,10 @@ static void registerAPPFunctions(void)
+@@ -391,6 +532,10 @@ static void registerAPPFunctions(void)
      registerHandler(prioOemBase, netFnApp, app::cmdGetDeviceId, Privilege::User,
                      ipmiAppGetDeviceId);
      */
@@ -353,7 +356,7 @@ index 0942d0c..14aa796 100644
  
  } // namespace ipmi
 diff --git a/src/bridgingcommands.cpp b/src/bridgingcommands.cpp
-index 916ba15..09098c6 100644
+index 405db62..f5e938a 100644
 --- a/src/bridgingcommands.cpp
 +++ b/src/bridgingcommands.cpp
 @@ -15,6 +15,7 @@
@@ -364,7 +367,7 @@ index 916ba15..09098c6 100644
  #include <ipmid/api.hpp>
  #include <ipmid/utils.hpp>
  #include <manufacturingcommands.hpp>
-@@ -754,6 +755,21 @@ ipmi::RspType<uint16_t, // Record ID
+@@ -757,6 +758,21 @@ ipmi::RspType<uint16_t, // Record ID
                          static_cast<uint7_t>(0), false, eventData});
  }
  
@@ -387,7 +390,7 @@ index 916ba15..09098c6 100644
  static void register_bridging_functions()
  {
 diff --git a/src/sensorcommands.cpp b/src/sensorcommands.cpp
-index 1a3e671..b5f45e4 100644
+index 3f9a0e6..a0dfbe0 100644
 --- a/src/sensorcommands.cpp
 +++ b/src/sensorcommands.cpp
 @@ -15,6 +15,7 @@
@@ -398,7 +401,7 @@ index 1a3e671..b5f45e4 100644
  
  #include "commandutils.hpp"
  #include "ipmi_to_redfish_hooks.hpp"
-@@ -1208,8 +1209,8 @@ static int getSensorDataRecord(ipmi::Context::ptr ctx,
+@@ -1242,8 +1243,8 @@ static int getSensorDataRecord(ipmi::Context::ptr ctx,
      }
  
      size_t lastRecord = getNumberOfSensors() + fruCount +
@@ -409,7 +412,7 @@ index 1a3e671..b5f45e4 100644
      if (recordID == lastRecordIndex)
      {
          recordID = lastRecord;
-@@ -1224,13 +1225,13 @@ static int getSensorDataRecord(ipmi::Context::ptr ctx,
+@@ -1258,13 +1259,13 @@ static int getSensorDataRecord(ipmi::Context::ptr ctx,
      if (recordID >= getNumberOfSensors())
      {
          size_t fruIndex = recordID - getNumberOfSensors();
@@ -425,7 +428,7 @@ index 1a3e671..b5f45e4 100644
              {
                  phosphor::logging::log<phosphor::logging::level::ERR>(
                      "getSensorDataRecord: NM DiscoveryIndex error");
-@@ -1243,7 +1244,7 @@ static int getSensorDataRecord(ipmi::Context::ptr ctx,
+@@ -1277,7 +1278,7 @@ static int getSensorDataRecord(ipmi::Context::ptr ctx,
          {
              // handle type 12 hardcoded records
              size_t type12Index = fruIndex - fruCount;
@@ -434,7 +437,7 @@ index 1a3e671..b5f45e4 100644
              {
                  phosphor::logging::log<phosphor::logging::level::ERR>(
                      "getSensorDataRecord: type12Index error");
-@@ -1696,8 +1697,8 @@ ipmi::RspType<uint8_t,  // sdr version
+@@ -1731,8 +1732,8 @@ ipmi::RspType<uint8_t,  // sdr version
      }
  
      uint16_t recordCount = getNumberOfSensors() + fruCount +
@@ -445,7 +448,7 @@ index 1a3e671..b5f45e4 100644
  
      uint8_t operationSupport = static_cast<uint8_t>(
          SdrRepositoryInfoOps::overflow); // write not supported
-@@ -1795,8 +1796,8 @@ ipmi::RspType<uint16_t,            // next record ID
+@@ -1830,8 +1831,8 @@ ipmi::RspType<uint16_t,            // next record ID
  
      /* Inventec - Fix set sensor threshold command fail issue */
      size_t lastRecord = sensorTree.size() + fruCount +
@@ -456,7 +459,7 @@ index 1a3e671..b5f45e4 100644
      uint16_t nextRecordId = lastRecord > recordID ? recordID + 1 : 0XFFFF;
  
      std::vector<uint8_t> record;
-@@ -1835,6 +1836,29 @@ ipmi::RspType<uint16_t,            // next record ID
+@@ -1870,6 +1871,29 @@ ipmi::RspType<uint16_t,            // next record ID
  }
  /* end storage commands */
  
@@ -487,7 +490,7 @@ index 1a3e671..b5f45e4 100644
  {
      // <Platform Event>
 diff --git a/src/storagecommands.cpp b/src/storagecommands.cpp
-index c9a332f..7f746d7 100644
+index 4517f2c..1c6071a 100644
 --- a/src/storagecommands.cpp
 +++ b/src/storagecommands.cpp
 @@ -15,6 +15,7 @@
@@ -498,7 +501,7 @@ index c9a332f..7f746d7 100644
  
  #include "commandutils.hpp"
  #include "ipmi_to_redfish_hooks.hpp"
-@@ -726,6 +727,169 @@ void checkTimer()
+@@ -723,6 +724,169 @@ void checkTimer()
      }
  }
  
@@ -669,5 +672,5 @@ index c9a332f..7f746d7 100644
                        get_sdr::SensorDataFruRecord& resp)
  {
 -- 
-2.17.1
+2.34.1
 

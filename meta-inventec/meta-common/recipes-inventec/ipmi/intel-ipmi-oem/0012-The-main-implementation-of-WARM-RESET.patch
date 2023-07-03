@@ -1,7 +1,7 @@
-From 3f206a5e599c9e73aadb0402fe9b6cd75b1d01e8 Mon Sep 17 00:00:00 2001
+From 61beb9e11d34ac6a18242b9a48394a853b7ec53a Mon Sep 17 00:00:00 2001
 From: "Fred.Chang" <chang.fredys@inventec.com>
 Date: Tue, 22 Mar 2022 05:51:23 +0000
-Subject: [PATCH 12/25] The main implementation of WARM RESET Bug 1041 -
+Subject: [PATCH 12/30] The main implementation of WARM RESET Bug 1041 -
  [Transformers][OpenBMC][IPMI] After warm reset, here is no sel log about warm
  reset. Symptom/Reason : - Add the main implementation of warm reset
 
@@ -31,16 +31,16 @@ Entry Test:
  create mode 100755 src/globalcommands.cpp
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 9820466..4028c91 100644
+index 897b5c4..cd113d9 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -98,7 +98,7 @@ add_custom_command(OUTPUT include/ipmi-whitelist.hpp
+@@ -103,7 +103,7 @@ add_custom_command(OUTPUT include/ipmi-allowlist.hpp
  
  add_library (zinteloemcmds
               SHARED src/sensorcommands.cpp src/biosconfigcommands.cpp
 -             src/storagecommands.cpp src/multinodecommands.cpp
 +             src/storagecommands.cpp src/multinodecommands.cpp src/globalcommands.cpp
-              src/firmware-update.cpp src/appcommands.cpp src/smbioshandler.cpp
+              src/firmware-update.cpp src/appcommands.cpp
               src/smbiosmdrv2handler.cpp src/manufacturingcommands.cpp
               src/bmccontrolservices.cpp src/bridgingcommands.cpp
 diff --git a/include/globalcommands.hpp b/include/globalcommands.hpp
@@ -306,5 +306,5 @@ index 0000000..98efc56
 +
 +} // namespace ipmi
 -- 
-2.33.0
+2.34.1
 

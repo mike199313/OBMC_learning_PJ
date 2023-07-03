@@ -1,7 +1,7 @@
-From ea6192c03f12019d999566607be2f28a7a495b55 Mon Sep 17 00:00:00 2001
+From 3e82c5d1be4897d2f3a755fb110c3ae0f21cea97 Mon Sep 17 00:00:00 2001
 From: Tommy Lin <lin.tommysc@inventec.com>
 Date: Fri, 27 May 2022 07:47:55 +0000
-Subject: [PATCH 23/25] Implement PEF features
+Subject: [PATCH 23/30] Implement PEF features
 
 Symptom/Reason:
 - Implement PEF features
@@ -40,7 +40,7 @@ Entry Test:
  create mode 100644 src/pef/pef_serialize.cpp
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index bd6fb83..fceab0e 100644
+index f854569..e4ed900 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -20,6 +20,8 @@ set (
@@ -59,17 +59,17 @@ index bd6fb83..fceab0e 100644
 +add_definitions (-DCLASS_VERSION=${DEFAULT_CLASS_VERSION})
  
  if (NOT YOCTO) # headers that can't be built without yocto
-     include_directories (SYSTEM non-yocto)
-@@ -48,6 +51,8 @@ if (NOT YOCTO) # headers that can't be built without yocto
+ 
+@@ -55,6 +58,8 @@ if (NOT YOCTO) # headers that can't be built without yocto
      link_directories (${CMAKE_BINARY_DIR}/sdbusplus-src/.libs)
      include_directories (SYSTEM ${CMAKE_BINARY_DIR}/phosphor-logging-src)
      link_directories (${CMAKE_BINARY_DIR}/phosphor-logging-src/.libs)
 +    include_directories (SYSTEM ${CMAKE_BINARY_DIR}/phosphor-snmp-src)
 +    link_directories (${CMAKE_BINARY_DIR}/phosphor-snmp-src/.libs)
-     include_directories (SYSTEM ${CMAKE_BINARY_DIR}/intel-dbus-interfaces-src)
-     link_directories (${CMAKE_BINARY_DIR}/intel-dbus-interfaces-src/.libs)
      include_directories (SYSTEM ${CMAKE_BINARY_DIR}/phosphor-ipmi-host/include)
-@@ -63,6 +68,10 @@ if (YOCTO)
+     include_directories (SYSTEM ${CMAKE_BINARY_DIR}/ipmid/user_channel)
+     include_directories (SYSTEM ${CMAKE_BINARY_DIR}) # link_directories  (${CMAK
+@@ -68,6 +73,10 @@ if (YOCTO)
      include_directories (SYSTEM ${LOGGING_INCLUDE_DIRS})
      link_directories (${LOGGING_LIBRARY_DIRS})
  
@@ -80,23 +80,23 @@ index bd6fb83..fceab0e 100644
      pkg_check_modules (LIBIPMID libipmid REQUIRED)
      include_directories (SYSTEM ${LIBIPMID_INCLUDE_DIRS})
      link_directories (${LIBIPMID_LIBRARY_DIRS})
-@@ -105,6 +114,8 @@ add_library (zinteloemcmds
+@@ -110,6 +119,8 @@ add_library (zinteloemcmds
               src/bmccontrolservices.cpp src/bridgingcommands.cpp
               src/ipmi_to_redfish_hooks.cpp src/me_to_redfish_hooks.cpp
-              src/chassiscommands.cpp src/whitelist-filter.cpp
+              src/chassiscommands.cpp src/allowlist-filter.cpp
 +             src/eventcommands.cpp
 +             src/pef/pef_manager.cpp src/pef/pef_serialize.cpp
-              include/ipmi-whitelist.hpp)
+              include/ipmi-allowlist.hpp)
  set_target_properties (zinteloemcmds PROPERTIES VERSION "0.1.0")
  set_target_properties (zinteloemcmds PROPERTIES SOVERSION "0")
-@@ -112,6 +123,7 @@ target_link_libraries (zinteloemcmds stdc++fs)
+@@ -117,6 +128,7 @@ target_link_libraries (zinteloemcmds stdc++fs)
  target_link_libraries (zinteloemcmds ipmid)
  target_link_libraries (zinteloemcmds sdbusplus)
  target_link_libraries (zinteloemcmds phosphor_logging)
 +target_link_libraries (zinteloemcmds snmp)
- target_link_libraries (zinteloemcmds intel_dbus)
  target_link_libraries (zinteloemcmds -luserlayer)
  target_link_libraries (zinteloemcmds -lchannellayer)
+ target_link_libraries (zinteloemcmds ${OPENSSL_CRYPTO_LIBRARY})
 diff --git a/include/eventcommands.hpp b/include/eventcommands.hpp
 new file mode 100644
 index 0000000..d0580de
@@ -1743,5 +1743,5 @@ index 0000000..4d5c1d0
 +} // namespace sensor_event
 +} // namespace ipmi
 -- 
-2.33.0
+2.34.1
 

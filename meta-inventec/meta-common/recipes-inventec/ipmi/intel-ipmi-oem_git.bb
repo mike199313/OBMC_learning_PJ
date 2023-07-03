@@ -5,12 +5,12 @@ LICENSE = "Apache-2.0"
 LIC_FILES_CHKSUM = "file://LICENSE;md5=a6a4edad4aed50f39a66d098d74b265b"
 
 SRC_URI = "git://github.com/openbmc/intel-ipmi-oem;branch=master;protocol=https"
-SRCREV = "a165038f0472459ae2ec0ae50b7e0c09969882c7"
+SRCREV = "c8b0c46e431cc0348e5c2d0301b2446081c670de"
 
 S = "${WORKDIR}/git"
 PV = "0.1+git${SRCPV}"
 
-DEPENDS = "boost phosphor-ipmi-host phosphor-logging systemd intel-dbus-interfaces libgpiod"
+DEPENDS = "boost phosphor-ipmi-host phosphor-logging systemd phosphor-dbus-interfaces libgpiod"
 DEPENDS += " phosphor-snmp"
 
 inherit cmake obmc-phosphor-ipmiprovider-symlink pkgconfig
@@ -34,7 +34,9 @@ do_install:append(){
 
 FILESEXTRAPATHS:append := "${THISDIR}/${PN}:"
 
-SRC_URI:append  = " file://0001-Removed-Get-Device-ID-command.patch \
+SRC_URI:append  = " \
+                    file://0001-Fix-build-error.patch \
+                    file://0001-Removed-Get-Device-ID-command.patch \
                     file://0002-Remove-Intel-IPMI-OEM-commands.patch \
                     file://0003-SEL-Implement-Set-SEL-Time-command.patch  \
                     file://0004-SEL-Modified-IPMI-command-Add-Get-SEL-Entry.patch \
@@ -63,4 +65,5 @@ SRC_URI:append  = " file://0001-Removed-Get-Device-ID-command.patch \
                     file://0027-Fix-sel-list-can-not-update-after-clear.patch \
                     file://0028-Bug-1453-Set-sensor-reading-and-event-status.patch \
                     file://0029-Bug-1566-Starscream-ast-OpenBMC-IPMI-fru-0-show-Devi.patch \
+                    file://0030-Bug-1639-Transformers-OpenBMC-Redfish-Unable-to-use-.patch \
                   "

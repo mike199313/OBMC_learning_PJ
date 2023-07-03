@@ -1,8 +1,8 @@
-From 8027541e139259f9705f9b78e74fcacfbbe06b26 Mon Sep 17 00:00:00 2001
+From bc0d8b0227e212d99ecac449126b82995c0b7c4d Mon Sep 17 00:00:00 2001
 From: Wein <kuo.wein@inventec.com>
 Date: Thu, 9 Mar 2023 09:41:04 +0800
-Subject: [PATCH] Bug 1566 - [Starscream-ast][OpenBMC][IPMI]fru 0 show Device
- not present
+Subject: [PATCH 29/30] Bug 1566 - [Starscream-ast][OpenBMC][IPMI]fru 0 show
+ Device not present
 
 Symptom/Reason :
 - Fru device 0 does not appear in the list of ipmitool fru print.
@@ -176,19 +176,20 @@ FRU Device Description : RunBmc (ID 6)
  Product Extra         : PRDCSTM2
  Product Extra         : c001beef
 ```
+
+%% original patch: 0029-Bug-1566-Starscream-ast-OpenBMC-IPMI-fru-0-show-Devi.patch
 ---
- src/storagecommands.cpp | 46 +++++++++++++++++++++++++++++++++++++---------
- 1 file changed, 37 insertions(+), 9 deletions(-)
+ src/storagecommands.cpp | 44 +++++++++++++++++++++++++++++++++--------
+ 1 file changed, 36 insertions(+), 8 deletions(-)
 
 diff --git a/src/storagecommands.cpp b/src/storagecommands.cpp
-index 49ac3fd..86fa825 100644
+index 3330e7b..2223a9a 100644
 --- a/src/storagecommands.cpp
 +++ b/src/storagecommands.cpp
-@@ -233,7 +233,21 @@ void createTimers()
+@@ -231,6 +231,20 @@ void createTimers()
  void recalculateHashes()
  {
      bool base_fru_found = false;
--
 +    if (fru_id_map.size())
 +    {
 +        // Check if the first baseboard fru already exists in the map, 
@@ -203,11 +204,10 @@ index 49ac3fd..86fa825 100644
 +            }
 +        }
 +    }
-+
+ 
      deviceHashes.clear();
      devicePath.clear();
-     // hash the object paths to create unique device id's. increment on
-@@ -270,15 +284,29 @@ void recalculateHashes()
+@@ -268,15 +282,29 @@ void recalculateHashes()
          }
  
          uint8_t fru_id = 0;
@@ -246,5 +246,5 @@ index 49ac3fd..86fa825 100644
              fru_id_map[fru_addr_string] = fru_id;
          }
 -- 
-2.7.4
+2.34.1
 

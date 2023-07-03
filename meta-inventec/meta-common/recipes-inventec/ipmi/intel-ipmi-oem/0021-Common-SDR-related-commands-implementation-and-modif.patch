@@ -1,7 +1,7 @@
-From fa845213de9aa19cd0fb41d7c34655590e38ebf8 Mon Sep 17 00:00:00 2001
+From 91dfcb3b2c3528a22fcac675cf2d22c4b49b38aa Mon Sep 17 00:00:00 2001
 From: Wein <kuo.wein@inventec.com>
 Date: Tue, 16 Aug 2022 17:48:39 +0800
-Subject: [PATCH 21/25] Bug 1199 & 1120 - SDR free space showed unspecified
+Subject: [PATCH 21/30] Bug 1199 & 1120 - SDR free space showed unspecified
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -59,16 +59,16 @@ SDR Repository Alloc info supported : yes
  create mode 100755 src/dynamic_sdr.cpp
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 4028c91..bd6fb83 100644
+index cd113d9..f854569 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -98,6 +98,7 @@ add_custom_command(OUTPUT include/ipmi-whitelist.hpp
+@@ -103,6 +103,7 @@ add_custom_command(OUTPUT include/ipmi-allowlist.hpp
  
  add_library (zinteloemcmds
               SHARED src/sensorcommands.cpp src/biosconfigcommands.cpp
 +             src/dynamic_sdr.cpp
               src/storagecommands.cpp src/multinodecommands.cpp src/globalcommands.cpp
-              src/firmware-update.cpp src/appcommands.cpp src/smbioshandler.cpp
+              src/firmware-update.cpp src/appcommands.cpp
               src/smbiosmdrv2handler.cpp src/manufacturingcommands.cpp
 diff --git a/include/dynamic_sdr.hpp b/include/dynamic_sdr.hpp
 new file mode 100755
@@ -199,10 +199,10 @@ index 0000000..06acc75
 +}
 +
 diff --git a/include/sdrutils.hpp b/include/sdrutils.hpp
-index 5d88327..c4df474 100644
+index 56fff11..0f87976 100644
 --- a/include/sdrutils.hpp
 +++ b/include/sdrutils.hpp
-@@ -889,6 +889,47 @@ inline static uint16_t getMappedSensorId(uint16_t recordId)
+@@ -888,6 +888,47 @@ inline static uint16_t getMappedSensorId(uint16_t recordId)
      return 0;
  }
  
@@ -874,7 +874,7 @@ index 0000000..d6f0e79
 +}
 +
 diff --git a/src/sensorcommands.cpp b/src/sensorcommands.cpp
-index dfb2602..1c09189 100644
+index 20832dc..5f9e636 100644
 --- a/src/sensorcommands.cpp
 +++ b/src/sensorcommands.cpp
 @@ -18,6 +18,7 @@
@@ -899,8 +899,8 @@ index dfb2602..1c09189 100644
 +
  static boost::container::flat_map<std::string, ManagedObjectType> SensorCache;
  
- // Specify the comparison required to sort and find char* map objects
-@@ -96,6 +103,16 @@ const static boost::container::flat_map<const char*, SensorUnits, CmpStr>
+ constexpr static std::array<std::pair<const char*, SensorUnits>, 5> sensorUnits{
+@@ -88,6 +95,16 @@ constexpr static std::array<std::pair<const char*, SensorUnits>, 5> sensorUnits{
  
  void registerSensorFunctions() __attribute__((constructor));
  
@@ -914,10 +914,10 @@ index dfb2602..1c09189 100644
 +    sdrReservationID++;
 +}
 +
- static sdbusplus::bus::match::match sensorAdded(
+ static sdbusplus::bus::match_t sensorAdded(
      *getSdBus(),
      "type='signal',member='InterfacesAdded',arg0path='/xyz/openbmc_project/"
-@@ -282,6 +299,59 @@ static bool getSensorMap(boost::asio::yield_context yield,
+@@ -273,6 +290,59 @@ static bool getSensorMap(boost::asio::yield_context yield,
      return true;
  }
  
@@ -977,10 +977,10 @@ index dfb2602..1c09189 100644
  /* sensor commands */
  namespace meHealth
  {
-@@ -464,17 +534,9 @@ ipmi::RspType<uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t>
+@@ -460,17 +530,9 @@ ipmi::RspType<uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t>
  {
-     get_sdr::GetSensorReadingFactorsResponse resp{};
-     memset(&resp, 0, sizeof(get_sdr::GetSensorThresholdsResponse));
+     //get_sdr::GetSensorReadingFactorsResponse resp{};
+     //memset(&resp, 0, sizeof(get_sdr::GetSensorThresholdsResponse));
 -    std::string connection;
 -    std::string path;
 -
@@ -996,7 +996,7 @@ index dfb2602..1c09189 100644
      {
          return ipmi::responseResponseError();
      }
-@@ -534,25 +596,26 @@ ipmi::RspType<uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t>
+@@ -530,25 +592,26 @@ ipmi::RspType<uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t>
  ipmi::RspType<uint8_t, uint8_t, uint8_t, std::optional<uint8_t>>
      ipmiSenGetSensorReading(ipmi::Context::ptr ctx, uint8_t sensnum)
  {
@@ -1033,7 +1033,7 @@ index dfb2602..1c09189 100644
      auto sensorObject = sensorMap.find("xyz.openbmc_project.Sensor.Value");
  
      if (sensorObject == sensorMap.end() ||
-@@ -703,20 +766,28 @@ ipmi::RspType<uint8_t,      // sensor type
+@@ -699,20 +762,28 @@ ipmi::RspType<uint8_t,      // sensor type
      std::string connection;
      std::string path;
  
@@ -1071,7 +1071,7 @@ index dfb2602..1c09189 100644
  
      return ipmi::responseSuccess(sensorType, eventType);
  }
-@@ -776,18 +847,30 @@ ipmi::RspType<> ipmiSenSetSensorThresholds(
+@@ -772,18 +843,30 @@ ipmi::RspType<> ipmiSenSetSensorThresholds(
  
      std::string connection;
      std::string path;
@@ -1108,7 +1108,7 @@ index dfb2602..1c09189 100644
      double max = 0;
      double min = 0;
      getSensorMaxMin(sensorMap, max, min);
-@@ -974,22 +1057,13 @@ ipmi::RspType<uint8_t, // readable
+@@ -982,22 +1065,13 @@ ipmi::RspType<uint8_t, // readable
                uint8_t> // upperNRecoverable
      ipmiSenGetSensorThresholds(ipmi::Context::ptr ctx, uint8_t sensorNumber)
  {
@@ -1132,7 +1132,7 @@ index dfb2602..1c09189 100644
      {
          return ipmi::responseResponseError();
      }
-@@ -1061,9 +1135,6 @@ ipmi::RspType<uint8_t, // enabled
+@@ -1069,9 +1143,6 @@ ipmi::RspType<uint8_t, // enabled
                uint8_t> // deassertionEnabledMsb
      ipmiSenGetSensorEventEnable(ipmi::Context::ptr ctx, uint8_t sensorNum)
  {
@@ -1142,7 +1142,7 @@ index dfb2602..1c09189 100644
      uint8_t enabled = 0;
      uint8_t assertionEnabledLsb = 0;
      uint8_t assertionEnabledMsb = 0;
-@@ -1075,18 +1146,34 @@ ipmi::RspType<uint8_t, // enabled
+@@ -1083,18 +1154,34 @@ ipmi::RspType<uint8_t, // enabled
          return ipmi::responseInvalidFieldRequest();
      }
  
@@ -1183,7 +1183,7 @@ index dfb2602..1c09189 100644
      auto warningInterface =
          sensorMap.find("xyz.openbmc_project.Sensor.Threshold.Warning");
      auto criticalInterface =
-@@ -1146,6 +1233,92 @@ ipmi::RspType<uint8_t, // enabled
+@@ -1180,6 +1267,92 @@ ipmi::RspType<uint8_t, // enabled
                                   deassertionEnabledMsb);
  }
  
@@ -1276,7 +1276,7 @@ index dfb2602..1c09189 100644
  /** @brief implements the get Sensor event status command
   *  @param sensorNumber - sensor number, FFh = reserved
   *
-@@ -1167,23 +1340,22 @@ ipmi::RspType<uint8_t,         // sensorEventStatus
+@@ -1201,23 +1374,22 @@ ipmi::RspType<uint8_t,         // sensorEventStatus
  
      std::string connection;
      std::string path;
@@ -1311,7 +1311,7 @@ index dfb2602..1c09189 100644
      auto warningInterface =
          sensorMap.find("xyz.openbmc_project.Sensor.Threshold.Warning");
      auto criticalInterface =
-@@ -1303,6 +1475,11 @@ static int getSensorDataRecord(ipmi::Context::ptr ctx,
+@@ -1337,6 +1509,11 @@ static int getSensorDataRecord(ipmi::Context::ptr ctx,
                                 std::vector<uint8_t>& recordData,
                                 uint16_t recordID)
  {
@@ -1323,7 +1323,7 @@ index dfb2602..1c09189 100644
      size_t fruCount = 0;
      ipmi::Cc ret = ipmi::storage::getFruSdrCount(ctx, fruCount);
      if (ret != ipmi::ccSuccess)
-@@ -1312,9 +1489,16 @@ static int getSensorDataRecord(ipmi::Context::ptr ctx,
+@@ -1346,9 +1523,16 @@ static int getSensorDataRecord(ipmi::Context::ptr ctx,
          return GENERAL_ERROR;
      }
  
@@ -1343,7 +1343,7 @@ index dfb2602..1c09189 100644
      if (recordID == lastRecordIndex)
      {
          recordID = lastRecord;
-@@ -1326,7 +1510,7 @@ static int getSensorDataRecord(ipmi::Context::ptr ctx,
+@@ -1360,7 +1544,7 @@ static int getSensorDataRecord(ipmi::Context::ptr ctx,
          return GENERAL_ERROR;
      }
  
@@ -1352,7 +1352,7 @@ index dfb2602..1c09189 100644
      {
          size_t fruIndex = recordID - getNumberOfSensors();
          size_t type12End = fruCount + ipmi::storage::getType12Count(fruCount);
-@@ -1373,6 +1557,19 @@ static int getSensorDataRecord(ipmi::Context::ptr ctx,
+@@ -1407,6 +1591,19 @@ static int getSensorDataRecord(ipmi::Context::ptr ctx,
  
          return 0;
      }
@@ -1372,7 +1372,7 @@ index dfb2602..1c09189 100644
  
      // Perform a incremental scan of the SDR Record ID's and translate the
      // first 765 SDR records (i.e. maxIPMISensors) into IPMI Sensor
-@@ -1781,6 +1978,8 @@ ipmi::RspType<uint8_t,  // sdr version
+@@ -1823,6 +2020,8 @@ ipmi::RspType<uint8_t,  // sdr version
      ipmiStorageGetSDRRepositoryInfo(ipmi::Context::ptr ctx)
  {
      constexpr const uint16_t unspecifiedFreeSpace = 0xFFFF;
@@ -1381,7 +1381,7 @@ index dfb2602..1c09189 100644
      if (!getSensorSubtree(sensorTree) && sensorTree.empty())
      {
          return ipmi::responseResponseError();
-@@ -1795,7 +1994,11 @@ ipmi::RspType<uint8_t,  // sdr version
+@@ -1837,7 +2036,11 @@ ipmi::RspType<uint8_t,  // sdr version
  
      uint16_t recordCount = getNumberOfSensors() + fruCount +
                             ipmi::storage::getType12Count(fruCount) +
@@ -1394,7 +1394,7 @@ index dfb2602..1c09189 100644
  
      uint8_t operationSupport = static_cast<uint8_t>(
          SdrRepositoryInfoOps::overflow); // write not supported
-@@ -1804,9 +2007,23 @@ ipmi::RspType<uint8_t,  // sdr version
+@@ -1846,9 +2049,23 @@ ipmi::RspType<uint8_t,  // sdr version
          static_cast<uint8_t>(SdrRepositoryInfoOps::allocCommandSupported);
      operationSupport |= static_cast<uint8_t>(
          SdrRepositoryInfoOps::reserveSDRRepositoryCommandSupported);
@@ -1421,7 +1421,7 @@ index dfb2602..1c09189 100644
  }
  
  /** @brief implements the get SDR allocation info command
-@@ -1827,14 +2044,19 @@ ipmi::RspType<uint16_t, // allocUnits
+@@ -1869,14 +2086,19 @@ ipmi::RspType<uint16_t, // allocUnits
      ipmiStorageGetSDRAllocationInfo()
  {
      // 0000h unspecified number of alloc units
@@ -1446,7 +1446,7 @@ index dfb2602..1c09189 100644
                                   allocUnitLargestFree, maxRecordSize);
  }
  
-@@ -1844,10 +2066,10 @@ ipmi::RspType<uint16_t, // allocUnits
+@@ -1886,10 +2108,10 @@ ipmi::RspType<uint16_t, // allocUnits
   */
  ipmi::RspType<uint16_t> ipmiStorageReserveSDR()
  {
@@ -1459,7 +1459,7 @@ index dfb2602..1c09189 100644
      }
  
      return ipmi::responseSuccess(sdrReservationID);
-@@ -1892,10 +2114,24 @@ ipmi::RspType<uint16_t,            // next record ID
+@@ -1934,10 +2156,24 @@ ipmi::RspType<uint16_t,            // next record ID
      }
  
      /* Inventec - Fix set sensor threshold command fail issue */
@@ -1488,7 +1488,7 @@ index dfb2602..1c09189 100644
  
      std::vector<uint8_t> record;
      if (getSensorDataRecord(ctx, record, recordID))
-@@ -1931,6 +2167,165 @@ ipmi::RspType<uint16_t,            // next record ID
+@@ -1973,6 +2209,165 @@ ipmi::RspType<uint16_t,            // next record ID
  
      return ipmi::responseSuccess(nextRecordId, recordData);
  }
@@ -1654,7 +1654,7 @@ index dfb2602..1c09189 100644
  /* end storage commands */
  
  uint8_t sdrSelfTest(ipmi::Context::ptr ctx) {
-@@ -1994,6 +2389,11 @@ void registerSensorFunctions()
+@@ -2036,6 +2431,11 @@ void registerSensorFunctions()
                            ipmi::sensor_event::cmdGetSensorEventEnable,
                            ipmi::Privilege::User, ipmiSenGetSensorEventEnable);
  
@@ -1666,7 +1666,7 @@ index dfb2602..1c09189 100644
      // <Get Sensor Event Status>
      ipmi::registerHandler(ipmi::prioOemBase, ipmi::netFnSensor,
                            ipmi::sensor_event::cmdGetSensorEventStatus,
-@@ -2036,5 +2436,14 @@ void registerSensorFunctions()
+@@ -2078,5 +2478,14 @@ void registerSensorFunctions()
      ipmi::registerHandler(ipmi::prioOemBase, ipmi::netFnStorage,
                            ipmi::storage::cmdGetSdr, ipmi::Privilege::User,
                            ipmiStorageGetSDR);
@@ -1682,5 +1682,5 @@ index dfb2602..1c09189 100644
  }
  } // namespace ipmi
 -- 
-2.33.0
+2.34.1
 

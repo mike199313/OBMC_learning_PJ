@@ -1,0 +1,96 @@
+From 0d6491db1c8ee921dcf1baab54d3bf26fde7d745 Mon Sep 17 00:00:00 2001
+From: Jason Lin <lin.jasonyy@inventec.com>
+Date: Fri, 2 Jun 2023 02:55:19 +0000
+Subject: [PATCH 30/30] Bug 1639 - [Transformers][OpenBMC][Redfish] Unable to
+ use ipmi after execute bmc reset via redfish
+
+Symptom/Reason:
+    phosphor-ipmi-host service has a chance to be inappropriately stopped via bmc reset and cause saving file problems, such as causing config file to be truncated or missing, which leads to core-dump.
+
+Root Cause:
+    While writing the dynamic sdr file, the file might be damaged while truncating and disrupted by the ForceRestart command causing the overwriting not to be done, leaving the unparsable file till the next boot.
+
+Solution/Change:
+    intel-ipmi-oem
+
+Entry Test:
+    Using test script to ForceRestart bmc several times (approx. 100 times by experience).
+
+%% original patch: 0030-Bug-1639-Transformers-OpenBMC-Redfish-Unable-to-use-.patch
+---
+ src/dynamic_sdr.cpp | 48 +++++++++++++++++++++++++++++++++++++--------
+ 1 file changed, 40 insertions(+), 8 deletions(-)
+
+diff --git a/src/dynamic_sdr.cpp b/src/dynamic_sdr.cpp
+index 7762152..eb8cdba 100644
+--- a/src/dynamic_sdr.cpp
++++ b/src/dynamic_sdr.cpp
+@@ -251,18 +251,47 @@ namespace ipmi
+ 
+     void DynamicSDR::Save() 
+     {
+-        nlohmann::json data = {};
+-        for(const auto& [key,value] : sensorDataRecords) 
++        std::fstream configFile;
++        configFile.open(storageFile, std::fstream::out | std::fstream::in);
++        
++        if (configFile.fail())
++        {
++            nlohmann::json data = {};
++            for (const auto& [key, value] : sensorDataRecords)
++            {
++                data["SDR"][std::to_string(key)] = value;
++            }
++
++            data["Most recent Addition"] =
++                static_cast<uint32_t>(recentAddTime);
++            data["Most recent Erase"] =
++                static_cast<uint32_t>(recentEraseTime);
++
++            std::ofstream configStream(storageFile);
++            configStream << data << std::endl;
++            configStream.close();
++        }
++        
++        if (!configFile.is_open())
+         {
+-            data["SDR"][std::to_string(key)] = value;
++            return;
++        }
++        
++        nlohmann::json inputData;
++        configFile >> inputData;
++
++        for (const auto& [key, value] : sensorDataRecords)
++        {
++            inputData["SDR"][std::to_string(key)] = value;
+         }
+ 
+-        data["Most recent Addition"] = static_cast<uint32_t>(recentAddTime);
+-        data["Most recent Erase"] = static_cast<uint32_t>(recentEraseTime);
++        inputData["Most recent Addition"] = static_cast<uint32_t>(recentAddTime);
++        inputData["Most recent Erase"] = static_cast<uint32_t>(recentEraseTime);
++
++        configFile.seekp(0);
++        configFile << inputData << std::endl;
++        configFile.close();
+ 
+-        std::ofstream configStream(storageFile);
+-        configStream << data << std::endl;
+-        configStream.close();
+         return;
+     }
+ 
+@@ -283,6 +312,9 @@ namespace ipmi
+ 
+         recentAddTime = data["Most recent Addition"].get<uint32_t>();
+         recentEraseTime = data["Most recent Erase"].get<uint32_t>();
++
++        dataFile.close();
++
+         return;
+     }
+ 
+-- 
+2.34.1
+

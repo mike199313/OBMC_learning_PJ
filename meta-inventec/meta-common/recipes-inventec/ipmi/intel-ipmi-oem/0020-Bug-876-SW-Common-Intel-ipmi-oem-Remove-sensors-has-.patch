@@ -1,7 +1,7 @@
-From 6ce05fe9475b6cfe6ab801c1023d6a0e75296d03 Mon Sep 17 00:00:00 2001
+From dc11453c1ac5ca3255ad94a5c18c4456ea986289 Mon Sep 17 00:00:00 2001
 From: "pj.chen" <chen.pj@inventec.com>
 Date: Tue, 15 Mar 2022 06:55:29 +0000
-Subject: [PATCH 20/25] Bug 876 - [SW][Common][Intel-ipmi-oem] - Remove sensors
+Subject: [PATCH 20/30] Bug 876 - [SW][Common][Intel-ipmi-oem] - Remove sensors
  has no sensorInfo in subtree
 
 Symptom/Reason:
@@ -19,15 +19,17 @@ Entry Test:
 sysadmin@starscream:~# ipmitool sdr list
 ....
 Without error
+
+%% original patch: 0020-Bug-876-SW-Common-Intel-ipmi-oem-Remove-sensors-has-.patch
 ---
  include/sdrutils.hpp | 17 +++++++++++++++++
  1 file changed, 17 insertions(+)
 
 diff --git a/include/sdrutils.hpp b/include/sdrutils.hpp
-index 793d35d..5d88327 100644
+index c9f69bc..56fff11 100644
 --- a/include/sdrutils.hpp
 +++ b/include/sdrutils.hpp
-@@ -288,6 +288,23 @@ inline static uint16_t getSensorSubtree(std::shared_ptr<SensorSubTree>& subtree,
+@@ -287,6 +287,23 @@ inline static uint16_t getSensorSubtree(std::shared_ptr<SensorSubTree>& subtree,
          phosphor::logging::log<phosphor::logging::level::ERR>(e.what());
          return -1;
      }
@@ -52,5 +54,5 @@ index 793d35d..5d88327 100644
      sensorUpdatedIndex++;
      // The SDR is being regenerated, wipe the old stats
 -- 
-2.33.0
+2.34.1
 

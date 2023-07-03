@@ -1,7 +1,7 @@
-From 422e44753abadfb166530115a1bb56f3346cdd83 Mon Sep 17 00:00:00 2001
+From 2e320346cdb55511525bf3907d501cfd8009a27c Mon Sep 17 00:00:00 2001
 From: "sun.cwsun" <sun.cwsun@inventec.com>
 Date: Wed, 18 May 2022 12:29:48 +0800
-Subject: [PATCH 22/25] Bug 996 - [SW][Transformers][OpenBMC] MS M-BMC-LOG0008
+Subject: [PATCH 22/30] Bug 996 - [SW][Transformers][OpenBMC] MS M-BMC-LOG0008
  The BMC should generate an BMC Health SEL when BMC reset cold/warm
 
 		-  The BMC should generate an BMC Health SEL when BMC reset cold/warm
@@ -55,6 +55,8 @@ Sensor ID              : BMC_health (0xb1)
 Sensor ID              : BMC_health (0xb1)
  Entity ID             : 7.0
  Sensor Type (Discrete): Unknown
+
+%% original patch: 0022-MS-M-BMC-LOG-0008-bmcreset.patch
 ---
  src/globalcommands.cpp | 75 +++++++++++++++++++++++++++---------------
  1 file changed, 49 insertions(+), 26 deletions(-)
@@ -162,5 +164,5 @@ index 98efc56..a8b41f2 100755
      return ipmi::responseSuccess();
  }
 -- 
-2.33.0
+2.34.1
 

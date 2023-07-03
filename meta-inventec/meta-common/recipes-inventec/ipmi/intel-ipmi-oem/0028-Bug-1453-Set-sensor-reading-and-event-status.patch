@@ -1,17 +1,17 @@
-From 180f058aa2b98f3076c6b7eced605834eea5cff3 Mon Sep 17 00:00:00 2001
+From 6de178d5b9f5b8f755fbd904c337d545df71be21 Mon Sep 17 00:00:00 2001
 From: bonnie <Liu.Bonnie@inventec.com>
 Date: Tue, 21 Mar 2023 18:02:16 +0800
-Subject: [PATCH] =?UTF-8?q?Bug=201548=20-=20[Transformers][OpenBMC][SDR]?=
- =?UTF-8?q?=20The=20Record=20Count=20value=20will=20increase=202=20after?=
- =?UTF-8?q?=20Add=20one=20SDR=20Symptom/Reason=EF=BC=9A=20=09Record=20Coun?=
- =?UTF-8?q?t=20value=20will=20increase=202=20after=20only=20add=20one=20SD?=
- =?UTF-8?q?R.=20Root=20Cause=EF=BC=9A=20=20=20=20=20=20=20=20=20When=20ent?=
- =?UTF-8?q?ity=20manager=20add=20sensor=20to=20sensor=20map,=20dynamic=20s?=
- =?UTF-8?q?ensor=20has=20become=20static=20sensor.=20=09Record=20count=20i?=
- =?UTF-8?q?s=20the=20sum=20of=20static=20and=20dynamic=20sensor,=20and=20w?=
- =?UTF-8?q?ill=20be=20double-counted.=20Solution/Change=EF=BC=9A=20=20=20?=
- =?UTF-8?q?=20=20=20=20=20=20Don't=20include=20the=20dynamic=20sensor=20co?=
- =?UTF-8?q?unt=20when=20record=20counting.=20Entry=20Test=EF=BC=9A?=
+Subject: [PATCH 28/30] =?UTF-8?q?Bug=201548=20-=20[Transformers][OpenBMC][?=
+ =?UTF-8?q?SDR]=20The=20Record=20Count=20value=20will=20increase=202=20aft?=
+ =?UTF-8?q?er=20Add=20one=20SDR=20Symptom/Reason=EF=BC=9A=20Record=20Count?=
+ =?UTF-8?q?=20value=20will=20increase=202=20after=20only=20add=20one=20SDR?=
+ =?UTF-8?q?.=20Root=20Cause=EF=BC=9A=20When=20entity=20manager=20add=20sen?=
+ =?UTF-8?q?sor=20to=20sensor=20map,=20dynamic=20sensor=20has=20become=20st?=
+ =?UTF-8?q?atic=20sensor.=20Record=20count=20is=20the=20sum=20of=20static?=
+ =?UTF-8?q?=20and=20dynamic=20sensor,=20and=20will=20be=20double-counted.?=
+ =?UTF-8?q?=20Solution/Change=EF=BC=9A=20Don't=20include=20the=20dynamic?=
+ =?UTF-8?q?=20sensor=20count=20when=20record=20counting.=20Entry=20Test?=
+ =?UTF-8?q?=EF=BC=9A?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -48,6 +48,8 @@ Content-Transfer-Encoding: 8bit
 	Partial Add SDR supported           : no
 	Reserve SDR repository supported    : yes
 	SDR Repository Alloc info supported : yes
+
+%% original patch: 0028-Bug-1453-Set-sensor-reading-and-event-status.patch
 ---
  include/sensorcommands.hpp |   7 +
  src/sensorcommands.cpp     | 669 ++++++++++++++++++++++++-------------
@@ -72,7 +74,7 @@ index 4b0f513..b12d48f 100644
  {
  extern SensorSubTree sensorTree;
 diff --git a/src/sensorcommands.cpp b/src/sensorcommands.cpp
-index 965b8a4..8af57f9 100644
+index a3c9674..d41cb4f 100644
 --- a/src/sensorcommands.cpp
 +++ b/src/sensorcommands.cpp
 @@ -46,7 +46,9 @@
@@ -86,7 +88,7 @@ index 965b8a4..8af57f9 100644
  namespace ipmi
  {
  using ManagedObjectType =
-@@ -315,59 +317,6 @@ static bool getSensorMap(boost::asio::yield_context yield,
+@@ -306,59 +308,6 @@ static bool getSensorMap(boost::asio::yield_context yield,
      return true;
  }
  
@@ -146,9 +148,9 @@ index 965b8a4..8af57f9 100644
  /* sensor commands */
  namespace meHealth
  {
-@@ -551,8 +500,20 @@ ipmi::RspType<uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t>
-     get_sdr::GetSensorReadingFactorsResponse resp{};
-     memset(&resp, 0, sizeof(get_sdr::GetSensorThresholdsResponse));
+@@ -547,8 +496,20 @@ ipmi::RspType<uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t>
+     //get_sdr::GetSensorReadingFactorsResponse resp{};
+     //memset(&resp, 0, sizeof(get_sdr::GetSensorThresholdsResponse));
  
 +    std::string connection;
 +    std::string path;
@@ -168,7 +170,7 @@ index 965b8a4..8af57f9 100644
      {
          return ipmi::responseResponseError();
      }
-@@ -616,19 +577,19 @@ ipmi::RspType<uint8_t, uint8_t, uint8_t, std::optional<uint8_t>>
+@@ -612,19 +573,19 @@ ipmi::RspType<uint8_t, uint8_t, uint8_t, std::optional<uint8_t>>
  
      std::string connection;
      std::string path;
@@ -197,7 +199,7 @@ index 965b8a4..8af57f9 100644
      }
  
      // Static SDR
-@@ -784,26 +745,21 @@ ipmi::RspType<uint8_t,      // sensor type
+@@ -780,26 +741,21 @@ ipmi::RspType<uint8_t,      // sensor type
  
      SensorMap sensorMap;
  
@@ -233,7 +235,7 @@ index 965b8a4..8af57f9 100644
  
      return ipmi::responseSuccess(sensorType, eventType);
  }
-@@ -863,28 +819,20 @@ ipmi::RspType<> ipmiSenSetSensorThresholds(
+@@ -859,28 +815,20 @@ ipmi::RspType<> ipmiSenSetSensorThresholds(
  
      std::string connection;
      std::string path;
@@ -272,7 +274,7 @@ index 965b8a4..8af57f9 100644
      }
  
      double max = 0;
-@@ -1073,13 +1021,21 @@ ipmi::RspType<uint8_t, // readable
+@@ -1081,13 +1029,21 @@ ipmi::RspType<uint8_t, // readable
                uint8_t> // upperNRecoverable
      ipmiSenGetSensorThresholds(ipmi::Context::ptr ctx, uint8_t sensorNumber)
  {
@@ -295,7 +297,7 @@ index 965b8a4..8af57f9 100644
      {
          return ipmi::responseResponseError();
      }
-@@ -1165,29 +1121,19 @@ ipmi::RspType<uint8_t, // enabled
+@@ -1173,29 +1129,19 @@ ipmi::RspType<uint8_t, // enabled
      std::string connection;
      std::string path;
  
@@ -334,7 +336,7 @@ index 965b8a4..8af57f9 100644
      }
  
      auto sensorObject = sensorMap.find("xyz.openbmc_project.Sensor.Value");
-@@ -1248,28 +1194,19 @@ ipmi::RspType<> ipmiSenSetSensorEventEnable(
+@@ -1256,28 +1202,19 @@ ipmi::RspType<> ipmiSenSetSensorEventEnable(
      std::string connection;
      std::string path;
  
@@ -372,7 +374,7 @@ index 965b8a4..8af57f9 100644
      }
  
      //transfer four uint8_t commands to a uint32_t setSensorEventStatus
-@@ -1348,20 +1285,20 @@ ipmi::RspType<uint8_t,         // sensorEventStatus
+@@ -1356,20 +1293,20 @@ ipmi::RspType<uint8_t,         // sensorEventStatus
  
      std::string connection;
      std::string path;
@@ -402,7 +404,7 @@ index 965b8a4..8af57f9 100644
      }
  
      auto warningInterface =
-@@ -1492,52 +1429,71 @@ void genSEL(std::vector<uint8_t> eventData, std::string path, bool isAssert)
+@@ -1500,52 +1437,71 @@ void genSEL(std::vector<uint8_t> eventData, std::string path, bool isAssert)
      }
  }
  // set sensor reading and event status <bonnie>
@@ -501,7 +503,7 @@ index 965b8a4..8af57f9 100644
          {
              uint32_t newStatus;
              switch (operation)
-@@ -1557,71 +1513,144 @@ ipmiSenSetSensorReadingAndEventStatus(ipmi::Context::ptr ctx, uint8_t sensorNumb
+@@ -1565,71 +1521,144 @@ ipmiSenSetSensorReadingAndEventStatus(ipmi::Context::ptr ctx, uint8_t sensorNumb
              }
              return newStatus;
          };
@@ -691,7 +693,7 @@ index 965b8a4..8af57f9 100644
  }
  static inline uint16_t getNumberOfSensors(void)
  {
-@@ -2159,8 +2188,7 @@ ipmi::RspType<uint8_t,  // sdr version
+@@ -2168,8 +2197,7 @@ ipmi::RspType<uint8_t,  // sdr version
  
      uint16_t recordCount = getNumberOfSensors() + fruCount +
                             ipmi::storage::getType12Count(fruCount) +
@@ -701,7 +703,7 @@ index 965b8a4..8af57f9 100644
  
      sdrLastAdd = dynamicSdr.GetRecentAddTimestamp();
      sdrLastRemove = dynamicSdr.GetRecentEraseTimestamp();
-@@ -2335,20 +2363,163 @@ ipmi::RspType<uint16_t,            // next record ID
+@@ -2344,20 +2372,163 @@ ipmi::RspType<uint16_t,            // next record ID
  
  bool writeJsonFile(std::vector<uint8_t> sensorDataRecords)
  {
@@ -874,7 +876,7 @@ index 965b8a4..8af57f9 100644
      sensorVal["Type"] = "ExternalSensor";
      sensorVal["SensorInfo"] = Json::array({sensorInfo});
  
-@@ -2356,22 +2527,22 @@ bool writeJsonFile(std::vector<uint8_t> sensorDataRecords)
+@@ -2365,22 +2536,22 @@ bool writeJsonFile(std::vector<uint8_t> sensorDataRecords)
      threshold["Direction"] = "greater than";
      threshold["Name"] = "upper critical";
      threshold["Severity"] = 1;
@@ -901,7 +903,7 @@ index 965b8a4..8af57f9 100644
      sensorVal["Thresholds"].push_back(threshold);
      
      Json entityVal;
-@@ -2422,11 +2593,18 @@ void eraseJsonFile(std::string search_str)
+@@ -2431,11 +2602,18 @@ void eraseJsonFile(std::string search_str)
          if(sensorNum == search_str) //find the field
          {
              external["Exposes"].erase(i);
@@ -923,7 +925,7 @@ index 965b8a4..8af57f9 100644
  }
  /** @brief implements the Add SDR command
   *   Privilege Level: Operator
-@@ -2533,6 +2711,18 @@ ipmi::RspType<uint16_t>
+@@ -2542,6 +2720,18 @@ ipmi::RspType<uint16_t>
          return ipmi::responseResponseError();
      }
  
@@ -942,7 +944,7 @@ index 965b8a4..8af57f9 100644
      return ipmi::responseSuccess(newRecordId);
  }
  
-@@ -2559,6 +2749,19 @@ ipmi::RspType<uint16_t> ipmiStorageDeleteSDR(ipmi::Context::ptr ctx,
+@@ -2568,6 +2758,19 @@ ipmi::RspType<uint16_t> ipmiStorageDeleteSDR(ipmi::Context::ptr ctx,
          return ipmi::responseResponseError();
      }
  
@@ -962,3 +964,6 @@ index 965b8a4..8af57f9 100644
      if (!getSensorSubtree(sensorTree) && sensorTree.empty())
      {
          return ipmi::responseResponseError();
+-- 
+2.34.1
+

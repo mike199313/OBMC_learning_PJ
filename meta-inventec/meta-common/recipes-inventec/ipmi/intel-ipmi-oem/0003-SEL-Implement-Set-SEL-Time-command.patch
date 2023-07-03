@@ -1,8 +1,8 @@
-From 5127259b5679a59d5a42e8bf03d0c7b00b20246c Mon Sep 17 00:00:00 2001
+From 377cd9d12487f9b645255795726687da6437f789 Mon Sep 17 00:00:00 2001
 From: "pj.chen" <chen.pj@inventec.com>
 Date: Mon, 7 Mar 2022 01:55:24 +0000
-Subject: [PATCH] SEL time related command support - Implement Set SEL Time and
- Get/Set UTC time offset command - Support MS spec O-BMC-MAN-0107
+Subject: [PATCH 03/30] SEL time related command support - Implement Set SEL
+ Time and Get/Set UTC time offset command - Support MS spec O-BMC-MAN-0107
 
 - Implement Set SEL Time command.
 
@@ -36,13 +36,15 @@ Entry Test:
 	ex: ipmitool sel time set "06/29/2021 01:00:00"
 
 Bug 928 - [SW][Transformers]O-BMC-MAN-0107: The IPMI command may override NTP synchronization.
+
+%% original patch: 0003-SEL-Implement-Set-SEL-Time-command.patch
 ---
  include/storagecommands.hpp |  11 +++
  src/storagecommands.cpp     | 167 +++++++++++++++++++++++++++++++++++-
  2 files changed, 175 insertions(+), 3 deletions(-)
 
 diff --git a/include/storagecommands.hpp b/include/storagecommands.hpp
-index 42cc85b..e065026 100644
+index 7fb5ce7..854a05d 100644
 --- a/include/storagecommands.hpp
 +++ b/include/storagecommands.hpp
 @@ -21,6 +21,17 @@
@@ -64,7 +66,7 @@ index 42cc85b..e065026 100644
  {
  static constexpr uint8_t selOperationSupport = 0x02;
 diff --git a/src/storagecommands.cpp b/src/storagecommands.cpp
-index a67fe41..afb2a28 100644
+index ec8df36..576e5bf 100644
 --- a/src/storagecommands.cpp
 +++ b/src/storagecommands.cpp
 @@ -25,6 +25,8 @@
@@ -97,16 +99,16 @@ index a67fe41..afb2a28 100644
  namespace intel_oem::ipmi::sel
  {
  static const std::filesystem::path selLogDir = "/var/log";
-@@ -121,6 +134,8 @@ static uint8_t writeAddr = 0XFF;
+@@ -119,6 +132,8 @@ static uint8_t writeAddr = 0XFF;
  std::unique_ptr<phosphor::Timer> writeTimer = nullptr;
- static std::vector<sdbusplus::bus::match::match> fruMatches;
+ static std::vector<sdbusplus::bus::match_t> fruMatches;
  
 +static const int BUFFER_LENGTH = 20;
 +
  ManagedObjectType frus;
  
  // we unfortunately have to build a map of hashes in case there is a
-@@ -1272,6 +1287,29 @@ ipmi::RspType<uint8_t> ipmiStorageClearSEL(ipmi::Context::ptr ctx,
+@@ -1271,6 +1286,29 @@ ipmi::RspType<uint8_t> ipmiStorageClearSEL(ipmi::Context::ptr ctx,
      return ipmi::responseSuccess(ipmi::sel::eraseComplete);
  }
  
@@ -136,7 +138,7 @@ index a67fe41..afb2a28 100644
  ipmi::RspType<uint32_t> ipmiStorageGetSELTime()
  {
      struct timespec selTime = {};
-@@ -1280,14 +1318,127 @@ ipmi::RspType<uint32_t> ipmiStorageGetSELTime()
+@@ -1279,14 +1317,127 @@ ipmi::RspType<uint32_t> ipmiStorageGetSELTime()
      {
          return ipmi::responseUnspecifiedError();
      }
@@ -267,7 +269,7 @@ index a67fe41..afb2a28 100644
  }
  
  std::vector<uint8_t> getType12SDRs(uint16_t index, uint16_t recordId)
-@@ -1399,6 +1550,16 @@ void registerStorageFunctions()
+@@ -1398,6 +1549,16 @@ void registerStorageFunctions()
      ipmi::registerHandler(ipmi::prioOpenBmcBase, ipmi::netFnStorage,
                            ipmi::storage::cmdSetSelTime,
                            ipmi::Privilege::Operator, ipmiStorageSetSELTime);
@@ -285,5 +287,5 @@ index a67fe41..afb2a28 100644
  } // namespace storage
  } // namespace ipmi
 -- 
-2.33.0
+2.34.1
 

@@ -1,7 +1,7 @@
-From 9f3624997e78cb471ab0154b6b732d3f6313e19e Mon Sep 17 00:00:00 2001
+From d10d4cbb576fb3b3fcc741c0c00c054cacc95d4a Mon Sep 17 00:00:00 2001
 From: Tommy Lin <lin.tommysc@inventec.com>
 Date: Thu, 29 Sep 2022 07:21:29 +0000
-Subject: [PATCH] Fix sel list can not update after clear
+Subject: [PATCH 27/30] Fix sel list can not update after clear
 
 Symptom/Reason:
 - After sel clear, ipmitool may not be able to retrieve new SEL log
@@ -16,15 +16,17 @@ Solution/Change:
 Entry Test:
 - List all SEL entry
   - ipmitool sel elist
+
+%% original patch: 0027-Fix-sel-list-can-not-update-after-clear.patch
 ---
  src/storagecommands.cpp | 54 ++++++++++++++++++++++++++++++++++++++++-
  1 file changed, 53 insertions(+), 1 deletion(-)
 
 diff --git a/src/storagecommands.cpp b/src/storagecommands.cpp
-index d5184f2..78022de 100644
+index 03ce798..3330e7b 100644
 --- a/src/storagecommands.cpp
 +++ b/src/storagecommands.cpp
-@@ -1343,6 +1343,35 @@ ipmi::RspType<uint8_t,  // SEL version
+@@ -1360,6 +1360,35 @@ ipmi::RspType<uint8_t,  // SEL version
                                   eraseTimeStamp, operationSupport);
  }
  
@@ -60,7 +62,7 @@ index d5184f2..78022de 100644
  using systemEventType = std::tuple<
      uint32_t, // Timestamp
      uint16_t, // Generator ID
-@@ -1401,7 +1430,30 @@ ipmi::RspType<uint16_t, // Next Record ID
+@@ -1418,7 +1447,30 @@ ipmi::RspType<uint16_t, // Next Record ID
              return ipmi::responseUnspecifiedError();
          }
  
@@ -93,5 +95,5 @@ index d5184f2..78022de 100644
              return ipmi::responseUnspecifiedError();
          }
 -- 
-2.17.1
+2.34.1
 

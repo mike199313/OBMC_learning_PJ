@@ -1,7 +1,7 @@
-From 6074034b47e0b6f1806332349d0bd5b44683701f Mon Sep 17 00:00:00 2001
+From 5d6c60566d92e9de27d05031bd3f1ccbedc773df Mon Sep 17 00:00:00 2001
 From: "pj.chen" <chen.pj@inventec.com>
 Date: Mon, 7 Mar 2022 03:00:29 +0000
-Subject: [PATCH 07/25] FRU - Command modify
+Subject: [PATCH 07/30] FRU - Command modify
 
 - Replace sensor commands ( used phosphor-ipmi-host before )
 - Modify fru functions to rescan periodically
@@ -226,11 +226,11 @@ sysadmin@transformers:~# ipmitool raw 0x06 0x04
 ```
 ---
  include/sdrutils.hpp    |   3 +-
- src/storagecommands.cpp | 196 ++++++++++++++++++++++++++++------------
- 2 files changed, 141 insertions(+), 58 deletions(-)
+ src/storagecommands.cpp | 195 ++++++++++++++++++++++++++++------------
+ 2 files changed, 140 insertions(+), 58 deletions(-)
 
 diff --git a/include/sdrutils.hpp b/include/sdrutils.hpp
-index e48c628..5349e34 100644
+index 4f33c52..8c7a143 100644
 --- a/include/sdrutils.hpp
 +++ b/include/sdrutils.hpp
 @@ -519,7 +519,8 @@ static inline const std::string* getSensorConfigurationInterface(
@@ -244,7 +244,7 @@ index e48c628..5349e34 100644
              return &entry;
          }
 diff --git a/src/storagecommands.cpp b/src/storagecommands.cpp
-index a5e77b8..0af38f9 100644
+index de54497..4517f2c 100644
 --- a/src/storagecommands.cpp
 +++ b/src/storagecommands.cpp
 @@ -32,6 +32,8 @@
@@ -256,7 +256,7 @@ index a5e77b8..0af38f9 100644
  #include <filesystem>
  #include <fstream>
  #include <iostream>
-@@ -115,6 +117,8 @@ using ManagedEntry = std::pair<sdbusplus::message::object_path, ObjectType>;
+@@ -114,6 +116,8 @@ using ManagedEntry = std::pair<sdbusplus::message::object_path, ObjectType>;
  using GetObjectType =
      std::vector<std::pair<std::string, std::vector<std::string>>>;
  
@@ -264,20 +264,20 @@ index a5e77b8..0af38f9 100644
 +
  constexpr static const char* fruDeviceServiceName =
      "xyz.openbmc_project.FruDevice";
- constexpr static const char* entityManagerServiceName =
-@@ -134,8 +138,11 @@ static uint8_t writeBus = 0xFF;
+ constexpr static const size_t writeTimeoutSeconds = 10;
+@@ -131,8 +135,11 @@ static uint16_t writeBus = 0xFFFF;
  static uint8_t writeAddr = 0XFF;
  
  std::unique_ptr<phosphor::Timer> writeTimer = nullptr;
 +std::unique_ptr<phosphor::Timer> updateTimer = nullptr;
- static std::vector<sdbusplus::bus::match::match> fruMatches;
+ static std::vector<sdbusplus::bus::match_t> fruMatches;
  
 +static const uint16_t FRU_MAX_SIZE = 0x400;
 +static const uint8_t FRU_UPDATE_TIME = 60;
  static const int BUFFER_LENGTH = 20;
  
  ManagedObjectType frus;
-@@ -154,6 +161,44 @@ bool writeFru()
+@@ -151,6 +158,44 @@ bool writeFru()
      {
          return true;
      }
@@ -320,9 +320,9 @@ index a5e77b8..0af38f9 100644
 +    }
 +
      std::shared_ptr<sdbusplus::asio::connection> dbus = getSdBus();
-     sdbusplus::message::message writeFru = dbus->new_method_call(
+     sdbusplus::message_t writeFru = dbus->new_method_call(
          fruDeviceServiceName, "/xyz/openbmc_project/FruDevice",
-@@ -168,6 +213,8 @@ bool writeFru()
+@@ -165,6 +210,8 @@ bool writeFru()
          // todo: log sel?
          phosphor::logging::log<phosphor::logging::level::ERR>(
              "error writing fru");
@@ -330,8 +330,8 @@ index a5e77b8..0af38f9 100644
 +        fruCache.clear();
          return false;
      }
-     writeBus = 0xFF;
-@@ -182,6 +229,7 @@ void createTimers()
+     writeBus = 0xFFFF;
+@@ -179,6 +226,7 @@ void createTimers()
  
  void recalculateHashes()
  {
@@ -339,7 +339,7 @@ index a5e77b8..0af38f9 100644
  
      deviceHashes.clear();
      devicePath.clear();
-@@ -198,11 +246,13 @@ void recalculateHashes()
+@@ -195,11 +243,13 @@ void recalculateHashes()
  
          auto busFind = fruIface->second.find("BUS");
          auto addrFind = fruIface->second.find("ADDRESS");
@@ -355,7 +355,7 @@ index a5e77b8..0af38f9 100644
                  phosphor::logging::entry("FRU=%s", fru.first.str.c_str()));
              continue;
          }
-@@ -216,37 +266,41 @@ void recalculateHashes()
+@@ -213,37 +263,40 @@ void recalculateHashes()
              chassisType = std::get<std::string>(chassisFind->second);
          }
  
@@ -380,8 +380,7 @@ index a5e77b8..0af38f9 100644
              }
 +            fru_id_map[fru_addr_string] = fru_id;
          }
-+
-         std::pair<uint8_t, uint8_t> newDev(fruBus, fruAddr);
+         std::pair<uint16_t, uint8_t> newDev(fruBus, fruAddr);
  
          bool emplacePassed = false;
 -        while (!emplacePassed)
@@ -415,7 +414,7 @@ index a5e77b8..0af38f9 100644
      }
  }
  
-@@ -374,6 +428,7 @@ ipmi::Cc getFru(ipmi::Context::ptr ctx, uint8_t devId)
+@@ -371,6 +424,7 @@ ipmi::Cc getFru(ipmi::Context::ptr ctx, uint8_t devId)
          return ipmi::ccResponseError;
      }
  
@@ -423,7 +422,7 @@ index a5e77b8..0af38f9 100644
      lastDevId = devId;
      return ipmi::ccSuccess;
  }
-@@ -475,6 +530,15 @@ ipmi::RspType<uint8_t,             // Count
+@@ -472,6 +526,15 @@ ipmi::RspType<uint8_t,             // Count
          return ipmi::responseInvalidFieldRequest();
      }
  
@@ -439,7 +438,7 @@ index a5e77b8..0af38f9 100644
      ipmi::Cc status = getFru(ctx, fruDeviceId);
  
      if (status != ipmi::ccSuccess)
-@@ -529,13 +593,10 @@ ipmi::RspType<uint8_t>
+@@ -526,13 +589,10 @@ ipmi::RspType<uint8_t>
      ipmi::Cc status = getFru(ctx, fruDeviceId);
      if (status != ipmi::ccSuccess)
      {
@@ -454,7 +453,7 @@ index a5e77b8..0af38f9 100644
  
      std::copy(dataToWrite.begin(), dataToWrite.begin() + writeLen,
                fruCache.begin() + fruInventoryOffset);
-@@ -552,28 +613,7 @@ ipmi::RspType<uint8_t>
+@@ -549,28 +609,7 @@ ipmi::RspType<uint8_t>
               header->productOffset, header->multiRecordOffset});
          lastRecordStart *= 8; // header starts in are multiples of 8 bytes
  
@@ -484,7 +483,7 @@ index a5e77b8..0af38f9 100644
          {
              // This FRU does not have a MultiRecord Area
              // Get the length of the area in multiples of 8 bytes
-@@ -582,12 +622,12 @@ ipmi::RspType<uint8_t>
+@@ -579,12 +618,12 @@ ipmi::RspType<uint8_t>
                  // second byte in record area is the length
                  areaLength = fruCache[lastRecordStart + 1];
                  areaLength *= 8; // it is in multiples of 8 bytes
@@ -501,7 +500,7 @@ index a5e77b8..0af38f9 100644
      }
      uint8_t countWritten = 0;
  
-@@ -631,16 +671,10 @@ ipmi::RspType<uint16_t, // inventorySize
+@@ -628,16 +667,10 @@ ipmi::RspType<uint16_t, // inventorySize
          return ipmi::responseInvalidFieldRequest();
      }
  
@@ -519,7 +518,7 @@ index a5e77b8..0af38f9 100644
  }
  
  ipmi_ret_t getFruSdrCount(ipmi::Context::ptr ctx, size_t& count)
-@@ -649,6 +683,50 @@ ipmi_ret_t getFruSdrCount(ipmi::Context::ptr ctx, size_t& count)
+@@ -646,6 +679,50 @@ ipmi_ret_t getFruSdrCount(ipmi::Context::ptr ctx, size_t& count)
      return IPMI_CC_OK;
  }
  
@@ -570,7 +569,7 @@ index a5e77b8..0af38f9 100644
  ipmi_ret_t getFruSdrs(ipmi::Context::ptr ctx, size_t index,
                        get_sdr::SensorDataFruRecord& resp)
  {
-@@ -1606,6 +1684,10 @@ void registerStorageFunctions()
+@@ -1607,6 +1684,10 @@ void registerStorageFunctions()
  {
      createTimers();
      startMatch();
@@ -582,5 +581,5 @@ index a5e77b8..0af38f9 100644
      // <Get FRU Inventory Area Info>
      ipmi::registerHandler(ipmi::prioOemBase, ipmi::netFnStorage,
 -- 
-2.33.0
+2.34.1
 

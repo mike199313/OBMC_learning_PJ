@@ -1,7 +1,7 @@
-From d5b71c0266a75eeb1edbd80ac656de9d1d4dd7de Mon Sep 17 00:00:00 2001
+From 0d669578c5f5dc26f06d558374f8fb271bfa9900 Mon Sep 17 00:00:00 2001
 From: "pj.chen" <chen.pj@inventec.com>
 Date: Mon, 7 Mar 2022 08:58:29 +0000
-Subject: [PATCH 16/25] Bridging - Implement Get/Set global enables, and modify
+Subject: [PATCH 16/30] Bridging - Implement Get/Set global enables, and modify
  related functions
 
 Symptom/Reason:
@@ -27,13 +27,15 @@ Entry Test:
 3. ipmitool raw 0x6 0x2f (get global enables)
 4. ipmitool raw 0x6 0x2e
     ex:ipmitool raw 0x6 0x2e 0x9
+
+%% original patch: 0016-Bridging-Implement-Get-Set-global-enables-and-modify.patch
 ---
  include/bridgingcommands.hpp |  18 ++++
  src/bridgingcommands.cpp     | 162 ++++++++++++++++++++++++++++++++++-
  2 files changed, 178 insertions(+), 2 deletions(-)
 
 diff --git a/include/bridgingcommands.hpp b/include/bridgingcommands.hpp
-index 6725670..2ecb922 100644
+index 1d1df8f..057c746 100644
 --- a/include/bridgingcommands.hpp
 +++ b/include/bridgingcommands.hpp
 @@ -18,6 +18,24 @@
@@ -62,7 +64,7 @@ index 6725670..2ecb922 100644
   * @brief Response queue defines
   */
 diff --git a/src/bridgingcommands.cpp b/src/bridgingcommands.cpp
-index 09098c6..b0075f8 100644
+index f5e938a..de7eefd 100644
 --- a/src/bridgingcommands.cpp
 +++ b/src/bridgingcommands.cpp
 @@ -43,6 +43,9 @@ static constexpr const char* ipmbIntf = "org.openbmc.Ipmb";
@@ -163,7 +165,7 @@ index 09098c6..b0075f8 100644
      {
          getMsgFlagsRes.set(getMsgFlagEventMessageBit);
      }
-@@ -769,6 +820,106 @@ uint8_t ipmbSelfTest(ipmi::Context::ptr ctx)
+@@ -772,6 +823,106 @@ uint8_t ipmbSelfTest(ipmi::Context::ptr ctx)
      return 0x00;
  }
  
@@ -270,7 +272,7 @@ index 09098c6..b0075f8 100644
  
  static void register_bridging_functions() __attribute__((constructor));
  static void register_bridging_functions()
-@@ -792,6 +943,13 @@ static void register_bridging_functions()
+@@ -795,6 +946,13 @@ static void register_bridging_functions()
      ipmi::registerHandler(ipmi::prioOemBase, ipmi::netFnApp,
                            ipmi::app::cmdReadEventMessageBuffer,
                            ipmi::Privilege::User, ipmiAppReadEventMessageBuffer);
@@ -286,5 +288,5 @@ index 09098c6..b0075f8 100644
      return;
  }
 -- 
-2.33.0
+2.34.1
 

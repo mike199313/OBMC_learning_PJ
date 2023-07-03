@@ -1,18 +1,20 @@
-From 82ef060dc3edd1f5b1b160737dc0c93610563f61 Mon Sep 17 00:00:00 2001
+From c98e9ecfb26dd268d9b0089eec89ff93cae0f88e Mon Sep 17 00:00:00 2001
 From: anonymous <anonymous@inventec.com>
 Date: Tue, 23 Jun 2020 15:16:11 -0400
-Subject: [PATCH 01/25] Removed Get Device ID command
+Subject: [PATCH 01/30] Removed Get Device ID command
 
 Removed Get Device ID command
+
+%% original patch: 0001-Removed-Get-Device-ID-command.patch
 ---
  src/appcommands.cpp | 2 ++
  1 file changed, 2 insertions(+)
 
 diff --git a/src/appcommands.cpp b/src/appcommands.cpp
-index 10e3d13..0942d0c 100644
+index 722c471..acadd29 100644
 --- a/src/appcommands.cpp
 +++ b/src/appcommands.cpp
-@@ -386,8 +386,10 @@ RspType<uint8_t,  // Device ID
+@@ -387,8 +387,10 @@ RspType<uint8_t,  // Device ID
  static void registerAPPFunctions(void)
  {
      // <Get Device ID>
@@ -24,5 +26,5 @@ index 10e3d13..0942d0c 100644
  
  } // namespace ipmi
 -- 
-2.33.0
+2.34.1
 
