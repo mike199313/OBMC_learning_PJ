@@ -10,9 +10,7 @@ LIC_FILES_CHKSUM = "file://LICENSE;md5=8929d33c051277ca2294fe0f5b062f38"
 
 
 inherit cmake
-# Inventec - Modify libsafec for build issue
-#DEPENDS = "sdbusplus openssl libpam libgpiod safec"
-DEPENDS = "sdbusplus openssl libpam libgpiod libsafec"
+DEPENDS = "sdbusplus openssl libpam libgpiod safec"
 
 do_configure[depends] += "virtual/kernel:do_shared_workdir"
 

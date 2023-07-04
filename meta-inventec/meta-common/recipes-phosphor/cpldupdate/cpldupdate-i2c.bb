@@ -19,7 +19,7 @@ SUMMARY = "Lattice CPLD I2C update Utility."
 DESCRIPTION = "Update Lattice CPLD through I2C."
 SECTION = "base"
 PR = "r1"
-LICENSE = "GPLv2"
+LICENSE = "Proprietary"
 LIC_FILES_CHKSUM = "file://cpldupdate-i2c.cpp;beginline=5;endline=16;md5=69348da7e13c557a246cf7e5b163ea27"
 
 
