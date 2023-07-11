@@ -24,6 +24,7 @@ SRC_URI:append = " \
     file://0023-Add-D-Bus-interfaces-for-PLDM-FW-update.patch \
     file://0024-Add-PLDM-version-purpose-enumeration.patch \
     file://0025-update-meson-build-for-PLDM-FWU-interfaces.patch \
+    file://0026-Add-new-sensor-enum-for-Bits.patch \
 "
 
 #    file://0026-Add-new-sensor-enum-for-Bits.patch 

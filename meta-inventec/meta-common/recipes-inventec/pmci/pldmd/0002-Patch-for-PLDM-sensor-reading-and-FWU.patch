@@ -26,7 +26,7 @@ index 9888881..628bd76 100644
 +option (EXPOSE_CHASSIS "Expose PLDM device as a standalone chassis in Redfish Chassis interface" ON)
  
  set (BUILD_SHARED_LIBRARIES OFF)
- set (CMAKE_CXX_STANDARD 17)
+ set (CMAKE_CXX_STANDARD 20)
 @@ -28,7 +28,6 @@ set (
      -Wduplicated-cond \
      -Wduplicated-branches \

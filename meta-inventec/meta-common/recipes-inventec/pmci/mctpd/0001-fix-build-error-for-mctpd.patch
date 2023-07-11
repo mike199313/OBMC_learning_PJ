@@ -4,13 +4,23 @@ Date: Tue, 23 Aug 2022 14:28:04 +0800
 Subject: [PATCH] fix build error for mctpd
 
 ---
- CMakeLists.txt | 1 -
- 1 file changed, 1 deletion(-)
+ CMakeLists.txt       | 3 +--
+ src/SMBusBinding.cpp | 2 +-
+ 2 files changed, 2 insertions(+), 3 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 7ad941c..4d7ad41 100644
+index 7ad941c..a830c48 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
+@@ -6,7 +6,7 @@ project(mctpd CXX)
+ option(BUILD_STANDALONE "Use outside of YOCTO depedencies system" OFF)
+ 
+ set(BUILD_SHARED_LIBRARIES OFF)
+-set(CMAKE_CXX_STANDARD 17)
++set(CMAKE_CXX_STANDARD 20)
+ set(CMAKE_CXX_STANDARD_REQUIRED ON)
+ 
+ add_definitions(-DMCTP_ASTPCIE_RESPONSE_WA)
 @@ -24,7 +24,6 @@ set(CMAKE_CXX_FLAGS
      -Woverloaded-virtual \
      -Wpedantic \
@@ -19,3 +29,18 @@ index 7ad941c..4d7ad41 100644
      -Wdouble-promotion \
      -Wformat=2 \
  ")
+diff --git a/src/SMBusBinding.cpp b/src/SMBusBinding.cpp
+index dd61f15..0736161 100644
+--- a/src/SMBusBinding.cpp
++++ b/src/SMBusBinding.cpp
+@@ -785,7 +785,7 @@ std::string SMBusBinding::SMBusInit()
+ void SMBusBinding::readResponse()
+ {
+     smbusReceiverFd.async_wait(
+-        boost::asio::posix::descriptor_base::wait_error, [this](auto& ec) {
++        boost::asio::posix::descriptor_base::wait_error, [this](const auto& ec) {
+             if (ec)
+             {
+                 phosphor::logging::log<phosphor::logging::level::ERR>(
+-- 
+2.25.1

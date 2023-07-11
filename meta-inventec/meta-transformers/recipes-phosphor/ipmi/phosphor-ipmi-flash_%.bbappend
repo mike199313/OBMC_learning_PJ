@@ -6,7 +6,7 @@ RDEPENDS:${PN}:append = " openssl-bin bash"
 
 PACKAGECONFIG:append = " reboot-update static-bmc net-bridge aspeed-p2a"
 
-SRC_URI:append += " file://verify_image.sh \
+SRC_URI:append = " file://verify_image.sh \
                   "
 
 SYSTEMD_SERVICE:${PN} += " verify-image.service"

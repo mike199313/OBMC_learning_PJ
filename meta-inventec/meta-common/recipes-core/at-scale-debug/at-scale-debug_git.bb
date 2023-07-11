@@ -14,7 +14,7 @@ DEPENDS = "sdbusplus openssl libpam libgpiod safec"
 
 do_configure[depends] += "virtual/kernel:do_shared_workdir"
 
-SRC_URI = "git://github.com/Intel-BMC/asd;protocol=git"
+SRC_URI = "git://github.com/Intel-BMC/asd;branch=master;protocol=https"
 SRCREV = "37997e3fde81dc118f9431a49c673cfdaf443bdb"
 
 # Inventec - Markdown useradd for build issue

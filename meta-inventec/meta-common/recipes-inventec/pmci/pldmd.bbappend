@@ -1,3 +1,4 @@
+SRC_URI += "file://0000-Fix-build-errors.patch"
 SRC_URI += "file://0001-Add-Bits-sensor-and-fix-composite-state-sensor-error.patch"
 SRC_URI += "file://0002-Patch-for-PLDM-sensor-reading-and-FWU.patch"
 SRC_URI += "file://0003-PLDMD-with-multiple-interface-support.patch"

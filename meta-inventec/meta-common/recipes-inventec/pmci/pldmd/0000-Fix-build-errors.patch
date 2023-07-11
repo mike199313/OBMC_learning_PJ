@@ -1,0 +1,24 @@
+From 7057a0d25c0e09e1920bd24aafd872244a809b38 Mon Sep 17 00:00:00 2001
+From: Tommy Lin <Lin.TommySC@inventec.com>
+Date: Mon, 10 Jul 2023 10:07:22 +0800
+Subject: [PATCH] Fix build errors
+
+---
+ CMakeLists.txt | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 9888881..c3f359d 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -7,7 +7,7 @@ option (EXPOSE_BASEBOARD_SENSOR "Expose PLDM sensors in baseboard Redfish Chassi
+ option (EXPOSE_CHASSIS "Expose PLDM device as a standalone chassis in Redfish Chassis interface" OFF)
+
+ set (BUILD_SHARED_LIBRARIES OFF)
+-set (CMAKE_CXX_STANDARD 17)
++set (CMAKE_CXX_STANDARD 20)
+ set (CMAKE_CXX_STANDARD_REQUIRED ON)
+
+ set (
+--
+2.25.1

@@ -1,0 +1,47 @@
+From 2e5259b388c5a8e46bb02fc3b67709bf9b1be18f Mon Sep 17 00:00:00 2001
+From: Tommy Lin <Lin.TommySC@inventec.com>
+Date: Fri, 7 Jul 2023 10:34:38 +0800
+Subject: [PATCH] Fix build errors
+
+---
+ dbus_cb.cpp | 4 ++--
+ meson.build | 2 +-
+ 2 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/dbus_cb.cpp b/dbus_cb.cpp
+index 0235426..045513a 100644
+--- a/dbus_cb.cpp
++++ b/dbus_cb.cpp
+@@ -131,7 +131,7 @@ int onInterfacesAdded(sd_bus_message* rawMsg, void* userData,
+                                        context->addToEidMap(yield, serviceName);
+                                        context->networkChangeCallback(
+                                            userData, event, yield);
+-                                       return 1;
++                                       //return 1;
+                                    });
+             }
+         }
+@@ -179,7 +179,7 @@ int onInterfacesRemoved(sd_bus_message* rawMsg, void* userData,
+                                     event](boost::asio::yield_context yield) {
+                                        context->networkChangeCallback(
+                                            userData, event, yield);
+-                                       return 1;
++                                       //return 1;
+                                    });
+             }
+             else
+diff --git a/meson.build b/meson.build
+index 2302636..a2c991d 100644
+--- a/meson.build
++++ b/meson.build
+@@ -6,7 +6,7 @@ project(
+     default_options: [
+         'warning_level=3',
+         'werror=false',
+-        'cpp_std=c++17'
++        'cpp_std=c++20'
+     ],
+ )
+ 
+-- 
+2.25.1

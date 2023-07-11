@@ -4,13 +4,22 @@ Date: Tue, 23 Aug 2022 14:27:12 +0800
 Subject: [PATCH] fix build error for mctp-wrapper
 
 ---
- CMakeLists.txt | 1 -
- 1 file changed, 1 deletion(-)
+ CMakeLists.txt | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index ca47e35..e6fc816 100644
+index ca47e35..db41c95 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
+@@ -6,7 +6,7 @@ project (mctpw CXX)
+ option (YOCTO_DEPENDENCIES "Use YOCTO depedencies system" OFF)
+
+ set (BUILD_SHARED_LIBRARIES ON)
+-set (CMAKE_CXX_STANDARD 17)
++set (CMAKE_CXX_STANDARD 20)
+ set (CMAKE_CXX_STANDARD_REQUIRED ON)
+
+ set (
 @@ -27,7 +27,6 @@ set (
      -Wduplicated-cond \
      -Wduplicated-branches \
@@ -19,3 +28,5 @@ index ca47e35..e6fc816 100644
      -Wuseless-cast \
      -Wdouble-promotion \
      -Wno-strict-aliasing \
+--
+2.25.1

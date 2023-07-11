@@ -5,7 +5,7 @@ LICENSE = "Apache-2.0"
 LIC_FILES_CHKSUM = "file://LICENSE;md5=bcd9ada3a943f58551867d72893cc9ab"
 
 SRC_URI = "git://github.com/Intel-BMC/mctp-wrapper.git;protocol=ssh;branch=main"
-SRCREV = "643337bb5d2eb9697335a38d6e57cbcea20123f2"
+SRCREV = "a3457c8bcb2ec80ba76be6ca9a7fd96031419d52"
 
 S = "${WORKDIR}/git"
 
