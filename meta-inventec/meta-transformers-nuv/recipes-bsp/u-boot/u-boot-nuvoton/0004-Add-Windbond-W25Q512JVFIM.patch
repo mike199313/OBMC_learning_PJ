@@ -1,9 +1,10 @@
-From 3e9ea3123be2486dd763d846256d72bef75de26b Mon Sep 17 00:00:00 2001
+From 16a35512d4d2f17c4a2b2225dd414b536fa39a85 Mon Sep 17 00:00:00 2001
 From: link <link@inventec.com>
 Date: Tue, 1 Nov 2022 01:57:35 +0000
-Subject: [PATCH] Add Windbond W25Q512JVFIM - origin code base
+Subject: [PATCH 4/5] Add Windbond W25Q512JVFIM - origin code base
  npcm7xx-v2019.01, now is renamed in npcm-v2021.04
 
+%% original patch: 0004-Add-Windbond-W25Q512JVFIM.patch
 ---
  drivers/mtd/spi/spi-nor-ids.c | 5 +++++
  1 file changed, 5 insertions(+)

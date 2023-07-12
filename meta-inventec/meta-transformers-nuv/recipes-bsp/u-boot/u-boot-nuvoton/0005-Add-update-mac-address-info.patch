@@ -1,8 +1,8 @@
-From 870441e75673a6f9fce8ac2d590fa3b2bc872b46 Mon Sep 17 00:00:00 2001
+From 75ea65f86c5a95438f384285e50d46c0068ef154 Mon Sep 17 00:00:00 2001
 From: link <link@inventec.com>
 Date: Tue, 1 Nov 2022 02:10:21 +0000
-Subject: [PATCH] Bug 737 - [Transformers-nuv][OpenBMC] No mac address info in 
- FW Env
+Subject: [PATCH 5/5] Bug 737 - [Transformers-nuv][OpenBMC] No mac address info
+ in FW Env
 
 Symptom/Reason:
 	There is no mac addr set in inv. So it needs to add update eth Mac function in uboot.
@@ -28,6 +28,8 @@ I2C bus8 ready. speed=100000, base=0xf0088000, apb=50000000
  addr[4]=0x99
  addr[5]=0xd2
 After eth MAC: 38:68:dd:3e:99:d2
+
+%% original patch: 0005-Add-update-mac-address-info.patch
 ---
  drivers/net/npcm750_eth.c | 54 +++++++++++++++++++++++++++++++++++++++
  1 file changed, 54 insertions(+)

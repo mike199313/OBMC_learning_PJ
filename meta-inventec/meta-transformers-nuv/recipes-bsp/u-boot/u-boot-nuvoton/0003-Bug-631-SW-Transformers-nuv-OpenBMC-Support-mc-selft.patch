@@ -1,8 +1,8 @@
-From b9f9f87e6a175e004a457183b2513a7d770a5a56 Mon Sep 17 00:00:00 2001
+From dc554fd9a4b9a2a4e0efea5d215f4360e147d484 Mon Sep 17 00:00:00 2001
 From: link <link@inventec.com>
 Date: Tue, 1 Nov 2022 01:11:10 +0000
-Subject: [PATCH] Bug 631 - [SW][Transformers-nuv][OpenBMC] Support mc selftest
- on transformers-nuv
+Subject: [PATCH 3/5] Bug 631 - [SW][Transformers-nuv][OpenBMC] Support mc
+ selftest on transformers-nuv
 
 Sympton/Reason:
 	Implement selftest on transformers-nuv.
@@ -48,6 +48,8 @@ Entry Test:
 	 -> SDR repository not accessible
 	SDR repository empty
 	Internal Use Area corrupted
+
+%% original patch: 0003-Bug-631-SW-Transformers-nuv-OpenBMC-Support-mc-selft.patch
 ---
  common/bootm.c | 35 +++++++++++++++++++++++++++++++++--
  1 file changed, 33 insertions(+), 2 deletions(-)

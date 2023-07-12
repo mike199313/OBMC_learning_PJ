@@ -1,7 +1,7 @@
-From 113f936cfa99f43be47bc5e4a6e47e2d924160ea Mon Sep 17 00:00:00 2001
+From c42b00094f3d10e8b2a6aa23dc4ce5e13a1f5b61 Mon Sep 17 00:00:00 2001
 From: Matt Cheng <cheng.matt@inventec.com>
 Date: Thu, 23 Mar 2023 10:16:31 +0800
-Subject: [PATCH] Bug 1513 - [Transformers-nuv][OpenBMC] BMC boot up for
+Subject: [PATCH 1/5] Bug 1513 - [Transformers-nuv][OpenBMC] BMC boot up for
  Redfish API requests should within 60 seconds.
 
 Root Cause:
@@ -14,6 +14,8 @@ Solution/Change:
 
 Entry Test:
         curl -basic -u root:0penBmc -X GET https://10.6.141.169/redfish/v1/Managers/bmc -ks
+
+%% original patch: 0001-Interface-Readiness.patch
 ---
  include/configs/poleg.h | 4 +++-
  1 file changed, 3 insertions(+), 1 deletion(-)
@@ -40,5 +42,5 @@ index 1dfcbe3f17..d778f64e5a 100644
  
  #endif
 -- 
-2.25.1
+2.17.1
 
