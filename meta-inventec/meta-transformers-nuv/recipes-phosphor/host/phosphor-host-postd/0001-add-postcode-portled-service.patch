@@ -1,36 +1,28 @@
-From fde7603170974dd43b7d5cf9faea9bcb53e4c995 Mon Sep 17 00:00:00 2001
-From: emil <huang.emil@inventec.com>
-Date: Wed, 24 Nov 2021 07:40:10 +0000
+From c606dafe7b40ed3a628c294b36371030312f36e0 Mon Sep 17 00:00:00 2001
+From: Tommy Lin <Lin.TommySC@inventec.com>
+Date: Tue, 11 Jul 2023 14:02:15 +0800
 Subject: [PATCH] add postcode portled service
 
 ---
- meson.build       | 16 ++++++++++++
+ meson.build       | 15 +++++++++++
  meson_options.txt |  3 +++
  portled.cpp       | 65 +++++++++++++++++++++++++++++++++++++++++++++++
- 3 files changed, 84 insertions(+)
- create mode 100755 portled.cpp
+ 3 files changed, 83 insertions(+)
+ create mode 100644 portled.cpp
 
 diff --git a/meson.build b/meson.build
-index 2bafd48..2c09dcd 100644
+index 9a0d49a..8831eda 100644
 --- a/meson.build
 +++ b/meson.build
-@@ -19,6 +19,7 @@ phosphor_dbus_interfaces = dependency('phosphor-dbus-interfaces')
- sdbusplus = dependency('sdbusplus')
+@@ -20,6 +20,7 @@ sdbusplus = dependency('sdbusplus')
  sdeventplus = dependency('sdeventplus')
  systemd = dependency('systemd')
+ libgpiodcxx = dependency('libgpiodcxx')
 +libgpiod = dependency('libgpiod')
  
  conf_data = configuration_data()
  conf_data.set('bindir', get_option('prefix') / get_option('bindir'))
-@@ -55,6 +56,7 @@ executable(
-     sdbusplus,
-     sdeventplus,
-     phosphor_dbus_interfaces,
-+    libgpiod,
-   ],
-   install: true,
- )
-@@ -83,6 +85,20 @@ if get_option('7seg').enabled()
+@@ -87,6 +88,20 @@ if not get_option('7seg').disabled()
    )
  endif
  
@@ -52,10 +44,10 @@ index 2bafd48..2c09dcd 100644
    'lpcsnoop/snoop.hpp',
    'lpcsnoop/snoop_listen.hpp',
 diff --git a/meson_options.txt b/meson_options.txt
-index 763c73e..fba3e72 100644
+index fb4460e..aeac1ca 100644
 --- a/meson_options.txt
 +++ b/meson_options.txt
-@@ -20,3 +20,6 @@ option(
+@@ -32,3 +32,6 @@ option(
  option(
      'tests', type: 'feature', description: 'Build tests.',
  )
@@ -63,8 +55,8 @@ index 763c73e..fba3e72 100644
 +    'portled', type: 'feature', description: 'Enable building SGPIO POST daemon.',
 +)
 diff --git a/portled.cpp b/portled.cpp
-new file mode 100755
-index 0000000..05bedf2
+new file mode 100644
+index 0000000..4302910
 --- /dev/null
 +++ b/portled.cpp
 @@ -0,0 +1,65 @@
@@ -93,14 +85,14 @@ index 0000000..05bedf2
 +
 +constexpr const char* SGPIO_CHIPNAME = "gpiochip8";
 +
-+static void DisplayDbusValue(postcode_t postcodes)
++static void DisplayDbusValue(FILE*, postcode_t postcodes)
 +{
 +    auto postcode = std::get<primary_post_code_t>(postcodes);
 +    // Uses cstdio instead of streams because the device file has
 +    // very strict requirements about the data format and streaming
 +    // abstractions tend to muck it up.
 +
-+    uint8_t code = static_cast<uint8_t>(postcode & 0xff);   
++    uint8_t code = static_cast<uint8_t>(postcode & 0xff);
 +    for (int i = 0; i < 8; i++)
 +    {
 +        uint8_t value = ((code >> i) & 0x01);
@@ -134,5 +126,5 @@ index 0000000..05bedf2
 +    return 0;
 +}
 -- 
-2.17.1
+2.25.1
 
