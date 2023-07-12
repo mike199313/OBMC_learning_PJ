@@ -81,7 +81,7 @@ Acquire::https::Proxy "$https_proxy";
 EOF
 fi
 
-cp /home/$USER/$GIT_CONF_FILE .
+cp $HOME/$GIT_CONF_FILE .
 
 echo docker build $BUILD_ARGS -t $DOCKER_IMAGE .
 docker build $BUILD_ARGS -t $DOCKER_IMAGE .
