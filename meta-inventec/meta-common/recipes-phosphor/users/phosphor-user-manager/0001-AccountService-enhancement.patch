@@ -1,0 +1,276 @@
+From d24ea42021d3cbf5b42db9fd0562683419ea5e52 Mon Sep 17 00:00:00 2001
+From: Tommy Lin <Lin.TommySC@inventec.com>
+Date: Wed, 17 May 2023 02:01:42 +0000
+Subject: [PATCH] AccountService enhancement
+
+Symptom/Reason:
+- AccountService enhancement for Simple Rack mounted Server Profile
+
+Root Cause:
+- N/A
+
+Solution/Change:
+- [bmcweb]
+  - properties added
+    - State
+    - Health
+    - AccountLockoutCounterResetEnabled
+    - LocalAccountAuth
+    - AccountProviderType
+    - RemoteUser
+- [phosphor-dbus-interfaces]
+  - add UserName property for PrivilegeMapperEntry
+- [phosphor-user-manager]
+  - add UserName property for PrivilegeMapperEntry
+
+Entry Test:
+- Get Account Service Info
+  - curl -u root:0penBmc -X GET https://${bmc}/redfish/v1/AccountService
+- Set LDAP configuration
+  - curl -u root:0penBmc -X PATCH https://$bmc/redfish/v1/AccountService -d <Parameters>
+
+---
+ phosphor-ldap-config/ldap_config.cpp          | 38 +++++++++++++++++--
+ phosphor-ldap-config/ldap_config.hpp          | 13 ++++++-
+ phosphor-ldap-config/ldap_mapper_entry.cpp    | 17 ++++++++-
+ phosphor-ldap-config/ldap_mapper_entry.hpp    | 13 ++++++-
+ .../ldap_mapper_serialize.cpp                 |  7 +++-
+ user_mgr.cpp                                  | 13 +++++++
+ 6 files changed, 93 insertions(+), 8 deletions(-)
+
+diff --git a/phosphor-ldap-config/ldap_config.cpp b/phosphor-ldap-config/ldap_config.cpp
+index d6cd6dd..7313236 100644
+--- a/phosphor-ldap-config/ldap_config.cpp
++++ b/phosphor-ldap-config/ldap_config.cpp
+@@ -742,9 +742,22 @@ bool Config::deserialize()
+     }
+ }
+ 
+-ObjectPath Config::create(std::string groupName, std::string privilege)
++ObjectPath Config::create(std::string groupName, std::string privilege, std::string userName)
+ {
+-    checkPrivilegeMapper(groupName);
++    if (!groupName.empty())
++    {
++        checkPrivilegeMapper(groupName);
++    }
++    else if (!userName.empty())
++    {
++        checkUserPrivilege(userName);
++    }
++    else
++    {
++        log<level::ERR>("Group and User name is empty");
++        elog<InvalidArgument>(Argument::ARGUMENT_NAME("Group and User name"),
++                              Argument::ARGUMENT_VALUE("Null"));
++    }
+     checkPrivilegeLevel(privilege);
+ 
+     entryId++;
+@@ -760,7 +773,7 @@ ObjectPath Config::create(std::string groupName, std::string privilege)
+     // Create mapping for LDAP privilege mapper entry
+     auto entry = std::make_unique<LDAPMapperEntry>(
+         bus, mapperObjectPath.string().c_str(), persistPath.string().c_str(),
+-        groupName, privilege, *this);
++        groupName, privilege, userName, *this);
+ 
+     phosphor::ldap::serialize(*entry, std::move(persistPath));
+ 
+@@ -819,6 +832,25 @@ void Config::checkPrivilegeLevel(const std::string& privilege)
+     }
+ }
+ 
++void Config::checkUserPrivilege(const std::string& userName)
++{
++    if (userName.empty())
++    {
++        log<level::ERR>("User name is empty");
++        elog<InvalidArgument>(Argument::ARGUMENT_NAME("User name"),
++                              Argument::ARGUMENT_VALUE("Null"));
++    }
++
++    for (const auto& val : PrivilegeMapperList)
++    {
++        if (val.second.get()->userName() == userName)
++        {
++            log<level::ERR>("User name already exists");
++            elog<PrivilegeMappingExists>();
++        }
++    }
++}
++
+ void Config::restoreRoleMapping()
+ {
+     namespace fs = std::filesystem;
+diff --git a/phosphor-ldap-config/ldap_config.hpp b/phosphor-ldap-config/ldap_config.hpp
+index 6d5ee4e..7ab9523 100644
+--- a/phosphor-ldap-config/ldap_config.hpp
++++ b/phosphor-ldap-config/ldap_config.hpp
+@@ -207,7 +207,7 @@ class Config : public Ifaces
+      *  @return On success return the D-Bus object path of the created privilege
+      *          mapper entry.
+      */
+-    ObjectPath create(std::string groupName, std::string privilege) override;
++    ObjectPath create(std::string groupName, std::string privilege, std::string userName) override;
+ 
+     /** @brief Delete privilege mapping for LDAP group
+      *
+@@ -236,6 +236,17 @@ class Config : public Ifaces
+      */
+     void checkPrivilegeLevel(const std::string& privilege);
+ 
++    /** @brief Check if LDAP user privilege mapping requested is valid
++     *
++     *  Check if the privilege mapping already exists for the LDAP user name
++     *  and user name is empty.
++     *
++     *  @param[in] userName - LDAP user name
++     *
++     *  @return throw exception if the conditions are not met.
++     */
++    void checkUserPrivilege(const std::string& userName);
++
+     /** @brief Construct LDAP mapper entry D-Bus objects from their persisted
+      *         representations.
+      */
+diff --git a/phosphor-ldap-config/ldap_mapper_entry.cpp b/phosphor-ldap-config/ldap_mapper_entry.cpp
+index 41b56eb..b0e1ac2 100644
+--- a/phosphor-ldap-config/ldap_mapper_entry.cpp
++++ b/phosphor-ldap-config/ldap_mapper_entry.cpp
+@@ -15,13 +15,15 @@ namespace ldap
+ LDAPMapperEntry::LDAPMapperEntry(sdbusplus::bus_t& bus, const char* path,
+                                  const char* filePath,
+                                  const std::string& groupName,
+-                                 const std::string& privilege, Config& parent) :
++                                 const std::string& privilege,
++                                 const std::string& userName, Config& parent) :
+     Interfaces(bus, path, Interfaces::action::defer_emit),
+     id(std::stol(std::filesystem::path(path).filename())), manager(parent),
+     persistPath(filePath)
+ {
+     Interfaces::privilege(privilege, true);
+     Interfaces::groupName(groupName, true);
++    Interfaces::userName(userName, true);
+     Interfaces::emit_object_added();
+ }
+ 
+@@ -63,5 +65,18 @@ std::string LDAPMapperEntry::privilege(std::string value)
+     return val;
+ }
+ 
++std::string LDAPMapperEntry::userName(std::string value)
++{
++    if (value == Interfaces::userName())
++    {
++        return value;
++    }
++
++    manager.checkUserPrivilege(value);
++    auto val = Interfaces::userName(value);
++    serialize(*this, persistPath);
++    return val;
++}
++
+ } // namespace ldap
+ } // namespace phosphor
+diff --git a/phosphor-ldap-config/ldap_mapper_entry.hpp b/phosphor-ldap-config/ldap_mapper_entry.hpp
+index 93918b9..f18ea25 100644
+--- a/phosphor-ldap-config/ldap_mapper_entry.hpp
++++ b/phosphor-ldap-config/ldap_mapper_entry.hpp
+@@ -46,7 +46,7 @@ class LDAPMapperEntry : public Interfaces
+      */
+     LDAPMapperEntry(sdbusplus::bus_t& bus, const char* path,
+                     const char* filePath, const std::string& groupName,
+-                    const std::string& privilege, Config& parent);
++                    const std::string& privilege, const std::string& userName, Config& parent);
+ 
+     /** @brief Constructs LDAP privilege mapper entry object
+      *
+@@ -80,12 +80,23 @@ class LDAPMapperEntry : public Interfaces
+      */
+     std::string privilege(std::string value) override;
+ 
++    /** @brief Update the user name of the mapper object
++     *
++     *  @param[in] value - user name
++     *
++     *  @return On success the updated user name
++     */
++    std::string userName(std::string value) override;
++
+     using sdbusplus::xyz::openbmc_project::User::server::PrivilegeMapperEntry::
+         privilege;
+ 
+     using sdbusplus::xyz::openbmc_project::User::server::PrivilegeMapperEntry::
+         groupName;
+ 
++    using sdbusplus::xyz::openbmc_project::User::server::PrivilegeMapperEntry::
++        userName;
++
+   private:
+     Id id;
+     Config& manager;
+diff --git a/phosphor-ldap-config/ldap_mapper_serialize.cpp b/phosphor-ldap-config/ldap_mapper_serialize.cpp
+index 2842ba2..229b1f9 100644
+--- a/phosphor-ldap-config/ldap_mapper_serialize.cpp
++++ b/phosphor-ldap-config/ldap_mapper_serialize.cpp
+@@ -30,7 +30,7 @@ template <class Archive>
+ void save(Archive& archive, const LDAPMapperEntry& entry,
+           const std::uint32_t /*version*/)
+ {
+-    archive(entry.groupName(), entry.privilege());
++    archive(entry.groupName(), entry.privilege(), entry.userName());
+ }
+ 
+ /** @brief Function required by Cereal to perform deserialization.
+@@ -47,13 +47,16 @@ void load(Archive& archive, LDAPMapperEntry& entry,
+ {
+     std::string groupName{};
+     std::string privilege{};
++    std::string userName{};
+ 
+-    archive(groupName, privilege);
++    archive(groupName, privilege, userName);
+ 
+     entry.sdbusplus::xyz::openbmc_project::User::server::PrivilegeMapperEntry::
+         groupName(groupName, true);
+     entry.sdbusplus::xyz::openbmc_project::User::server::PrivilegeMapperEntry::
+         privilege(privilege, true);
++    entry.sdbusplus::xyz::openbmc_project::User::server::PrivilegeMapperEntry::
++        userName(userName, true);
+ }
+ 
+ fs::path serialize(const LDAPMapperEntry& entry, const fs::path& path)
+diff --git a/user_mgr.cpp b/user_mgr.cpp
+index a2b6a76..4fbd958 100644
+--- a/user_mgr.cpp
++++ b/user_mgr.cpp
+@@ -1266,6 +1266,7 @@ UserInfoMap UserMgr::getUserInfo(std::string userName)
+                 {
+                     std::string privilege;
+                     std::string groupName;
++                    std::string remoteUserName;
+ 
+                     for (const auto& [propName, propValue] : it->second)
+                     {
+@@ -1277,6 +1278,18 @@ UserInfoMap UserMgr::getUserInfo(std::string userName)
+                         {
+                             privilege = std::get<std::string>(propValue);
+                         }
++                        else if (propName == "UserName")
++                        {
++                            remoteUserName = std::get<std::string>(propValue);
++                        }
++                    }
++
++                    // User name is checked first since it has higher priority
++                    if (!remoteUserName.empty() && !privilege.empty() &&
++                        remoteUserName == userName)
++                    {
++                        userPrivilege = privilege;
++                        break;
+                     }
+ 
+                     if (!groupName.empty() && !privilege.empty() &&
+-- 
+2.25.1

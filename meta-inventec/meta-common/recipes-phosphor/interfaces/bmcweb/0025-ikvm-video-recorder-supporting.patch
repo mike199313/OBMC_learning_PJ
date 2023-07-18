@@ -1,16 +1,16 @@
-From b1fc9f9e9ecd7f639d82dd0e638dac4e8ea1e904 Mon Sep 17 00:00:00 2001
+From 1fe93bcc7dad2e0c7b5dacd2d945239866249845 Mon Sep 17 00:00:00 2001
 From: Vic Ye <ye.vic@inventec.com>
 Date: Tue, 23 May 2023 16:33:28 +0800
-Subject: [PATCH 25/27] fix api useage error. spelling word error kvm recording
+Subject: [PATCH 1/3] fix api useage error. spelling word error kvm recording
  support
 
 ---
- include/kvm_websocket.hpp | 358 ++++++++++++++++++++++++++++++++++++++
- src/webserver_main.cpp    |  11 +-
- 2 files changed, 368 insertions(+), 1 deletion(-)
+ include/kvm_websocket.hpp | 388 ++++++++++++++++++++++++++++++++++++++
+ src/webserver_main.cpp    |  10 +
+ 2 files changed, 398 insertions(+)
 
 diff --git a/include/kvm_websocket.hpp b/include/kvm_websocket.hpp
-index 942e9c60..8fe5444a 100644
+index 942e9c60..f908b7c4 100644
 --- a/include/kvm_websocket.hpp
 +++ b/include/kvm_websocket.hpp
 @@ -6,11 +6,24 @@
@@ -42,7 +42,7 @@ index 942e9c60..8fe5444a 100644
  // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
  static SessionMap sessions;
  
-+static const char *video_dir = "/tmp/video";
++static const char *video_dir = "/var/log/video";
 +
 +inline void initVideoFileRecorderData()
 +{
@@ -52,7 +52,7 @@ index 942e9c60..8fe5444a 100644
  inline void requestRoutes(App& app)
  {
      sessions.reserve(maxSessions);
-@@ -184,6 +204,344 @@ inline void requestRoutes(App& app)
+@@ -184,6 +204,374 @@ inline void requestRoutes(App& app)
                  sessions[&conn]->onMessage(data);
              }
          });
@@ -62,7 +62,7 @@ index 942e9c60..8fe5444a 100644
 +        .methods(boost::beast::http::verb::get)(
 +            [](const crow::Request& ,//req,
 +               const std::shared_ptr<bmcweb::AsyncResp>& asyncResp) {
-+SNIK_DEB_OUT_KVM( "videoFile Collection 1" ); 
++SNIK_DEB_OUT_KVM( "videoFile Collection 1" );
 +
 +                // Collections don't include the static data added by SubRoute
 +                // because it has a duplicate entry for members
@@ -101,7 +101,7 @@ index 942e9c60..8fe5444a 100644
 +                }
 +
 +                asyncResp->res.jsonValue["Members@odata.count"] = entryCount;
-+SNIK_DEB_OUT_KVM( "videoFile Collection 2" ); 
++SNIK_DEB_OUT_KVM( "videoFile Collection 2" );
 +
 +                videoFileListLock.unlock();
 +            });
@@ -111,30 +111,30 @@ index 942e9c60..8fe5444a 100644
 +        .methods(boost::beast::http::verb::post)(
 +            [](const crow::Request&,
 +               const std::shared_ptr<bmcweb::AsyncResp>&) {
-+SNIK_DEB_OUT_KVM( "videoFile Collection clear 1" ); 
++SNIK_DEB_OUT_KVM( "videoFile Collection clear 1" );
 +                videoFileListLock.lock();
 +
 +                if( videoFileRecorderData.present )
 +                {
 +                    int status;
 +SNIK_DEB_OUT_KVM( "kill recorder 1 " << static_cast<int>(videoFileRecorderData.pid) );
-+                    kill( videoFileRecorderData.pid, SIGTERM ); 
++                    kill( videoFileRecorderData.pid, SIGTERM );
 +                    waitpid( videoFileRecorderData.pid, &status, 0 );
 +SNIK_DEB_OUT_KVM( "kill recorder 2 " << status  );
 +                }
 +
 +                videoFileRecorderData.present = false;
 +
-+                std::filesystem::path loc(video_dir);
-+                std::filesystem::directory_iterator files(loc);
-+                for (auto& file : files)
++                for(const auto& file : std::filesystem::directory_iterator(video_dir))
 +                {
-+SNIK_DEB_OUT_KVM( "File " << file );
-+                    const auto &item_val = file.path().filename();
-+                    unlink( item_val.c_str() );
++                    if(file.path().extension() == ".avi")
++                    {
++SNIK_DEB_OUT_KVM( "Clear File " << file.path() );
++                        unlink( file.path().c_str() );
++                    }
 +                }
 +
-+SNIK_DEB_OUT_KVM( "videoFile Collection clear 2" ); 
++SNIK_DEB_OUT_KVM( "videoFile Collection clear 2" );
 +
 +                videoFileListLock.unlock();
 +            });
@@ -145,20 +145,20 @@ index 942e9c60..8fe5444a 100644
 +            [](const crow::Request&,
 +               const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
 +               const std::string& videoId) {
-+SNIK_DEB_OUT_KVM( "videoFile remove 1 " << videoId ); 
++SNIK_DEB_OUT_KVM( "videoFile remove 1 " << videoId );
 +                videoFileListLock.lock();
 +
 +                std::filesystem::path loc1(video_dir);
 +                loc1 /= videoId;
-+SNIK_DEB_OUT_KVM( "videoFile remove 2 " << loc1.c_str() ); 
++SNIK_DEB_OUT_KVM( "videoFile remove 2 " << loc1.c_str() );
 +                if( !unlink( loc1.c_str() ))
 +                {
-+SNIK_DEB_OUT_KVM( "videoFile remove 3 " << videoId ); 
++SNIK_DEB_OUT_KVM( "videoFile remove 3 " << videoId );
 +                    videoFileListLock.unlock();
 +                }
 +                else
 +                {
-+SNIK_DEB_OUT_KVM( "videoFile remove failed" ); 
++SNIK_DEB_OUT_KVM( "videoFile remove failed" );
 +
 +                    videoFileListLock.unlock();
 +
@@ -266,7 +266,7 @@ index 942e9c60..8fe5444a 100644
 +                std::optional<bool> high_quality;
 +                std::optional<int> len_in_sec;
 +
-+                if (!redfish::json_util::readJsonPatch(req, asyncResp->res, 
++                if (!redfish::json_util::readJsonPatch(req, asyncResp->res,
 +                                         "FPS", fps,
 +                                         "HighQuality", high_quality,
 +                                         "TimeOfPart", len_in_sec ))
@@ -278,7 +278,7 @@ index 942e9c60..8fe5444a 100644
 +
 +SNIK_DEB_OUT_KVM( "start video "  << *fps << " " << *high_quality << " " << *len_in_sec );
 +
-+                if( *fps < 1 || *fps > 30 || *high_quality == true || len_in_sec < 10 || len_in_sec > 3600 )
++                if( *fps < 1 || *fps > 15 || *high_quality == true || len_in_sec < 10 || len_in_sec > 3600 )
 +                {
 +                    asyncResp->res.result(
 +                        boost::beast::http::status::bad_request);
@@ -299,7 +299,7 @@ index 942e9c60..8fe5444a 100644
 +#else
 +                    int status;
 +SNIK_DEB_OUT_KVM( "kill recorder 1 " << static_cast<int>(videoFileRecorderData.pid) );
-+                    kill( videoFileRecorderData.pid, SIGTERM ); 
++                    kill( videoFileRecorderData.pid, SIGTERM );
 +                    waitpid( videoFileRecorderData.pid, &status, 0 );
 +SNIK_DEB_OUT_KVM( "kill recorder 2 " << status  );
 +                    videoFileRecorderData.present = false;
@@ -341,7 +341,7 @@ index 942e9c60..8fe5444a 100644
 +                    const char **argv_vnc2mpg_c = new const char* [ argv_number+2 ];
 +                    argv_vnc2mpg_c[ 0] = argv_vnc2mpg_name;
 +                    for (int i = 0;  i < argv_number;  ++i)
-+                        argv_vnc2mpg_c[ i+1 ] = argv_vnc2mpg[ i] .c_str();
++                        argv_vnc2mpg_c[ i+1 ] = argv_vnc2mpg[ i ].c_str();
 +
 +                    argv_vnc2mpg_c[ argv_number+1 ] = NULL;
 +                    execv (argv_vnc2mpg_name, const_cast<char **>(argv_vnc2mpg_c));
@@ -370,6 +370,36 @@ index 942e9c60..8fe5444a 100644
 +            });
 +
 +    BMCWEB_ROUTE(
++        app, "/kvm/video/status/")
++        .privileges({{"ConfigureManager"}})
++        .methods(boost::beast::http::verb::get)(
++            [](const crow::Request&,
++               const std::shared_ptr<bmcweb::AsyncResp>& asyncResp) {
++                bool result = false;
++
++                std::string timestamp(20, 0);
++
++                time_t full_time = time( NULL );
++                struct tm date_time_info;
++                localtime_r(&full_time, &date_time_info);
++                snprintf( timestamp.data(), 20, "%04d-%02d-%02d-%02d-%02d-%02d",
++                    date_time_info.tm_year+1900,    /* Year - 1900 */
++                    date_time_info.tm_mon+1,        /* Month (0-11) */
++                    date_time_info.tm_mday,         /* Day of the month (1-31) */
++                    date_time_info.tm_hour,         /* Hours (0-23) */
++                    date_time_info.tm_min,          /* Minutes (0-59) */
++                    date_time_info.tm_sec           /* Seconds (0-60) */
++                    );
++
++                videoFileListLock.lock();
++                result = (videoFileRecorderData.present && videoFileRecorderData.pid > 0);
++                videoFileListLock.unlock();
++
++                asyncResp->res.jsonValue["Time"] = timestamp.c_str();
++                asyncResp->res.jsonValue["Status"] = result;
++               });
++
++    BMCWEB_ROUTE(
 +        app, "/kvm/video/stop/")
 +        .privileges({{"ConfigureManager"}})
 +        .methods(boost::beast::http::verb::post)(
@@ -383,7 +413,7 @@ index 942e9c60..8fe5444a 100644
 +                {
 +                    int status;
 +SNIK_DEB_OUT_KVM( "stop video 1 " << static_cast<int>(videoFileRecorderData.pid) );
-+                    kill( videoFileRecorderData.pid, SIGTERM ); 
++                    kill( videoFileRecorderData.pid, SIGTERM );
 +                    waitpid( videoFileRecorderData.pid, &status, 0 );
 +SNIK_DEB_OUT_KVM( "stop video 2 " << status  );
 +                }
@@ -398,10 +428,10 @@ index 942e9c60..8fe5444a 100644
  
  } // namespace obmc_kvm
 diff --git a/src/webserver_main.cpp b/src/webserver_main.cpp
-index b13ab270..048dd578 100644
+index b13ab270..bfb6f5df 100644
 --- a/src/webserver_main.cpp
 +++ b/src/webserver_main.cpp
-@@ -62,10 +62,19 @@ inline void setupSocket(crow::App& app)
+@@ -62,10 +62,20 @@ inline void setupSocket(crow::App& app)
      }
  }
  
@@ -409,19 +439,19 @@ index b13ab270..048dd578 100644
 +{
 +namespace obmc_kvm
 +{
-+std::mutex videoFileListLock;
-+VideoFileRecorderData videoFileRecorderData;
++    std::mutex videoFileListLock;
++    VideoFileRecorderData videoFileRecorderData;
 +}
 +}
 +
  static int run()
  {
      crow::Logger::setLogLevel(crow::LogLevel::Debug);
--
+ 
 +    crow::obmc_kvm::initVideoFileRecorderData();
      auto io = std::make_shared<boost::asio::io_context>();
      App app(io);
  
 -- 
-2.34.1
+2.25.1
 

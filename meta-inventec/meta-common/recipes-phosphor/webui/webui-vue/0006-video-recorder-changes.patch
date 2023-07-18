@@ -1,21 +1,21 @@
-From a0a2556efafbf739b7ee3511145c9b7e072e6fbd Mon Sep 17 00:00:00 2001
+From 203b6884324edc4e2be4ca47e5e1202b0eb44b14 Mon Sep 17 00:00:00 2001
 From: Vic Ye <ye.vic@inventec.com>
 Date: Tue, 23 May 2023 16:41:51 +0800
-Subject: [PATCH 7/8] video recorder changes
+Subject: [PATCH] video recorder changes
 
 ---
- src/locales/en-US.json                        |  17 +-
- src/locales/ru-RU.json                        |  17 +-
+ src/locales/en-US.json                        |  19 +-
+ src/locales/ru-RU.json                        |  19 +-
  src/store/index.js                            |   2 +
- .../modules/Operations/KvmConsoleStore.js     |  83 ++++++
- src/views/Operations/Kvm/KvmConsole.vue       | 240 +++++++++++++++++-
- .../Kvm/ModalStartVideoRecording.vue          | 175 +++++++++++++
- 6 files changed, 518 insertions(+), 16 deletions(-)
+ .../modules/Operations/KvmConsoleStore.js     |  90 +++++++
+ src/views/Operations/Kvm/KvmConsole.vue       | 247 ++++++++++++++++--
+ .../Kvm/ModalStartVideoRecording.vue          | 176 +++++++++++++
+ 6 files changed, 534 insertions(+), 19 deletions(-)
  create mode 100644 src/store/modules/Operations/KvmConsoleStore.js
  create mode 100644 src/views/Operations/Kvm/ModalStartVideoRecording.vue
 
 diff --git a/src/locales/en-US.json b/src/locales/en-US.json
-index d331993..f0ab790 100644
+index d331993..aedd166 100644
 --- a/src/locales/en-US.json
 +++ b/src/locales/en-US.json
 @@ -23,7 +23,8 @@
@@ -28,32 +28,31 @@ index d331993..f0ab790 100644
          },
          "ariaLabel": {
              "clearSearch": "Clear search input",
-@@ -485,10 +486,22 @@
-     "pageKvm": {
-         "openNewTab": "Open in new tab",
-         "buttonCtrlAltDelete": "Send Ctrl+Alt+Delete",
-+        "buttonVideoRecordStart": "Start iKVM recording",
-+        "buttonVideoRecordStop": "Stop iKVM recording",
-+        "modal": {
-+          "startVideoRecordingTitle": "ikvm recording",
-+          "colorQuality": "Color quality",
-+          "FPS": "Frames per second",
-+          "timeOfPart": "Time of part (in seconds)",
-+          "autoDownload": "Auto download"
-+        },
+@@ -488,7 +489,21 @@
          "status": "Status",
          "connected": "Connected",
          "connecting": "Connecting",
 -        "disconnected": "Disconnected"
 +        "disconnected": "Disconnected",
++        "buttonCamera": "Screenshot",
++        "buttonRecordStart": "Start iKVM recording",
++        "buttonRecordStop": "Stop iKVM recording",
++        "buttonDownloadAll": "Download and remove all",
++        "buttonDownloadStop": "Stop download",
++        "modal": {
++            "startRecordingTitle": "iKVM recording",
++            "FPS": "Frames per second",
++            "timeSlice": "Segmentation (in seconds)",
++            "downloadClean": "Download and clean"
++        },
 +        "toast": {
-+          "invalidVideoParams": "Invalid video parameters are used."
++            "invalidVideoParams": "Invalid video parameters are used."
 +        }
      },
      "pageLdap": {
          "pageDescription": "Configure LDAP settings and manage role groups",
 diff --git a/src/locales/ru-RU.json b/src/locales/ru-RU.json
-index 3ff0e6a..bebc00c 100644
+index 3ff0e6a..a679a01 100644
 --- a/src/locales/ru-RU.json
 +++ b/src/locales/ru-RU.json
 @@ -23,7 +23,8 @@
@@ -66,56 +65,55 @@ index 3ff0e6a..bebc00c 100644
          },
          "ariaLabel": {
              "clearSearch": "Очистить поле поиска",
-@@ -485,10 +486,22 @@
-     "pageKvm": {
-         "openNewTab": "Открыть окно в новой вкладке",
-         "buttonCtrlAltDelete": "Послать Ctrl+Alt+Delete",
-+        "buttonVideoRecordStart": "Начать запись видео",
-+        "buttonVideoRecordStop": "Завершить запись видео",
-+        "modal": {
-+          "startVideoRecordingTitle": "Начать запись видео",
-+          "colorQuality": "Качество цветопередачи",
-+          "FPS": "Кадров в секунду",
-+          "timeOfPart": "Продолжительность одного интервала (в секундах)",
-+          "autoDownload": "Автоматическое скачивание видео"
-+        },
+@@ -488,7 +489,21 @@
          "status": "Статус",
          "connected": "Подключено",
          "connecting": "Подключение",
 -        "disconnected": "Отключено"
 +        "disconnected": "Отключено",
++        "buttonCamera": "Screenshot",
++        "buttonRecordStart": "Начать запись видео",
++        "buttonRecordStop": "Завершить запись видео",
++        "buttonDownloadAll": "Скачать и удалить все",
++        "buttonDownloadStop": "Остановить загрузку",
++        "modal": {
++            "startRecordingTitle": "Начать запись видео",
++            "FPS": "Кадров в секунду",
++            "timeSlice": "Сегментация (в секундах)",
++            "downloadClean": "Скачать и очистить"
++        },
 +        "toast": {
-+          "invalidVideoParams": "Выбраны недопустимые параметры записи видео."
++            "invalidVideoParams": "Выбраны недопустимые параметры записи видео."
 +        }
      },
      "pageLdap": {
          "pageDescription": "Настройка параметров LDAP и управление группами",
 diff --git a/src/store/index.js b/src/store/index.js
-index c0b7894..04159a5 100644
+index c0b7894..61b2348 100644
 --- a/src/store/index.js
 +++ b/src/store/index.js
-@@ -28,6 +28,7 @@ import AssemblyStore from './modules/HardwareStatus/AssemblyStore';
- import PostCodeLogsStore from './modules/Logs/PostCodeLogsStore';
+@@ -29,6 +29,7 @@ import PostCodeLogsStore from './modules/Logs/PostCodeLogsStore';
  import PoliciesStore from './modules/SecurityAndAccess/PoliciesStore';
  import FactoryResetStore from './modules/Operations/FactoryResetStore';
-+import KvmConsoleStore from './modules/Operations/KvmConsoleStore';
  import KeyClearStore from './modules/Operations/KeyClearStore';
++import KvmConsoleStore from './modules/Operations/KvmConsoleStore';
  
  import WebSocketPlugin from './plugins/WebSocketPlugin';
-@@ -70,6 +71,7 @@ export default new Vuex.Store({
-     virtualMedia: VirtualMediaStore,
+ import DateTimeStore from './modules/Settings/DateTimeStore';
+@@ -71,6 +72,7 @@ export default new Vuex.Store({
      policies: PoliciesStore,
      factoryReset: FactoryResetStore,
-+    kvmConsole: KvmConsoleStore,
      keyClear: KeyClearStore,
++    kvmConsole: KvmConsoleStore,
    },
    plugins: [WebSocketPlugin],
+ });
 diff --git a/src/store/modules/Operations/KvmConsoleStore.js b/src/store/modules/Operations/KvmConsoleStore.js
 new file mode 100644
-index 0000000..b9ccd91
+index 0000000..45fb5ad
 --- /dev/null
 +++ b/src/store/modules/Operations/KvmConsoleStore.js
-@@ -0,0 +1,83 @@
+@@ -0,0 +1,90 @@
 +import api from '@/store/api';
 +import i18n from '@/i18n';
 +
@@ -153,6 +151,10 @@ index 0000000..b9ccd91
 +        })
 +        .catch((error) => console.log(error));
 +    },
++    // async screenshot({commit}) {
++    //   const apiPath = '/kvm/video/screenshot';
++    //   return await api.post(apiPath);
++    // },
 +    async listVideoFiles({ commit }) {
 +      return await api
 +        .get('/kvm/video/list')
@@ -171,6 +173,9 @@ index 0000000..b9ccd91
 +    },
 +    async startRecording({ dispatch }, { timeSlice, FPS }) {
 +      const apiPath = '/kvm/video/start';
++      // console.log('loc=', apiPath);
++      // console.log('TimeOfPart: ' + timeSlice);
++      // console.log('FPS: ' + FPS);
 +      return await api
 +        .patch(apiPath, {
 +          HighQuality: false,
@@ -200,7 +205,7 @@ index 0000000..b9ccd91
 +
 +export default KvmConsoleStore;
 diff --git a/src/views/Operations/Kvm/KvmConsole.vue b/src/views/Operations/Kvm/KvmConsole.vue
-index 212514d..e4499ef 100644
+index 212514d..0446638 100644
 --- a/src/views/Operations/Kvm/KvmConsole.vue
 +++ b/src/views/Operations/Kvm/KvmConsole.vue
 @@ -2,11 +2,8 @@
@@ -264,7 +269,7 @@ index 212514d..e4499ef 100644
            </b-button>
            <b-button
              v-if="!isFullWindow"
-@@ -30,31 +55,53 @@
+@@ -30,31 +55,54 @@
              type="button"
              @click="openConsoleWindow()"
            >
@@ -289,15 +294,16 @@ index 212514d..e4499ef 100644
  import StatusIcon from '@/components/Global/StatusIcon';
  import IconLaunch from '@carbon/icons-vue/es/launch/20';
 -import IconArrowDown from '@carbon/icons-vue/es/arrow--down/16';
++// import IconArrowDown from '@carbon/icons-vue/es/arrow--down/16';
 +import IconDownload from '@carbon/icons-vue/es/download/20';
 +import IconChip from '@carbon/icons-vue/es/chip/20';
 +import IconRestart from '@carbon/icons-vue/es/restart/20';
 +import IconCameraAction from '@carbon/icons-vue/es/camera--action/20';
 +import IconStop from '@carbon/icons-vue/es/stop/20';
- import { throttle } from 'lodash';
- import { mapState } from 'vuex';
 +import ModalStartVideoRecording from './ModalStartVideoRecording';
 +import BVToastMixin from '@/components/Mixins/BVToastMixin';
+ import { throttle } from 'lodash';
+ import { mapState } from 'vuex';
  
  const Connecting = 0;
  const Connected = 1;
@@ -322,7 +328,7 @@ index 212514d..e4499ef 100644
    props: {
      isFullWindow: {
        type: Boolean,
-@@ -71,6 +118,14 @@ export default {
+@@ -71,6 +119,14 @@ export default {
        status: Connecting,
        convasRef: null,
        resizeKvmWindow: null,
@@ -337,7 +343,7 @@ index 212514d..e4499ef 100644
      };
    },
    computed: {
-@@ -91,6 +146,15 @@ export default {
+@@ -91,21 +147,35 @@ export default {
        }
        return this.$t('pageKvm.connecting');
      },
@@ -350,21 +356,25 @@ index 212514d..e4499ef 100644
 +    videoTimeStamp() {
 +      return 'video_' + this.$store.getters['kvmConsole/timeStamp'];
 +    },
++  },
++  async created() {
++    this.timer = setInterval(this.fetchVideoList, 10000);
++    await this.$store.dispatch('kvmConsole/getVideoStatus');
++    this.isVideoRecordStarted = this.$store.getters['kvmConsole/isRecording'];
++    console.log('isVideoRecordStarted = ' + this.isVideoRecordStarted);
++    this.$store.dispatch('global/getSystemInfo');
    },
    watch: {
      consoleWindow() {
-@@ -99,6 +163,10 @@ export default {
+       if (this.consoleWindow == false) this.isConsoleWindow.close();
+     },
    },
-   created() {
-     this.$store.dispatch('global/getSystemInfo');
-+    this.timer = setInterval(this.fetchVideoList, 10000);
-+    this.$store.dispatch('kvmConsole/getVideoStatus');
-+    this.isVideoRecordStarted = this.$store.getters['kvmConsole/isRecording'];
-+    console.log('isVideoRecordStarted = ' + this.isVideoRecordStarted);
-   },
+-  created() {
+-    this.$store.dispatch('global/getSystemInfo');
+-  },
    mounted() {
      this.openTerminal();
-@@ -106,6 +174,7 @@ export default {
+   },
    beforeDestroy() {
      window.removeEventListener('resize', this.resizeKvmWindow);
      this.closeTerminal();
@@ -372,7 +382,7 @@ index 212514d..e4499ef 100644
    },
    methods: {
      sendCtrlAltDel() {
-@@ -177,6 +246,153 @@ export default {
+@@ -177,6 +247,153 @@ export default {
          'directories=no,titlebar=no,toolbar=no,location=no,status=no,menubar=no,scrollbars=no,resizable=yes,width=700,height=550'
        );
      },
@@ -528,10 +538,10 @@ index 212514d..e4499ef 100644
  </script>
 diff --git a/src/views/Operations/Kvm/ModalStartVideoRecording.vue b/src/views/Operations/Kvm/ModalStartVideoRecording.vue
 new file mode 100644
-index 0000000..8ce715f
+index 0000000..ebd1668
 --- /dev/null
 +++ b/src/views/Operations/Kvm/ModalStartVideoRecording.vue
-@@ -0,0 +1,175 @@
+@@ -0,0 +1,176 @@
 +<template>
 +  <b-modal
 +    id="start-video-recording"
@@ -608,6 +618,7 @@ index 0000000..8ce715f
 +</template>
 +
 +<script>
++//import { required, ipAddress, requiredIf } from 'vuelidate/lib/validators';
 +import { required, minValue, maxValue } from 'vuelidate/lib/validators';
 +import VuelidateMixin from '@/components/Mixins/VuelidateMixin.js';
 +
@@ -709,3 +720,4 @@ index 0000000..8ce715f
 +</script>
 -- 
 2.25.1
+

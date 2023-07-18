@@ -1,0 +1,230 @@
+From 363872445f640784d4363d9147bd86cf242d5cbc Mon Sep 17 00:00:00 2001
+From: "liz.chiu" <Chiu.Liz@inventec.com>
+Date: Tue, 6 Jun 2023 09:36:31 +0800
+Subject: [PATCH] Change pid config into entity-manager config
+
+---
+ dbus/dbusconfiguration.cpp | 97 ++++++++++++++++++++++++++++++++++++--
+ pid/buildjson.cpp          |  8 ++++
+ pid/thermalcontroller.cpp  |  2 +-
+ 3 files changed, 102 insertions(+), 5 deletions(-)
+
+diff --git a/dbus/dbusconfiguration.cpp b/dbus/dbusconfiguration.cpp
+index 43c329f..c87997f 100644
+--- a/dbus/dbusconfiguration.cpp
++++ b/dbus/dbusconfiguration.cpp
+@@ -50,6 +50,10 @@ constexpr const char* thermalControlIface =
+ constexpr const char* sensorInterface = "xyz.openbmc_project.Sensor.Value";
+ constexpr const char* defaultPwmInterface =
+     "xyz.openbmc_project.Control.FanPwm";
++constexpr const char* PGInterface =
++    "xyz.openbmc_project.Configuration.Pid.PGains";
++constexpr const char* IGInterface =
++    "xyz.openbmc_project.Configuration.Pid.IGains";
+ 
+ using Association = std::tuple<std::string, std::string, std::string>;
+ using Associations = std::vector<Association>;
+@@ -331,7 +335,7 @@ void populatePidInfo(
+     }
+     info.acceptAllSensorsMissing = std::get<bool>(getPIDAttribute(base, "AcceptAllSensorsMissing"));
+ 
+-    info.pidInfo.ts = 1.0; // currently unused
++    info.pidInfo.ts = std::visit(VariantToDoubleVisitor(), getPIDAttribute(base, "samplePeriod")); 
+     info.pidInfo.proportionalCoeff = std::visit(
+         VariantToDoubleVisitor(), getPIDAttribute(base, "PCoefficient"));
+     info.pidInfo.integralCoeff = std::visit(
+@@ -383,6 +387,8 @@ void populatePidInfo(
+     {
+         movingAveragePoint =
+             std::visit(VariantToDoubleVisitor(), findMAvePoint->second);
++    }else if (findMAvePoint == base.end() && info.type != "fan") {
++        std::cerr << std::get<std::string>(getPIDAttribute(base, "Name")) <<"'s MovingAveragePoint is not found. Use default 1" << std::endl;
+     }
+ 
+     info.pidInfo.negativeHysteresis = negativeHysteresis;
+@@ -391,6 +397,76 @@ void populatePidInfo(
+     info.pidInfo.movingAveragePoint = movingAveragePoint;
+ }
+ 
++void populateGainsInfo(const auto findPG, const auto findIG, const auto& configuration, conf::ControllerInfo& info, std::string pidName, std::string pidClass){
++    if (findPG != configuration.second.end() && pidClass != "fan")
++    {
++        auto& PG = configuration.second.at(PGInterface);
++        auto findr = PG.find("reading");
++        auto findo = PG.find("output");
++        std::vector<double> readings;
++        std::vector<double> outputs;
++
++        if (findr != PG.end()){
++            readings = std::get<std::vector<double>>(PG.at("reading"));
++        } else {            
++            std::cerr << pidName << "'s reading of PGains is not found. Use default value" << std::endl;            
++        } 
++
++        if (findo != PG.end()){
++            outputs = std::get<std::vector<double>>(PG.at("output"));                      
++        } else {
++            std::cerr << pidName << "'s output of PGains is not found. Use default value" << std::endl;
++        }
++
++        for (size_t ii = 0; ii < ec::maxGainPoints; ii++) {
++            if (ii < readings.size()){
++                info.pidInfo.proportionalGains.reading[ii]=readings[ii];
++            }else{
++                info.pidInfo.proportionalGains.reading[ii]=0;
++            }
++            if (ii < outputs.size()){
++                info.pidInfo.proportionalGains.output[ii]=outputs[ii];                               
++            }else{
++                info.pidInfo.proportionalGains.output[ii]=0;                                 
++            }                            
++        }
++    }
++
++    if (findIG != configuration.second.end() && pidClass != "fan")
++    {
++        auto& IG = configuration.second.at(IGInterface);    
++        auto findr = IG.find("reading");
++        auto findo = IG.find("output");
++        std::vector<double> readings;
++        std::vector<double> outputs;                    
++        
++        if (findr != IG.end()){
++            readings = std::get<std::vector<double>>(IG.at("reading"));
++        } else {
++            std::cerr << pidName << "'s reading of IGains is not found. Use default value" << std::endl;                
++        }
++
++        if (findo != IG.end()){
++            outputs = std::get<std::vector<double>>(IG.at("output"));
++        } else{
++            std::cerr << pidName << "'s output of IGains is not found. Use default value" << std::endl;
++        }                            
++
++        for (size_t ii = 0; ii < ec::maxGainPoints; ii++) {
++            if (ii < readings.size()){
++                info.pidInfo.integralGains.reading[ii]=readings[ii];
++            }else{
++                info.pidInfo.integralGains.reading[ii]=0;
++            }
++            if (ii < outputs.size()){
++                info.pidInfo.integralGains.output[ii]=outputs[ii];
++            }else{
++                info.pidInfo.integralGains.output[ii]=0;
++            }                            
++        }
++    }
++}
++
+ bool init(sdbusplus::bus_t& bus, boost::asio::steady_timer& timer,
+           std::map<std::string, conf::SensorConfig>& sensorConfig,
+           std::map<int64_t, conf::PIDConf>& zoneConfig,
+@@ -825,12 +901,16 @@ bool init(sdbusplus::bus_t& bus, boost::asio::steady_timer& timer,
+                     }
+                 }
+ 
++                const auto findPG = configuration.second.find(PGInterface);
++                const auto findIG = configuration.second.find(IGInterface);
+                 if (offsetType.empty())
+                 {
+                     conf::ControllerInfo& info =
+                         conf[std::get<std::string>(base.at("Name"))];
+                     info.inputs = std::move(inputSensorNames);
+                     populatePidInfo(bus, base, info, nullptr, sensorConfig);
++                    //Gains find
++                    populateGainsInfo(findPG, findIG, configuration, info, pidName, pidClass);           
+                 }
+                 else
+                 {
+@@ -842,8 +922,10 @@ bool init(sdbusplus::bus_t& bus, boost::asio::steady_timer& timer,
+                         info.inputs.emplace_back(input);
+                         populatePidInfo(bus, base, info, &offsetType,
+                                         sensorConfig);
++                        //Gains find
++                        populateGainsInfo(findPG, findIG, configuration, info, pidName, pidClass);                                                 
+                     }
+-                }
++                }                
+             }
+         }
+         auto findStepwise =
+@@ -912,14 +994,15 @@ bool init(sdbusplus::bus_t& bus, boost::asio::steady_timer& timer,
+                 info.inputs = std::move(inputs);
+ 
+                 info.type = "stepwise";
+-                info.stepwiseInfo.ts = 1.0; // currently unused
++                info.stepwiseInfo.ts = std::get<double>(base.at("samplePeriod"));
+                 info.stepwiseInfo.positiveHysteresis = 0.0;
+                 info.stepwiseInfo.negativeHysteresis = 0.0;
+                 std::string subtype = std::get<std::string>(base.at("Class"));
+ 
+-                info.stepwiseInfo.isCeiling = (subtype == "Ceiling");
++                info.stepwiseInfo.isCeiling = (subtype == "isCeiling");
+                 auto findPosHyst = base.find("PositiveHysteresis");
+                 auto findNegHyst = base.find("NegativeHysteresis");
++                auto findMAP = base.find("MovingAveragePoint");
+                 if (findPosHyst != base.end())
+                 {
+                     info.stepwiseInfo.positiveHysteresis = std::visit(
+@@ -930,6 +1013,12 @@ bool init(sdbusplus::bus_t& bus, boost::asio::steady_timer& timer,
+                     info.stepwiseInfo.negativeHysteresis = std::visit(
+                         VariantToDoubleVisitor(), findNegHyst->second);
+                 }
++                if (findMAP != base.end())
++                {
++                    info.stepwiseInfo.movingAveragePoint = std::visit(
++                            VariantToDoubleVisitor(), findMAP->second);
++                }
++                
+                 std::vector<double> readings =
+                     std::get<std::vector<double>>(base.at("Reading"));
+                 if (readings.size() > ec::maxStepwisePoints)
+diff --git a/pid/buildjson.cpp b/pid/buildjson.cpp
+index 279f6ec..4c896a2 100644
+--- a/pid/buildjson.cpp
++++ b/pid/buildjson.cpp
+@@ -51,6 +51,8 @@ void from_json(const json& j, conf::GainInfo& info)
+                 info.reading[i] = 0;
+             }
+         }
++    }else{
++        std::cerr << " reading is not found. Use default value" << std::endl;
+     }
+ 
+     auto output = j.find("output");
+@@ -69,6 +71,8 @@ void from_json(const json& j, conf::GainInfo& info)
+                 info.output[i] = 0;
+             }
+         }
++    }else{
++        std::cerr << " output is not found. Use default value" << std::endl;
+     }
+ }
+ 
+@@ -109,6 +113,10 @@ void from_json(const json& j, conf::ControllerInfo& c)
+     if (movingAveragePoint != p.end())
+     {
+         movingAveragePoint->get_to(movingAveragePointValue);
++    }else if (movingAveragePoint ==p.end() && c.type != "fan"){
++        std::string c_name;
++        j.at("name").get_to(c_name);
++        std::cerr << c_name << "'s movingAveragePoint is not found. Use default 1" << std::endl;
+     }
+ 
+     if (c.type != "stepwise")
+diff --git a/pid/thermalcontroller.cpp b/pid/thermalcontroller.cpp
+index 0b28abe..a507745 100644
+--- a/pid/thermalcontroller.cpp
++++ b/pid/thermalcontroller.cpp
+@@ -197,7 +197,7 @@ double ThermalController::movingAverage(const std::string& name, double newVal)
+         }
+         return newMovAveSum / mAvePoint;
+    } else {
+-        std::cerr << "movingAverage queue is empty \n";
++        //std::cerr << "movingAverage queue is empty \n";
+         return newVal;
+    }
+ }
+-- 
+2.17.1
+

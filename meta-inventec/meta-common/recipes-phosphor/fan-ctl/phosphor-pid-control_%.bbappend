@@ -8,4 +8,5 @@ SRC_URI:append = " \
                   file://0002-Modify-zone-startup-mechanism.patch  \
                   file://0003-Accept-missing-flag-for-dynamic-inputs-in-zone.patch \
                   file://0004-Add-inventec-maxError-pi-control-algorithm.patch \
+                  file://0005-Change-pid-config-into-entity-manager-config.patch \
                  "

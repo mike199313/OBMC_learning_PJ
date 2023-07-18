@@ -1,0 +1,153 @@
+From c82498645e78146e6e57849c0fc06f62307aa843 Mon Sep 17 00:00:00 2001
+From: "sun.cwsun" <sun.cwsun@inventec.com>
+Date: Wed, 17 May 2023 17:45:59 +0800
+Subject: [PATCH] nvme-mi
+
+---
+ main.cpp                                      | 28 ++++++++++++-------
+ meson.build                                   |  6 ++--
+ .../xyz.openbmc_project.nvme-mi.service       | 11 --------
+ .../xyz.openbmc_project.nvme-mi@.service      | 18 ++++++++++++
+ 4 files changed, 39 insertions(+), 24 deletions(-)
+ delete mode 100644 service_files/xyz.openbmc_project.nvme-mi.service
+ create mode 100644 service_files/xyz.openbmc_project.nvme-mi@.service
+
+diff --git a/main.cpp b/main.cpp
+index 25f4aa3..05306ad 100644
+--- a/main.cpp
++++ b/main.cpp
+@@ -22,6 +22,7 @@
+ #include <phosphor-logging/log.hpp>
+ #include <sdbusplus/asio/connection.hpp>
+ #include <sdbusplus/asio/object_server.hpp>
++#include <CLI/CLI.hpp>
+ 
+ class Application;
+ 
+@@ -48,7 +49,7 @@ class Application
+         signals(*ioContext, SIGINT, SIGTERM), pollTimer(nullptr)
+     {
+     }
+-    void init()
++    void init(const std::string& bindingString)
+     {
+         signals.async_wait([this](const boost::system::error_code&,
+                                   const int&) { this->ioContext->stop(); });
+@@ -57,13 +58,14 @@ class Application
+             std::make_shared<sdbusplus::asio::connection>(*ioContext);
+         objectServer =
+             std::make_shared<sdbusplus::asio::object_server>(dbusConnection);
+-        dbusConnection->request_name(serviceName);
++        dbusConnection->request_name((std::string(serviceName) + std::string("-") + bindingString).c_str());
++
++        boost::asio::spawn(*ioContext, [bindingString,this](boost::asio::yield_context yield){
++        		mctpw::BindingType bindingType{};
++        		(bindingString == "pcie") ? bindingType = mctpw::BindingType::mctpOverPcieVdm
++               		                      : bindingType = mctpw::BindingType::mctpOverSmBus;
++        		mctpw::MCTPConfiguration config(mctpw::MessageType::nvmeMgmtMsg, bindingType);
+ 
+-        boost::asio::spawn(
+-            *ioContext, [this](boost::asio::yield_context yield) {
+-                constexpr auto bindingType = mctpw::BindingType::mctpOverSmBus;
+-                mctpw::MCTPConfiguration config(mctpw::MessageType::nvmeMgmtMsg,
+-                                                bindingType);
+                 auto wrapper = std::make_shared<mctpw::MCTPWrapper>(
+                     this->dbusConnection, config,
+                     DeviceUpdateHandler(*this, bindingType));
+@@ -80,7 +82,7 @@ class Application
+                 {
+                     resumeHealthStatusPolling();
+                 }
+-            });
++        });
+ 
+         if (auto envPtr = std::getenv("NVME_DEBUG"))
+         {
+@@ -254,10 +256,16 @@ void DeviceUpdateHandler::operator()(
+     }
+ }
+ 
+-int main()
++int main(int argc, char** argv)
+ {
++    std::string binding;
++    CLI::App cliapp;
++    cliapp.add_option("-b,--binding", binding,
++                   "PLDM Physical Binding. Supported: -b smbus, -b pcie")->required();
++    CLI11_PARSE(cliapp, argc, argv);
++
+     Application app;
+-    app.init();
++    app.init(binding);
+     app.run();
+     return 0;
+ }
+diff --git a/meson.build b/meson.build
+index d85bf55..b833b73 100644
+--- a/meson.build
++++ b/meson.build
+@@ -6,7 +6,7 @@ project(
+     default_options: [
+         'warning_level=0',
+         'werror=false',
+-        'cpp_std=c++17'
++        'cpp_std=c++20'
+     ],
+ )
+ 
+@@ -63,10 +63,10 @@ endif
+ 
+ configure_file(
+   copy: true,
+-  input: 'service_files/xyz.openbmc_project.nvme-mi.service',
++  input: 'service_files/xyz.openbmc_project.nvme-mi@.service',
+   install: true,
+   install_dir: systemd_system_unit_dir,
+-  output: 'xyz.openbmc_project.nvme-mi.service',
++  output: 'xyz.openbmc_project.nvme-mi@.service',
+ )
+ 
+ threads = dependency('threads')
+diff --git a/service_files/xyz.openbmc_project.nvme-mi.service b/service_files/xyz.openbmc_project.nvme-mi.service
+deleted file mode 100644
+index 4b58b60..0000000
+--- a/service_files/xyz.openbmc_project.nvme-mi.service
++++ /dev/null
+@@ -1,11 +0,0 @@
+-[Unit]
+-Description=NVMe Management Interface Daemon
+-
+-[Service]
+-ExecStart=/usr/bin/nvme-mi
+-Type=dbus
+-BusName=xyz.openbmc_project.nvme_mi
+-SyslogIdentifier=nvme-mi
+-
+-[Install]
+-WantedBy=multi-user.target
+diff --git a/service_files/xyz.openbmc_project.nvme-mi@.service b/service_files/xyz.openbmc_project.nvme-mi@.service
+new file mode 100644
+index 0000000..053b488
+--- /dev/null
++++ b/service_files/xyz.openbmc_project.nvme-mi@.service
+@@ -0,0 +1,18 @@
++[Unit]
++Description=NVMe Management Interface Daemon
++Requires=xyz.openbmc_project.mctpd@%i.service
++After=xyz.openbmc_project.mctpd@%i.service
++StartLimitBurst=5
++
++
++[Service]
++ExecStartPre=/bin/sleep 15
++ExecStart=/usr/bin/nvme-mi -b %i
++Type=dbus
++BusName=xyz.openbmc_project.nvme_mi-%i
++SyslogIdentifier=nvme_mi-%i
++Restart=always
++RestartSec=5
++
++[Install]
++WantedBy=multi-user.target
+-- 
+2.25.1

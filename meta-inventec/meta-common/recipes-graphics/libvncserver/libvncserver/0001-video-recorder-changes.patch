@@ -1,12 +1,86 @@
-diff -r -u --new-file a/client_examples/vnc2mpg.c b/client_examples/vnc2mpg.c
---- a/client_examples/vnc2mpg.c	2022-10-19 16:40:54.503955885 +0300
-+++ b/client_examples/vnc2mpg.c	2022-10-21 00:19:16.749252355 +0300
-@@ -1,3 +1,4 @@
+From 8a3aa7467eecb2e0080819689a82a965172ced09 Mon Sep 17 00:00:00 2001
+From: "sun.cwsun" <sun.cwsun@inventec.com>
+Date: Wed, 24 May 2023 15:53:40 +0800
+Subject: [PATCH] Bug 1671 - iKVM recorder
+
+%% original patch: 0001-video-recorder-changes.patch
+---
+ CMakeLists.txt            |   7 +-
+ client_examples/vnc2mpg.c | 413 +++++++++++++++++++++++++++++++++++---
+ libvncclient/rfbproto.c   |  24 ++-
+ libvncclient/tight.c      |  32 ++-
+ libvncclient/vncviewer.c  |   3 +
+ 5 files changed, 448 insertions(+), 31 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 0b6228a2..96e5ff16 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -152,7 +152,7 @@ if(WITH_GCRYPT)
+ endif(WITH_GCRYPT)
+ 
+ if(WITH_FFMPEG)
+-  find_package(FFMPEG 3.1.0 COMPONENTS avformat avcodec avutil swscale)
++  find_package(FFMPEG 3.1.0 COMPONENTS avformat avcodec avutil swscale swresample avfilter)
+ endif(WITH_FFMPEG)
+ 
+ 
+@@ -596,6 +596,10 @@ if(FFMPEG_FOUND)
+     ${LIBVNCCLIENT_EXAMPLES}
+     vnc2mpg
+   )
++  set(FFMPEG_LIBRARIES
++    ${FFMPEG_LIBRARIES}
++    -lm
++  )
+ endif(FFMPEG_FOUND)
+ 
+ 
+@@ -720,6 +724,7 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/libvncclient.pc.cmakein ${CMAKE_CURRE
+ if(LIBVNCSERVER_INSTALL)
+   install(TARGETS vncserver DESTINATION ${CMAKE_INSTALL_LIBDIR})
+   install(TARGETS vncclient DESTINATION ${CMAKE_INSTALL_LIBDIR})
++  install(TARGETS client_examples_vnc2mpg DESTINATION ${CMAKE_INSTALL_BINDIR})
+   install(FILES
+     rfb/keysym.h
+     rfb/threading.h
+diff --git a/client_examples/vnc2mpg.c b/client_examples/vnc2mpg.c
+index 725de1f7..53d328f9 100644
+--- a/client_examples/vnc2mpg.c
++++ b/client_examples/vnc2mpg.c
+@@ -1,40 +1,61 @@
 +#if 1
  /**
   * @example vnc2mpg.c
   * Simple movie writer for vnc; based on Libavformat API example from FFMPEG
-@@ -27,14 +28,34 @@
+- * 
++ *
+  * Copyright (c) 2003 Fabrice Bellard, 2004 Johannes E. Schindelin
+  * Updates copyright (c) 2017 Tyrel M. McQueen
+- * 
++ *
+  * Permission is hereby granted, free of charge, to any person obtaining a copy
+  * of this software and associated documentation files (the "Software"), to deal
+  * in the Software without restriction, including without limitation the rights
+  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  * copies of the Software, and to permit persons to whom the Software is
+  * furnished to do so, subject to the following conditions:
+- * 
++ *
+  * The above copyright notice and this permission notice shall be included in
+  * all copies or substantial portions of the Software.
+- * 
++ *
+  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+  * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+- * THE SOFTWARE.  
++ * THE SOFTWARE.
+  */
+ #include <stdlib.h>
  #include <stdio.h>
  #include <string.h>
  #include <math.h>
@@ -31,8 +105,8 @@ diff -r -u --new-file a/client_examples/vnc2mpg.c b/client_examples/vnc2mpg.c
 +#define OUTPUT_PIX_FMT    AV_PIX_FMT_YUVJ420P /* default pix_fmt */
 +#endif
 +
-+#define VIDEO_DIR_TMP "/tmp/"
-+#define VIDEO_DIR_RES "/tmp/video/"
++#define VIDEO_DIR_TMP "/var/log/"
++#define VIDEO_DIR_RES "/var/log/video/"
 +
 +#define USE_SEP_AVFRAMES
 +
@@ -41,7 +115,7 @@ diff -r -u --new-file a/client_examples/vnc2mpg.c b/client_examples/vnc2mpg.c
  
  static int write_packet(AVFormatContext *oc, const AVRational *time_base, AVStream *st, AVPacket *pkt)
  {
-@@ -59,12 +80,19 @@
+@@ -59,12 +80,19 @@ typedef struct {
      struct SwsContext *sws;
  } VideoOutputStream;
  
@@ -57,11 +131,11 @@ diff -r -u --new-file a/client_examples/vnc2mpg.c b/client_examples/vnc2mpg.c
      int i;
  
 +codec_id = AV_CODEC_ID_MJPEG;
-+printf( "codec_id=%d(%x)\n", codec_id, codec_id );
++    printf( "codec_id=%d(%x)\n", codec_id, codec_id );
      /* find the encoder */
      ost->codec = avcodec_find_encoder(codec_id);
      if (!(ost->codec)) {
-@@ -144,6 +172,7 @@
+@@ -144,6 +172,7 @@ AVFrame *alloc_picture(enum AVPixelFormat pix_fmt, int width, int height)
  
  int open_video(AVFormatContext *oc, VideoOutputStream *ost)
  {
@@ -69,7 +143,7 @@ diff -r -u --new-file a/client_examples/vnc2mpg.c b/client_examples/vnc2mpg.c
      int ret;
      /* open the codec */
      ret = avcodec_open2(ost->enc, ost->codec, NULL);
-@@ -158,7 +187,14 @@
+@@ -158,7 +187,14 @@ int open_video(AVFormatContext *oc, VideoOutputStream *ost)
          return ret;
      } // memory from this call is freed when oc (parent of ost->st) is freed, no need to do it on error in this call
      /* allocate and init a re-usable frame */
@@ -84,7 +158,7 @@ diff -r -u --new-file a/client_examples/vnc2mpg.c b/client_examples/vnc2mpg.c
      if (!(ost->frame)) {
          fprintf(stderr, "Could not allocate video frame\n");
          return -1;
-@@ -168,18 +204,29 @@
+@@ -168,18 +204,29 @@ int open_video(AVFormatContext *oc, VideoOutputStream *ost)
       * output format. */
      ost->tmp_frame = NULL;
      ost->sws = NULL;
@@ -114,7 +188,7 @@ diff -r -u --new-file a/client_examples/vnc2mpg.c b/client_examples/vnc2mpg.c
              return -3;
          } // from now on need to call sws_freeContext(ost->sws); ost->sws = NULL; on error
      }
-@@ -193,6 +240,7 @@
+@@ -193,6 +240,7 @@ int open_video(AVFormatContext *oc, VideoOutputStream *ost)
   */
  int write_video_frame(AVFormatContext *oc, VideoOutputStream *ost, int64_t pts)
  {
@@ -122,7 +196,7 @@ diff -r -u --new-file a/client_examples/vnc2mpg.c b/client_examples/vnc2mpg.c
      int ret, ret2;
      AVPacket pkt = { 0 };
      if (pts <= ost->pts) return 0; // nothing to do
-@@ -202,6 +250,7 @@
+@@ -202,6 +250,7 @@ int write_video_frame(AVFormatContext *oc, VideoOutputStream *ost, int64_t pts)
                      ost->tmp_frame->linesize, 0, ost->enc->height, ost->frame->data, ost->frame->linesize);
      }
  
@@ -130,7 +204,7 @@ diff -r -u --new-file a/client_examples/vnc2mpg.c b/client_examples/vnc2mpg.c
      /* send the imager to encoder */
      ost->pts = pts;
      ost->frame->pts = ost->pts;
-@@ -210,6 +259,7 @@
+@@ -210,6 +259,7 @@ int write_video_frame(AVFormatContext *oc, VideoOutputStream *ost, int64_t pts)
          fprintf(stderr, "Error sending video frame to encoder: %s\n", av_err2str(ret));
          return ret;
      }
@@ -138,7 +212,7 @@ diff -r -u --new-file a/client_examples/vnc2mpg.c b/client_examples/vnc2mpg.c
      /* read all available packets */
      ret2 = 0;
      for (ret = avcodec_receive_packet(ost->enc, &pkt); ret == 0; ret = avcodec_receive_packet(ost->enc, &pkt)) {
-@@ -219,6 +269,7 @@
+@@ -219,6 +269,7 @@ int write_video_frame(AVFormatContext *oc, VideoOutputStream *ost, int64_t pts)
              /* continue on this error to not gum up encoder */
          }
      }
@@ -146,7 +220,7 @@ diff -r -u --new-file a/client_examples/vnc2mpg.c b/client_examples/vnc2mpg.c
      if (ret2 < 0) return ret2;
      if (!(ret == AVERROR(EAGAIN))) return ret; // if AVERROR(EAGAIN), means all available packets output, need more frames (i.e. success)
      return 0;
-@@ -255,8 +306,10 @@
+@@ -255,8 +306,10 @@ int write_final_video_frame(AVFormatContext *oc, VideoOutputStream *ost)
  void close_video_stream(VideoOutputStream *ost)
  {
      avcodec_free_context(&(ost->enc));
@@ -157,7 +231,7 @@ diff -r -u --new-file a/client_examples/vnc2mpg.c b/client_examples/vnc2mpg.c
      sws_freeContext(ost->sws); ost->sws = NULL;
      ost->codec = NULL; /* codec not an allocated item */
      ost->st = NULL; /* freeing parent oc will free this memory */
-@@ -268,11 +321,12 @@
+@@ -268,11 +321,12 @@ AVFormatContext *movie_open(char *filename, VideoOutputStream *video_st, int br,
      int ret;
      AVFormatContext *oc;
  
@@ -173,7 +247,7 @@ diff -r -u --new-file a/client_examples/vnc2mpg.c b/client_examples/vnc2mpg.c
      }
      if (ret < 0) {
          fprintf(stderr, "Error: Could not allocate media context: %s.\n", av_err2str(ret));
-@@ -280,6 +334,7 @@
+@@ -280,6 +334,7 @@ AVFormatContext *movie_open(char *filename, VideoOutputStream *video_st, int br,
      } // from now on, need to call avformat_free_context(oc); oc=NULL; to free memory on error
  
      /* Add the video stream using the default format codec and initialize the codec. */
@@ -181,15 +255,17 @@ diff -r -u --new-file a/client_examples/vnc2mpg.c b/client_examples/vnc2mpg.c
      if (oc->oformat->video_codec != AV_CODEC_ID_NONE) {
          ret = add_video_stream(video_st, oc, oc->oformat->video_codec, br, fr, w, h);
      } else {
-@@ -292,6 +347,7 @@
+@@ -292,7 +347,8 @@ AVFormatContext *movie_open(char *filename, VideoOutputStream *video_st, int br,
      } // from now on, need to call close_video_stream(video_st) to free memory on error
  
      /* Now that all the parameters are set, we can open the codecs and allocate the necessary encode buffers. */
+-    ret = open_video(oc, video_st); 
 +//printf( "movie_open 2\n" ); fflush( stdout );
-     ret = open_video(oc, video_st); 
++    ret = open_video(oc, video_st);
      if (ret < 0) {
          fprintf(stderr, "Error: error opening video codec, error %i\n", ret);
-@@ -326,6 +382,7 @@
+         close_video_stream(video_st);
+@@ -326,6 +382,7 @@ AVFormatContext *movie_open(char *filename, VideoOutputStream *video_st, int br,
      return oc;
  }
  
@@ -197,7 +273,7 @@ diff -r -u --new-file a/client_examples/vnc2mpg.c b/client_examples/vnc2mpg.c
  void movie_close(AVFormatContext **ocp, VideoOutputStream *video_st) {
      AVFormatContext *oc = *ocp;
      /* Write the trailer, if any. The trailer must be written before you
-@@ -359,7 +416,7 @@
+@@ -359,7 +416,7 @@ rfbBool quit = FALSE;
  char *filename = NULL;
  AVFormatContext *oc = NULL;
  int bitrate = 1000000;
@@ -206,7 +282,7 @@ diff -r -u --new-file a/client_examples/vnc2mpg.c b/client_examples/vnc2mpg.c
  long max_time = 0;
  struct timespec start_time, cur_time;
  
-@@ -380,9 +437,18 @@
+@@ -380,11 +437,20 @@ int64_t time_to_pts(int framerate, struct timespec *start_time, struct timespec
      return rv;
  }
  
@@ -223,9 +299,12 @@ diff -r -u --new-file a/client_examples/vnc2mpg.c b/client_examples/vnc2mpg.c
 +            check_and_rename();
 +printf( "STREAM INFO %d %d %d %d\n", bitrate, framerate, client->width, client->height );
          oc = movie_open(filename, &video_st, bitrate, framerate, client->width, client->height);
- 	if (!oc) 
+-	if (!oc) 
++	if (!oc)
  	    return FALSE;
-@@ -402,17 +468,57 @@
+         signal(SIGINT,signal_handler);
+         signal(SIGTERM,signal_handler);
+@@ -402,17 +468,57 @@ rfbBool vnc_malloc_fb(rfbClient* client) {
  void vnc_update(rfbClient* client,int x,int y,int w,int h) {
  }
  
@@ -288,7 +367,7 @@ diff -r -u --new-file a/client_examples/vnc2mpg.c b/client_examples/vnc2mpg.c
  
      /* Initialize libavcodec, and register all codecs and formats. */
  #if LIBAVUTIL_VERSION_MAJOR < 56 /* deprecrated in FFMPEG 4.0 */
-@@ -432,6 +538,13 @@
+@@ -432,6 +538,13 @@ int main(int argc, char **argv)
  			max_time = 0;
  		    }
                      j+=2;
@@ -302,7 +381,7 @@ diff -r -u --new-file a/client_examples/vnc2mpg.c b/client_examples/vnc2mpg.c
              }
              /* This is so that argc/argv are ready for passing to rfbInitClient */
              if(j>i) {
-@@ -443,36 +556,286 @@
+@@ -443,36 +556,286 @@ int main(int argc, char **argv)
  
      /* default filename. */
      if (!filename) {
@@ -397,7 +476,7 @@ diff -r -u --new-file a/client_examples/vnc2mpg.c b/client_examples/vnc2mpg.c
 +    if(!quit)
 +    {
 +        oc = movie_open(filename, &video_st, bitrate, framerate, client->width, client->height);
-+	if (!oc) 
++	if (!oc)
 +	    break;
 +    }
 +#else
@@ -598,40 +677,10 @@ diff -r -u --new-file a/client_examples/vnc2mpg.c b/client_examples/vnc2mpg.c
 +
 +#endif
 +
-diff -r -u --new-file a/CMakeLists.txt b/CMakeLists.txt
---- a/CMakeLists.txt	2022-10-19 16:40:54.531955674 +0300
-+++ b/CMakeLists.txt	2022-10-21 00:19:16.749252355 +0300
-@@ -152,7 +152,7 @@
- endif(WITH_GCRYPT)
- 
- if(WITH_FFMPEG)
--  find_package(FFMPEG 3.1.0 COMPONENTS avformat avcodec avutil swscale)
-+  find_package(FFMPEG 3.1.0 COMPONENTS avformat avcodec avutil swscale swresample avfilter)
- endif(WITH_FFMPEG)
- 
- 
-@@ -596,6 +596,10 @@
-     ${LIBVNCCLIENT_EXAMPLES}
-     vnc2mpg
-   )
-+  set(FFMPEG_LIBRARIES
-+    ${FFMPEG_LIBRARIES}
-+    -lm
-+  )
- endif(FFMPEG_FOUND)
- 
- 
-@@ -720,6 +724,7 @@
- if(LIBVNCSERVER_INSTALL)
-   install(TARGETS vncserver DESTINATION ${CMAKE_INSTALL_LIBDIR})
-   install(TARGETS vncclient DESTINATION ${CMAKE_INSTALL_LIBDIR})
-+  install(TARGETS client_examples_vnc2mpg DESTINATION ${CMAKE_INSTALL_BINDIR})
-   install(FILES
-     rfb/keysym.h
-     rfb/threading.h
-diff -r -u --new-file a/libvncclient/rfbproto.c b/libvncclient/rfbproto.c
---- a/libvncclient/rfbproto.c	2022-10-19 16:40:54.543955584 +0300
-+++ b/libvncclient/rfbproto.c	2022-10-21 00:19:16.753252320 +0300
+diff --git a/libvncclient/rfbproto.c b/libvncclient/rfbproto.c
+index 51ec5a0e..68683d52 100644
+--- a/libvncclient/rfbproto.c
++++ b/libvncclient/rfbproto.c
 @@ -65,6 +65,8 @@
  #endif
  #include "tls.h"
@@ -641,7 +690,7 @@ diff -r -u --new-file a/libvncclient/rfbproto.c b/libvncclient/rfbproto.c
  #define MAX_TEXTCHAT_SIZE 10485760 /* 10MB */
  
  /*
-@@ -1619,7 +1621,7 @@
+@@ -1619,7 +1621,7 @@ HandleRFBServerMessage(rfbClient* client)
      client->vncRec->readTimestamp = TRUE;
    if (!ReadFromRFBServer(client, (char *)&msg, 1))
      return FALSE;
@@ -650,7 +699,7 @@ diff -r -u --new-file a/libvncclient/rfbproto.c b/libvncclient/rfbproto.c
    switch (msg.type) {
  
    case rfbSetColourMapEntries:
-@@ -1657,19 +1659,22 @@
+@@ -1657,19 +1659,22 @@ HandleRFBServerMessage(rfbClient* client)
      int linesToRead;
      int bytesPerLine;
      int i;
@@ -675,7 +724,7 @@ diff -r -u --new-file a/libvncclient/rfbproto.c b/libvncclient/rfbproto.c
  	break;
  
        rect.r.x = rfbClientSwap16IfLE(rect.r.x);
-@@ -1696,6 +1701,7 @@
+@@ -1696,6 +1701,7 @@ HandleRFBServerMessage(rfbClient* client)
  	continue;
        }
        
@@ -683,7 +732,7 @@ diff -r -u --new-file a/libvncclient/rfbproto.c b/libvncclient/rfbproto.c
        if (rect.encoding == rfbEncodingKeyboardLedState) {
            /* OK! We have received a keyboard state message!!! */
            client->KeyboardLedStateEnabled = 1;
-@@ -1719,6 +1725,7 @@
+@@ -1719,6 +1725,7 @@ HandleRFBServerMessage(rfbClient* client)
  	continue;
        }
  
@@ -691,7 +740,7 @@ diff -r -u --new-file a/libvncclient/rfbproto.c b/libvncclient/rfbproto.c
        /* rect.r.w=byte count */
        if (rect.encoding == rfbEncodingSupportedMessages) {
            int loop;
-@@ -1746,6 +1753,7 @@
+@@ -1746,6 +1753,7 @@ HandleRFBServerMessage(rfbClient* client)
            continue;
        }
  
@@ -699,7 +748,7 @@ diff -r -u --new-file a/libvncclient/rfbproto.c b/libvncclient/rfbproto.c
        /* rect.r.w=byte count, rect.r.h=# of encodings */
        if (rect.encoding == rfbEncodingSupportedEncodings) {
            char *buffer;
-@@ -1777,6 +1785,7 @@
+@@ -1777,6 +1785,7 @@ HandleRFBServerMessage(rfbClient* client)
            continue;
        }
  
@@ -707,7 +756,7 @@ diff -r -u --new-file a/libvncclient/rfbproto.c b/libvncclient/rfbproto.c
        /* rfbEncodingUltraZip is a collection of subrects.   x = # of subrects, and h is always 0 */
        if (rect.encoding != rfbEncodingUltraZip)
        {
-@@ -1803,6 +1812,7 @@
+@@ -1803,6 +1812,7 @@ HandleRFBServerMessage(rfbClient* client)
          client->SoftCursorLockArea(client, rect.r.x, rect.r.y, rect.r.w, rect.r.h);
        }
  
@@ -715,7 +764,7 @@ diff -r -u --new-file a/libvncclient/rfbproto.c b/libvncclient/rfbproto.c
        switch (rect.encoding) {
  
        case rfbEncodingRaw: {
-@@ -2011,18 +2021,23 @@
+@@ -2011,18 +2021,23 @@ HandleRFBServerMessage(rfbClient* client)
  #ifdef LIBVNCSERVER_HAVE_LIBJPEG
        case rfbEncodingTight:
        {
@@ -739,7 +788,7 @@ diff -r -u --new-file a/libvncclient/rfbproto.c b/libvncclient/rfbproto.c
  	  break;
  	}
  	break;
-@@ -2090,6 +2105,7 @@
+@@ -2090,6 +2105,7 @@ HandleRFBServerMessage(rfbClient* client)
  	 }
        }
  
@@ -747,7 +796,7 @@ diff -r -u --new-file a/libvncclient/rfbproto.c b/libvncclient/rfbproto.c
        /* Now we may discard "soft cursor locks". */
        client->SoftCursorUnlockScreen(client);
  
-@@ -2099,9 +2115,11 @@
+@@ -2099,9 +2115,11 @@ HandleRFBServerMessage(rfbClient* client)
      if (!SendIncrementalFramebufferUpdateRequest(client))
        return FALSE;
  
@@ -759,9 +808,10 @@ diff -r -u --new-file a/libvncclient/rfbproto.c b/libvncclient/rfbproto.c
      break;
    }
  
-diff -r -u --new-file a/libvncclient/tight.c b/libvncclient/tight.c
---- a/libvncclient/tight.c	2022-10-19 16:40:54.543955584 +0300
-+++ b/libvncclient/tight.c	2022-10-21 00:19:16.753252320 +0300
+diff --git a/libvncclient/tight.c b/libvncclient/tight.c
+index 0586f475..548b34d0 100644
+--- a/libvncclient/tight.c
++++ b/libvncclient/tight.c
 @@ -25,6 +25,8 @@
  
  #include "turbojpeg.h"
@@ -771,7 +821,7 @@ diff -r -u --new-file a/libvncclient/tight.c b/libvncclient/tight.c
  /*
   * tight.c - handle ``tight'' encoding.
   *
-@@ -104,7 +106,7 @@
+@@ -104,7 +106,7 @@ HandleTightBPP (rfbClient* client, int rx, int ry, int rw, int rh)
    int err, stream_id, compressedLen, bitsPixel;
    int bufferSize, rowSize, numRows, portionLen, rowsProcessed, extraBytes;
    rfbBool readUncompressed = FALSE;
@@ -780,7 +830,7 @@ diff -r -u --new-file a/libvncclient/tight.c b/libvncclient/tight.c
    if (client->frameBuffer == NULL)
      return FALSE;
  
-@@ -113,6 +115,7 @@
+@@ -113,6 +115,7 @@ HandleTightBPP (rfbClient* client, int rx, int ry, int rw, int rh)
      return FALSE;
    }
  
@@ -788,7 +838,7 @@ diff -r -u --new-file a/libvncclient/tight.c b/libvncclient/tight.c
    if (!ReadFromRFBServer(client, (char *)&comp_ctl, 1))
      return FALSE;
  
-@@ -127,6 +130,7 @@
+@@ -127,6 +130,7 @@ HandleTightBPP (rfbClient* client, int rx, int ry, int rw, int rh)
      comp_ctl >>= 1;
    }
  
@@ -796,7 +846,7 @@ diff -r -u --new-file a/libvncclient/tight.c b/libvncclient/tight.c
    if ((comp_ctl & rfbTightNoZlib) == rfbTightNoZlib) {
       comp_ctl &= ~(rfbTightNoZlib);
       readUncompressed = TRUE;
-@@ -135,25 +139,33 @@
+@@ -135,25 +139,33 @@ HandleTightBPP (rfbClient* client, int rx, int ry, int rw, int rh)
    /* Handle solid rectangles. */
    if (comp_ctl == rfbTightFill) {
  #if BPP == 32
@@ -830,7 +880,7 @@ diff -r -u --new-file a/libvncclient/tight.c b/libvncclient/tight.c
  #if BPP == 8
    if (comp_ctl == rfbTightJpeg) {
      rfbClientLog("Tight encoding: JPEG is not supported in 8 bpp mode.\n");
-@@ -161,6 +173,7 @@
+@@ -161,6 +173,7 @@ HandleTightBPP (rfbClient* client, int rx, int ry, int rw, int rh)
    }
  #else
    if (comp_ctl == rfbTightJpeg) {
@@ -838,7 +888,7 @@ diff -r -u --new-file a/libvncclient/tight.c b/libvncclient/tight.c
      return DecompressJpegRectBPP(client, rx, ry, rw, rh);
    }
  #endif
-@@ -176,6 +189,7 @@
+@@ -176,6 +189,7 @@ HandleTightBPP (rfbClient* client, int rx, int ry, int rw, int rh)
     * Data was processed with optional filter + zlib compression.
     */
  
@@ -846,7 +896,7 @@ diff -r -u --new-file a/libvncclient/tight.c b/libvncclient/tight.c
    /* First, we should identify a filter to use. */
    if ((comp_ctl & rfbTightExplicitFilter) != 0) {
      if (!ReadFromRFBServer(client, (char*)&filter_id, 1))
-@@ -207,6 +221,7 @@
+@@ -207,6 +221,7 @@ HandleTightBPP (rfbClient* client, int rx, int ry, int rw, int rh)
      return FALSE;
    }
  
@@ -854,7 +904,7 @@ diff -r -u --new-file a/libvncclient/tight.c b/libvncclient/tight.c
    /* Determine if the data should be decompressed or just copied. */
    rowSize = (rw * bitsPixel + 7) / 8;
    if (rh * rowSize < TIGHT_MIN_TO_COMPRESS) {
-@@ -218,6 +233,7 @@
+@@ -218,6 +233,7 @@ HandleTightBPP (rfbClient* client, int rx, int ry, int rw, int rh)
      return TRUE;
    }
  
@@ -862,7 +912,7 @@ diff -r -u --new-file a/libvncclient/tight.c b/libvncclient/tight.c
    /* Read the length (1..3 bytes) of compressed data following. */
    compressedLen = (int)ReadCompactLen(client);
    if (compressedLen <= 0) {
-@@ -233,6 +249,7 @@
+@@ -233,6 +249,7 @@ HandleTightBPP (rfbClient* client, int rx, int ry, int rw, int rh)
      return TRUE;
    }
  
@@ -870,7 +920,7 @@ diff -r -u --new-file a/libvncclient/tight.c b/libvncclient/tight.c
    /* Now let's initialize compression stream if needed. */
    stream_id = comp_ctl & 0x03;
    zs = &client->zlibStream[stream_id];
-@@ -258,6 +275,7 @@
+@@ -258,6 +275,7 @@ HandleTightBPP (rfbClient* client, int rx, int ry, int rw, int rh)
      return FALSE;
    }
  
@@ -878,7 +928,7 @@ diff -r -u --new-file a/libvncclient/tight.c b/libvncclient/tight.c
    rowsProcessed = 0;
    extraBytes = 0;
  
-@@ -304,11 +322,13 @@
+@@ -304,11 +322,13 @@ HandleTightBPP (rfbClient* client, int rx, int ry, int rw, int rh)
      while (zs->avail_out == 0);
    }
  
@@ -892,7 +942,7 @@ diff -r -u --new-file a/libvncclient/tight.c b/libvncclient/tight.c
    return TRUE;
  }
  
-@@ -557,27 +577,31 @@
+@@ -557,27 +577,31 @@ DecompressJpegRectBPP(rfbClient* client, int x, int y, int w, int h)
    int compressedLen;
    uint8_t *compressedData, *dst;
    int pixelSize, pitch, flags = 0;
@@ -925,7 +975,7 @@ diff -r -u --new-file a/libvncclient/tight.c b/libvncclient/tight.c
    if (!client->tjhnd) {
      if ((client->tjhnd = tjInitDecompress()) == NULL) {
        rfbClientLog("TurboJPEG error: %s\n", tjGetErrorStr());
-@@ -586,6 +610,7 @@
+@@ -586,6 +610,7 @@ DecompressJpegRectBPP(rfbClient* client, int x, int y, int w, int h)
      }
    }
  
@@ -933,7 +983,7 @@ diff -r -u --new-file a/libvncclient/tight.c b/libvncclient/tight.c
  #if BPP == 16
    flags = 0;
    pixelSize = 3;
-@@ -601,6 +626,7 @@
+@@ -601,6 +626,7 @@ DecompressJpegRectBPP(rfbClient* client, int x, int y, int w, int h)
    dst = &client->frameBuffer[y * pitch + x * pixelSize];
  #endif
  
@@ -941,7 +991,7 @@ diff -r -u --new-file a/libvncclient/tight.c b/libvncclient/tight.c
    if (tjDecompress(client->tjhnd, compressedData, (unsigned long)compressedLen,
                     dst, w, pitch, h, pixelSize, flags)==-1) {
      rfbClientLog("TurboJPEG error: %s\n", tjGetErrorStr());
-@@ -608,6 +634,7 @@
+@@ -608,6 +634,7 @@ DecompressJpegRectBPP(rfbClient* client, int x, int y, int w, int h)
      return FALSE;
    }
  
@@ -949,7 +999,7 @@ diff -r -u --new-file a/libvncclient/tight.c b/libvncclient/tight.c
    free(compressedData);
  
  #if BPP == 16
-@@ -628,6 +655,7 @@
+@@ -628,6 +655,7 @@ DecompressJpegRectBPP(rfbClient* client, int x, int y, int w, int h)
    }
  #endif
  
@@ -957,10 +1007,11 @@ diff -r -u --new-file a/libvncclient/tight.c b/libvncclient/tight.c
    return TRUE;
  }
  
-diff -r -u --new-file a/libvncclient/vncviewer.c b/libvncclient/vncviewer.c
---- a/libvncclient/vncviewer.c	2022-10-19 16:40:54.543955584 +0300
-+++ b/libvncclient/vncviewer.c	2022-10-21 00:19:16.753252320 +0300
-@@ -52,6 +52,8 @@
+diff --git a/libvncclient/vncviewer.c b/libvncclient/vncviewer.c
+index d6b91f02..96e67680 100644
+--- a/libvncclient/vncviewer.c
++++ b/libvncclient/vncviewer.c
+@@ -52,6 +52,8 @@ static void DummyRect(rfbClient* client, int x, int y, int w, int h) {
  #include <termios.h>
  #endif
  
@@ -969,7 +1020,7 @@ diff -r -u --new-file a/libvncclient/vncviewer.c b/libvncclient/vncviewer.c
  static char* ReadPassword(rfbClient* client) {
  	int i;
  	char* p=calloc(1,9);
-@@ -90,6 +92,7 @@
+@@ -90,6 +92,7 @@ static rfbBool MallocFrameBuffer(rfbClient* client) {
       'width' and 'height' are 16-bit integers per RFB protocol design
       SIZE_MAX is the maximum value that can fit into size_t
    */
@@ -977,3 +1028,6 @@ diff -r -u --new-file a/libvncclient/vncviewer.c b/libvncclient/vncviewer.c
    allocSize = (uint64_t)client->width * client->height * client->format.bitsPerPixel/8;
  
    if (allocSize >= SIZE_MAX) {
+-- 
+2.17.1
+

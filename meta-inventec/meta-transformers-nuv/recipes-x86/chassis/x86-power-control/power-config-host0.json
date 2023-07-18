@@ -35,6 +35,6 @@
       "PowerPulseMs": 6000,
       "ForceOffPulseMs": 15000,
       "ResetPulseMs": 6000,
-      "PowerCycleMs":6000
+      "PowerCycleMs":9000
    }
 }

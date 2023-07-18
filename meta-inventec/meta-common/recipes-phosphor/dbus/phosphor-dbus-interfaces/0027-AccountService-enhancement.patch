@@ -1,0 +1,74 @@
+From cdfc337bf070d546de61c5480be53b74cf770e96 Mon Sep 17 00:00:00 2001
+From: Tommy Lin <Lin.TommySC@inventec.com>
+Date: Wed, 17 May 2023 01:47:18 +0000
+Subject: [PATCH] AccountService enhancement
+
+Symptom/Reason:
+- AccountService enhancement for Simple Rack mounted Server Profile
+
+Root Cause:
+- N/A
+
+Solution/Change:
+- [bmcweb]
+  - properties added
+    - State
+    - Health
+    - AccountLockoutCounterResetEnabled
+    - LocalAccountAuth
+    - AccountProviderType
+    - RemoteUser
+- [phosphor-dbus-interfaces]
+  - add UserName property for PrivilegeMapperEntry
+- [phosphor-user-manager]
+  - add UserName property for PrivilegeMapperEntry
+
+Entry Test:
+- Get Account Service Info
+  - curl -u root:0penBmc -X GET https://${bmc}/redfish/v1/AccountService
+- Set LDAP configuration
+  - curl -u root:0penBmc -X PATCH https://$bmc/redfish/v1/AccountService -d <Parameters>
+
+---
+ .../openbmc_project/User/PrivilegeMapper.interface.yaml  | 5 +++++
+ .../User/PrivilegeMapperEntry.interface.yaml             | 9 +++++++++
+ 2 files changed, 14 insertions(+)
+
+diff --git a/yaml/xyz/openbmc_project/User/PrivilegeMapper.interface.yaml b/yaml/xyz/openbmc_project/User/PrivilegeMapper.interface.yaml
+index ce87dec..33ab4d2 100644
+--- a/yaml/xyz/openbmc_project/User/PrivilegeMapper.interface.yaml
++++ b/yaml/xyz/openbmc_project/User/PrivilegeMapper.interface.yaml
+@@ -35,6 +35,11 @@ methods:
+                 be thrown if the privilege is invalid. Additional documentation
+                 on privilege is available here.
+                 https://github.com/openbmc/docs/blob/master/architecture/user-management.md
++          - name: UserName
++            type: string
++            description: >
++                User Name to which the privilege is to be assigned. In the case
++                of LDAP, the UserName will be the LDAP user.
+       returns:
+           - name: Path
+             type: object_path
+diff --git a/yaml/xyz/openbmc_project/User/PrivilegeMapperEntry.interface.yaml b/yaml/xyz/openbmc_project/User/PrivilegeMapperEntry.interface.yaml
+index 5e3da0f..8e4b090 100644
+--- a/yaml/xyz/openbmc_project/User/PrivilegeMapperEntry.interface.yaml
++++ b/yaml/xyz/openbmc_project/User/PrivilegeMapperEntry.interface.yaml
+@@ -20,6 +20,15 @@ properties:
+           thrown if the privilege is invalid. Additional documentation on
+           privilege is available here.
+           https://github.com/openbmc/docs/blob/master/architecture/user-management.md
++    - name: UserName
++      type: string
++      description: >
++          User Name to which the privilege is to be assigned. In the case of
++          LDAP, the UserName will be the LDAP user is part of.
++      errors:
++          - xyz.openbmc_project.Common.Error.InternalFailure
++          - xyz.openbmc_project.Common.Error.InvalidArgument
++          - xyz.openbmc_project.User.Common.Error.PrivilegeMappingExists
+ 
+       errors:
+           - xyz.openbmc_project.Common.Error.InternalFailure
+-- 
+2.25.1

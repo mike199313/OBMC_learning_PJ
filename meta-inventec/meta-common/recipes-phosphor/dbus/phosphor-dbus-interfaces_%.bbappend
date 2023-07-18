@@ -25,9 +25,9 @@ SRC_URI:append = " \
     file://0024-Add-PLDM-version-purpose-enumeration.patch \
     file://0025-update-meson-build-for-PLDM-FWU-interfaces.patch \
     file://0026-Add-new-sensor-enum-for-Bits.patch \
+    file://0027-AccountService-enhancement.patch \
 "
 
-#    file://0026-Add-new-sensor-enum-for-Bits.patch 
 
 
 FILESEXTRAPATHS:prepend := "${THISDIR}/${PN}:"
