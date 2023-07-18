@@ -1,7 +1,10 @@
-From 76a01aaa425d81bc7b7fccf7e6c4c3a19aa040f1 Mon Sep 17 00:00:00 2001
-From: Matt Cheng <cheng.matt@inventec.com>
-Date: Wed, 21 Dec 2022 15:48:12 +0800
+From 2c7f6f274363e6589215bca93b57ed3840f02978 Mon Sep 17 00:00:00 2001
+From: link <link@inventec.com>
+Date: Mon, 17 Jul 2023 15:09:04 +0800
 Subject: [PATCH] Watchdog related feature implementation and bug fix
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
 
 Summary:
 Bug 1294 - [Transformers][OpenBMC][IPMI]Can't type any command when execute sol activate after bmc fw update.
@@ -65,27 +68,19 @@ Entry Test:
 
 ===============================================================================================================
 ---
- arch/arm/mach-aspeed/ast2600/board_common.c | 34 +++++++++++++++++++++
+ arch/arm/mach-aspeed/ast2600/board_common.c | 33 +++++++++++++++++++++
  common/bootm.c                              | 17 ++++++++++-
  common/console.c                            |  9 ++++++
- drivers/mtd/spi/spi-nor-core.c              | 21 +++++++++++++
+ drivers/mtd/spi/spi-nor-core.c              | 22 +++++++++++++-
  include/watchdog.h                          |  2 ++
- net/net.c                                   |  8 +++++
- 6 files changed, 90 insertions(+), 1 deletion(-)
- mode change 100644 => 100755 arch/arm/mach-aspeed/ast2600/board_common.c
- mode change 100644 => 100755 common/bootm.c
- mode change 100644 => 100755 common/console.c
- mode change 100644 => 100755 drivers/mtd/spi/spi-nor-core.c
- mode change 100644 => 100755 include/watchdog.h
- mode change 100644 => 100755 net/net.c
+ net/net.c                                   |  7 +++++
+ 6 files changed, 88 insertions(+), 2 deletions(-)
 
 diff --git a/arch/arm/mach-aspeed/ast2600/board_common.c b/arch/arm/mach-aspeed/ast2600/board_common.c
-old mode 100644
-new mode 100755
-index f30cc852fc..a8e2fef260
+index 24336ab52b..081abb0013 100644
 --- a/arch/arm/mach-aspeed/ast2600/board_common.c
 +++ b/arch/arm/mach-aspeed/ast2600/board_common.c
-@@ -62,6 +62,14 @@
+@@ -96,6 +96,14 @@ void reset_eth_phy(void)
  #define SGPIO_BYTES(N)                  ((N) << 6)
  #define SGPIO_ENABLE                    1
  
@@ -97,20 +92,19 @@ index f30cc852fc..a8e2fef260
 +
 +void inv_watchdog_reset(void);
 +
- #if 0
- void lowlevel_init(void)
+ __weak int board_init(void)
  {
-@@ -113,6 +121,8 @@ int board_init(void)
- 
- 	gd->bd->bi_boot_params = CONFIG_SYS_SDRAM_BASE + 0x100;
- 
+ 	struct udevice *dev;
+@@ -122,6 +130,7 @@ __weak int board_init(void)
+ #ifdef ASPEED_RMII_DAUGHTER_CARD
+ 	reset_eth_phy();
+ #endif
 +	watchdog_init();
-+
- 	gpio_init();
+     gpio_init();
+     sgpio_init_port80();
  	/*
- 	 * Loop over all MISC uclass drivers to call the comphy code
-@@ -168,6 +178,20 @@ int arch_early_init_r(void)
- 	return 0;
+@@ -275,6 +284,20 @@ void aspeed_mmc_init(void)
+ 
  }
  
 +int watchdog_init(void)
@@ -130,7 +124,7 @@ index f30cc852fc..a8e2fef260
  int gpio_init(void)
  {
      u32 reg;
-@@ -271,3 +295,13 @@ int sgpio_init_port80(void) {
+@@ -379,3 +402,13 @@ int sgpio_init_port80(void) {
      return 0;
  }
  
@@ -145,12 +139,10 @@ index f30cc852fc..a8e2fef260
 +}
 +
 diff --git a/common/bootm.c b/common/bootm.c
-old mode 100644
-new mode 100755
-index b76410825e..1a77451fcc
+index 3af5be9eab..267b3e210b 100644
 --- a/common/bootm.c
 +++ b/common/bootm.c
-@@ -28,6 +28,7 @@
+@@ -29,6 +29,7 @@
  #include <command.h>
  #include <bootm.h>
  #include <image.h>
@@ -158,7 +150,7 @@ index b76410825e..1a77451fcc
  
  #ifndef CONFIG_SYS_BOOTM_LEN
  /* use 8MByte as default max gunzip size */
-@@ -651,6 +652,9 @@ int do_bootm_states(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[],
+@@ -716,6 +717,9 @@ int do_bootm_states(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[],
  	change += SetCheckResult("kernel_verify", "OK");
  	change += SetCheckResult("ramdisk_verify", "OK");
  
@@ -168,7 +160,7 @@ index b76410825e..1a77451fcc
  	/*
  	 * Work through the states and see how far we get. We stop on
  	 * any error.
-@@ -708,8 +712,12 @@ int do_bootm_states(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[],
+@@ -777,8 +781,12 @@ int do_bootm_states(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[],
  #endif
  
  	/* From now on, we need the OS boot function */
@@ -182,7 +174,7 @@ index b76410825e..1a77451fcc
  	boot_fn = bootm_os_get_boot_func(images->os.os);
  	need_boot_fn = states & (BOOTM_STATE_OS_CMDLINE |
  			BOOTM_STATE_OS_BD_T | BOOTM_STATE_OS_PREP |
-@@ -755,6 +763,9 @@ int do_bootm_states(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[],
+@@ -824,6 +832,9 @@ int do_bootm_states(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[],
  		return ret;
  	}
  
@@ -192,7 +184,7 @@ index b76410825e..1a77451fcc
  	/* Now run the OS! We hope this doesn't return */
  	if (!ret && (states & BOOTM_STATE_OS_GO))
  		ret = boot_selected_os(argc, argv, BOOTM_STATE_OS_GO,
-@@ -770,6 +781,10 @@ err:
+@@ -839,6 +850,10 @@ err:
  	else if (ret == BOOTM_ERR_RESET)
  		do_reset(cmdtp, flag, argc, argv);
  
@@ -204,9 +196,7 @@ index b76410825e..1a77451fcc
  }
  
 diff --git a/common/console.c b/common/console.c
-old mode 100644
-new mode 100755
-index 0b0dd76256..5688f249f3
+index 0b0dd76256..5688f249f3 100644
 --- a/common/console.c
 +++ b/common/console.c
 @@ -310,12 +310,21 @@ int serial_printf(const char *fmt, ...)
@@ -232,12 +222,10 @@ index 0b0dd76256..5688f249f3
  			/*
  			 * Upper layer may have already called tstc() so
 diff --git a/drivers/mtd/spi/spi-nor-core.c b/drivers/mtd/spi/spi-nor-core.c
-old mode 100644
-new mode 100755
-index dfa191845a..1144895d88
+index 633ca00834..e917fe2f31 100644
 --- a/drivers/mtd/spi/spi-nor-core.c
 +++ b/drivers/mtd/spi/spi-nor-core.c
-@@ -575,6 +575,7 @@ static int spi_nor_erase(struct mtd_info *mtd, struct erase_info *instr)
+@@ -637,6 +637,7 @@ static int spi_nor_erase(struct mtd_info *mtd, struct erase_info *instr)
  	struct spi_nor *nor = mtd_to_spi_nor(mtd);
  	u32 addr, len, rem;
  	int ret;
@@ -245,7 +233,7 @@ index dfa191845a..1144895d88
  
  	dev_dbg(nor->dev, "at 0x%llx, len %lld\n", (long long)instr->addr,
  		(long long)instr->len);
-@@ -587,6 +588,12 @@ static int spi_nor_erase(struct mtd_info *mtd, struct erase_info *instr)
+@@ -649,6 +650,12 @@ static int spi_nor_erase(struct mtd_info *mtd, struct erase_info *instr)
  	len = instr->len;
  
  	while (len) {
@@ -258,7 +246,7 @@ index dfa191845a..1144895d88
  #ifdef CONFIG_SPI_FLASH_BAR
  		ret = write_bar(nor, addr);
  		if (ret < 0)
-@@ -1070,6 +1077,7 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
+@@ -1174,13 +1181,19 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
  {
  	struct spi_nor *nor = mtd_to_spi_nor(mtd);
  	int ret;
@@ -266,10 +254,10 @@ index dfa191845a..1144895d88
  
  	dev_dbg(nor->dev, "from 0x%08x, len %zd\n", (u32)from, len);
  
-@@ -1077,6 +1085,12 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
+ 	while (len) {
  		loff_t addr = from;
  		size_t read_len = len;
- 
+-
 +		/* Inventec - watchdog */
 +		if(!(watchdog_count &0xFF))
 +		{
@@ -279,7 +267,7 @@ index dfa191845a..1144895d88
  #ifdef CONFIG_SPI_FLASH_BAR
  		u32 remain_len;
  
-@@ -1222,6 +1236,7 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
+@@ -1326,6 +1339,7 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
  	struct spi_nor *nor = mtd_to_spi_nor(mtd);
  	size_t page_offset, page_remain, i;
  	ssize_t ret;
@@ -287,7 +275,7 @@ index dfa191845a..1144895d88
  
  	dev_dbg(nor->dev, "to 0x%08x, len %zd\n", (u32)to, len);
  
-@@ -1229,6 +1244,12 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
+@@ -1333,6 +1347,12 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
  		ssize_t written;
  		loff_t addr = to + i;
  
@@ -301,9 +289,7 @@ index dfa191845a..1144895d88
  		 * If page_size is a power of two, the offset can be quickly
  		 * calculated with an AND operation. On the other cases we
 diff --git a/include/watchdog.h b/include/watchdog.h
-old mode 100644
-new mode 100755
-index 14073cfdd2..2baa26bf40
+index 14073cfdd2..2baa26bf40 100644
 --- a/include/watchdog.h
 +++ b/include/watchdog.h
 @@ -35,6 +35,8 @@ int init_func_watchdog_reset(void);
@@ -316,12 +302,10 @@ index 14073cfdd2..2baa26bf40
  	#if defined(__ASSEMBLY__)
  		#define WATCHDOG_RESET bl hw_watchdog_reset
 diff --git a/net/net.c b/net/net.c
-old mode 100644
-new mode 100755
-index f0f9cd4d94..4aa5ff83a5
+index 8449445bf6..2e3142cbcc 100644
 --- a/net/net.c
 +++ b/net/net.c
-@@ -572,8 +572,16 @@ restart:
+@@ -572,8 +572,15 @@ restart:
  	 *	Main packet reception loop.  Loop receiving packets until
  	 *	someone sets `net_state' to a state that terminates.
  	 */
@@ -334,7 +318,6 @@ index f0f9cd4d94..4aa5ff83a5
 +			inv_watchdog_reset();
 +		}
 +		watchdog_count++;
-+
  #ifdef CONFIG_SHOW_ACTIVITY
  		show_activity(1);
  #endif

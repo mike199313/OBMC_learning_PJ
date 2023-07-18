@@ -1,6 +1,6 @@
-From 784fdcc23f5b90f10b372fbe121d1b8638939378 Mon Sep 17 00:00:00 2001
-From: Wein <kuo.wein@inventec.com>
-Date: Fri, 6 Jan 2023 09:21:06 +0800
+From e4a06a2967199a6da6884788380f9b02629c06d6 Mon Sep 17 00:00:00 2001
+From: "liz.chiu" <Chiu.Liz@inventec.com>
+Date: Thu, 13 Jul 2023 15:02:27 +0800
 Subject: [PATCH] Patch for Slave-mqueue driver porting
 
 ---
@@ -8,17 +8,17 @@ Subject: [PATCH] Patch for Slave-mqueue driver porting
  drivers/i2c/Makefile                    |    1 +
  drivers/i2c/busses/Kconfig              |   11 +
  drivers/i2c/busses/Makefile             |    1 +
- drivers/i2c/busses/i2c-aspeed.c         |  171 ++-
+ drivers/i2c/busses/i2c-aspeed.c         |  185 ++-
  drivers/i2c/busses/i2c-ast2600-global.c |   93 ++
  drivers/i2c/busses/i2c-ast2600-global.h |   19 +
- drivers/i2c/busses/i2c-ast2600.c        | 1819 +++++++++++++++++++++++
- drivers/i2c/i2c-core-smbus.c            |    9 +-
+ drivers/i2c/busses/i2c-ast2600.c        | 1839 +++++++++++++++++++++++
+ drivers/i2c/i2c-core-smbus.c            |   23 +-
  drivers/i2c/i2c-slave-mqueue.c          |  203 +++
- 10 files changed, 2254 insertions(+), 96 deletions(-)
- create mode 100755 drivers/i2c/busses/i2c-ast2600-global.c
- create mode 100755 drivers/i2c/busses/i2c-ast2600-global.h
- create mode 100755 drivers/i2c/busses/i2c-ast2600.c
- create mode 100755 drivers/i2c/i2c-slave-mqueue.c
+ 10 files changed, 2284 insertions(+), 114 deletions(-)
+ create mode 100644 drivers/i2c/busses/i2c-ast2600-global.c
+ create mode 100644 drivers/i2c/busses/i2c-ast2600-global.h
+ create mode 100644 drivers/i2c/busses/i2c-ast2600.c
+ create mode 100644 drivers/i2c/i2c-slave-mqueue.c
 
 diff --git a/drivers/i2c/Kconfig b/drivers/i2c/Kconfig
 index 438905e2a1d0..21f694755fae 100644
@@ -66,10 +66,10 @@ index c1d493dc9bac..0442e5cf8587 100644
  
  ccflags-$(CONFIG_I2C_DEBUG_CORE) := -DDEBUG
 diff --git a/drivers/i2c/busses/Kconfig b/drivers/i2c/busses/Kconfig
-index fea403431f22..782f78a1c926 100644
+index e50f9603d189..86d5059c9f88 100644
 --- a/drivers/i2c/busses/Kconfig
 +++ b/drivers/i2c/busses/Kconfig
-@@ -378,6 +378,17 @@ config I2C_ALTERA
+@@ -389,6 +389,17 @@ config I2C_ALTERA
  	  This driver can also be built as a module.  If so, the module
  	  will be called i2c-altera.
  
@@ -88,10 +88,10 @@ index fea403431f22..782f78a1c926 100644
  	tristate "Aspeed I2C Controller"
  	depends on ARCH_ASPEED || COMPILE_TEST
 diff --git a/drivers/i2c/busses/Makefile b/drivers/i2c/busses/Makefile
-index 1336b04f40e2..05619cbefc23 100644
+index e73cdb1d2b5a..c7634ee85f8b 100644
 --- a/drivers/i2c/busses/Makefile
 +++ b/drivers/i2c/busses/Makefile
-@@ -35,6 +35,7 @@ obj-$(CONFIG_I2C_POWERMAC)	+= i2c-powermac.o
+@@ -38,6 +38,7 @@ obj-$(CONFIG_I2C_POWERMAC)	+= i2c-powermac.o
  obj-$(CONFIG_I2C_ALTERA)	+= i2c-altera.o
  obj-$(CONFIG_I2C_AMD_MP2)	+= i2c-amd-mp2-pci.o i2c-amd-mp2-plat.o
  obj-$(CONFIG_I2C_ASPEED)	+= i2c-aspeed.o
@@ -100,12 +100,15 @@ index 1336b04f40e2..05619cbefc23 100644
  i2c-at91-objs			:= i2c-at91-core.o i2c-at91-master.o
  ifeq ($(CONFIG_I2C_AT91_SLAVE_EXPERIMENTAL),y)
 diff --git a/drivers/i2c/busses/i2c-aspeed.c b/drivers/i2c/busses/i2c-aspeed.c
-index 67e8b97c0c95..d1e92269dc32 100644
+index c64c381b69b7..7ddbfa6776a2 100644
 --- a/drivers/i2c/busses/i2c-aspeed.c
 +++ b/drivers/i2c/busses/i2c-aspeed.c
-@@ -19,14 +19,23 @@
- #include <linux/irqchip/chained_irq.h>
- #include <linux/irqdomain.h>
+@@ -16,15 +16,26 @@
+ #include <linux/interrupt.h>
+ #include <linux/io.h>
+ #include <linux/irq.h>
++#include <linux/irqchip/chained_irq.h>
++#include <linux/irqdomain.h>
  #include <linux/kernel.h>
 +#include <linux/mfd/syscon.h>
  #include <linux/module.h>
@@ -127,7 +130,7 @@ index 67e8b97c0c95..d1e92269dc32 100644
  /* I2C Register */
  #define ASPEED_I2C_FUN_CTRL_REG				0x00
  #define ASPEED_I2C_AC_TIMING_REG1			0x04
-@@ -69,7 +78,7 @@
+@@ -67,7 +78,7 @@
   * These share bit definitions, so use the same values for the enable &
   * status bits.
   */
@@ -136,7 +139,7 @@ index 67e8b97c0c95..d1e92269dc32 100644
  #define ASPEED_I2CD_INTR_SDA_DL_TIMEOUT			BIT(14)
  #define ASPEED_I2CD_INTR_BUS_RECOVER_DONE		BIT(13)
  #define ASPEED_I2CD_INTR_SLAVE_MATCH			BIT(7)
-@@ -121,7 +130,6 @@
+@@ -119,7 +130,6 @@
  
  enum aspeed_i2c_master_state {
  	ASPEED_I2C_MASTER_INACTIVE,
@@ -144,7 +147,7 @@ index 67e8b97c0c95..d1e92269dc32 100644
  	ASPEED_I2C_MASTER_START,
  	ASPEED_I2C_MASTER_TX_FIRST,
  	ASPEED_I2C_MASTER_TX,
-@@ -178,6 +186,7 @@ static int aspeed_i2c_recover_bus(struct aspeed_i2c_bus *bus)
+@@ -176,6 +186,7 @@ static int aspeed_i2c_recover_bus(struct aspeed_i2c_bus *bus)
  	int ret = 0;
  	u32 command;
  
@@ -152,7 +155,15 @@ index 67e8b97c0c95..d1e92269dc32 100644
  	spin_lock_irqsave(&bus->lock, flags);
  	command = readl(bus->base + ASPEED_I2C_CMD_REG);
  
-@@ -254,6 +263,34 @@ static u32 aspeed_i2c_slave_irq(struct aspeed_i2c_bus *bus, u32 irq_status)
+@@ -244,7 +255,6 @@ static u32 aspeed_i2c_slave_irq(struct aspeed_i2c_bus *bus, u32 irq_status)
+ 	u32 command, irq_handled = 0;
+ 	struct i2c_client *slave = bus->slave;
+ 	u8 value;
+-	int ret;
+ 
+ 	if (!slave)
+ 		return 0;
+@@ -253,6 +263,34 @@ static u32 aspeed_i2c_slave_irq(struct aspeed_i2c_bus *bus, u32 irq_status)
  
  	/* Slave was requested, restart state machine. */
  	if (irq_status & ASPEED_I2CD_INTR_SLAVE_MATCH) {
@@ -187,7 +198,7 @@ index 67e8b97c0c95..d1e92269dc32 100644
  		irq_handled |= ASPEED_I2CD_INTR_SLAVE_MATCH;
  		bus->slave_state = ASPEED_I2C_SLAVE_START;
  	}
-@@ -265,6 +302,12 @@ static u32 aspeed_i2c_slave_irq(struct aspeed_i2c_bus *bus, u32 irq_status)
+@@ -264,6 +302,12 @@ static u32 aspeed_i2c_slave_irq(struct aspeed_i2c_bus *bus, u32 irq_status)
  	dev_dbg(bus->dev, "slave irq status 0x%08x, cmd 0x%08x\n",
  		irq_status, command);
  
@@ -200,7 +211,22 @@ index 67e8b97c0c95..d1e92269dc32 100644
  	/* Slave was sent something. */
  	if (irq_status & ASPEED_I2CD_INTR_RX_DONE) {
  		value = readl(bus->base + ASPEED_I2C_BYTE_BUF_REG) >> 8;
-@@ -332,6 +375,9 @@ static u32 aspeed_i2c_slave_irq(struct aspeed_i2c_bus *bus, u32 irq_status)
+@@ -312,13 +356,7 @@ static u32 aspeed_i2c_slave_irq(struct aspeed_i2c_bus *bus, u32 irq_status)
+ 		break;
+ 	case ASPEED_I2C_SLAVE_WRITE_REQUESTED:
+ 		bus->slave_state = ASPEED_I2C_SLAVE_WRITE_RECEIVED;
+-		ret = i2c_slave_event(slave, I2C_SLAVE_WRITE_REQUESTED, &value);
+-		/*
+-		 * Slave ACK's on this address phase already but as the backend driver
+-		 * returns an errno, the bus driver should nack the next incoming byte.
+-		 */
+-		if (ret < 0)
+-			writel(ASPEED_I2CD_M_S_RX_CMD_LAST, bus->base + ASPEED_I2C_CMD_REG);
++		i2c_slave_event(slave, I2C_SLAVE_WRITE_REQUESTED, &value);
+ 		break;
+ 	case ASPEED_I2C_SLAVE_WRITE_RECEIVED:
+ 		i2c_slave_event(slave, I2C_SLAVE_WRITE_RECEIVED, &value);
+@@ -337,6 +375,9 @@ static u32 aspeed_i2c_slave_irq(struct aspeed_i2c_bus *bus, u32 irq_status)
  		break;
  	}
  
@@ -210,7 +236,7 @@ index 67e8b97c0c95..d1e92269dc32 100644
  	return irq_handled;
  }
  #endif /* CONFIG_I2C_SLAVE */
-@@ -343,18 +389,6 @@ static void aspeed_i2c_do_start(struct aspeed_i2c_bus *bus)
+@@ -348,18 +389,6 @@ static void aspeed_i2c_do_start(struct aspeed_i2c_bus *bus)
  	struct i2c_msg *msg = &bus->msgs[bus->msgs_index];
  	u8 slave_addr = i2c_8bit_addr_from_msg(msg);
  
@@ -229,7 +255,7 @@ index 67e8b97c0c95..d1e92269dc32 100644
  	bus->master_state = ASPEED_I2C_MASTER_START;
  	bus->buf_index = 0;
  
-@@ -407,6 +441,10 @@ static u32 aspeed_i2c_master_irq(struct aspeed_i2c_bus *bus, u32 irq_status)
+@@ -412,6 +441,10 @@ static u32 aspeed_i2c_master_irq(struct aspeed_i2c_bus *bus, u32 irq_status)
  	u8 recv_byte;
  	int ret;
  
@@ -240,7 +266,14 @@ index 67e8b97c0c95..d1e92269dc32 100644
  	if (irq_status & ASPEED_I2CD_INTR_BUS_RECOVER_DONE) {
  		bus->master_state = ASPEED_I2C_MASTER_INACTIVE;
  		irq_handled |= ASPEED_I2CD_INTR_BUS_RECOVER_DONE;
-@@ -430,19 +468,11 @@ static u32 aspeed_i2c_master_irq(struct aspeed_i2c_bus *bus, u32 irq_status)
+@@ -429,25 +462,18 @@ static u32 aspeed_i2c_master_irq(struct aspeed_i2c_bus *bus, u32 irq_status)
+ 			irq_status);
+ 		irq_handled |= (irq_status & ASPEED_I2CD_INTR_MASTER_ERRORS);
+ 		if (bus->master_state != ASPEED_I2C_MASTER_INACTIVE) {
++			irq_handled = irq_status;
+ 			bus->cmd_err = ret;
+ 			bus->master_state = ASPEED_I2C_MASTER_INACTIVE;
+ 			goto out_complete;
  		}
  	}
  
@@ -260,7 +293,7 @@ index 67e8b97c0c95..d1e92269dc32 100644
  		goto out_no_complete;
  	}
  	msg = &bus->msgs[bus->msgs_index];
-@@ -453,24 +483,6 @@ static u32 aspeed_i2c_master_irq(struct aspeed_i2c_bus *bus, u32 irq_status)
+@@ -458,24 +484,6 @@ static u32 aspeed_i2c_master_irq(struct aspeed_i2c_bus *bus, u32 irq_status)
  	 * then update the state and handle the new state below.
  	 */
  	if (bus->master_state == ASPEED_I2C_MASTER_START) {
@@ -285,7 +318,7 @@ index 67e8b97c0c95..d1e92269dc32 100644
  		if (unlikely(!(irq_status & ASPEED_I2CD_INTR_TX_ACK))) {
  			if (unlikely(!(irq_status & ASPEED_I2CD_INTR_TX_NAK))) {
  				bus->cmd_err = -ENXIO;
-@@ -591,6 +603,10 @@ static u32 aspeed_i2c_master_irq(struct aspeed_i2c_bus *bus, u32 irq_status)
+@@ -596,6 +604,10 @@ static u32 aspeed_i2c_master_irq(struct aspeed_i2c_bus *bus, u32 irq_status)
  		bus->master_xfer_result = bus->msgs_index + 1;
  	complete(&bus->cmd_complete);
  out_no_complete:
@@ -296,7 +329,7 @@ index 67e8b97c0c95..d1e92269dc32 100644
  	return irq_handled;
  }
  
-@@ -601,10 +617,6 @@ static irqreturn_t aspeed_i2c_bus_irq(int irq, void *dev_id)
+@@ -606,10 +618,6 @@ static irqreturn_t aspeed_i2c_bus_irq(int irq, void *dev_id)
  
  	spin_lock(&bus->lock);
  	irq_received = readl(bus->base + ASPEED_I2C_INTR_STS_REG);
@@ -307,7 +340,7 @@ index 67e8b97c0c95..d1e92269dc32 100644
  	irq_received &= ASPEED_I2CD_INTR_RECV_MASK;
  	irq_remaining = irq_received;
  
-@@ -616,27 +628,11 @@ static irqreturn_t aspeed_i2c_bus_irq(int irq, void *dev_id)
+@@ -621,27 +629,11 @@ static irqreturn_t aspeed_i2c_bus_irq(int irq, void *dev_id)
  	 * interrupt bits. Each case needs to be handled using corresponding
  	 * handlers depending on the current state.
  	 */
@@ -340,7 +373,7 @@ index 67e8b97c0c95..d1e92269dc32 100644
  #else
  	irq_handled = aspeed_i2c_master_irq(bus, irq_remaining);
  #endif /* CONFIG_I2C_SLAVE */
-@@ -647,12 +643,6 @@ static irqreturn_t aspeed_i2c_bus_irq(int irq, void *dev_id)
+@@ -652,12 +644,6 @@ static irqreturn_t aspeed_i2c_bus_irq(int irq, void *dev_id)
  			"irq handled != irq. expected 0x%08x, but was 0x%08x\n",
  			irq_received, irq_handled);
  
@@ -353,7 +386,7 @@ index 67e8b97c0c95..d1e92269dc32 100644
  	spin_unlock(&bus->lock);
  	return irq_remaining ? IRQ_NONE : IRQ_HANDLED;
  }
-@@ -663,22 +653,23 @@ static int aspeed_i2c_master_xfer(struct i2c_adapter *adap,
+@@ -668,22 +654,23 @@ static int aspeed_i2c_master_xfer(struct i2c_adapter *adap,
  	struct aspeed_i2c_bus *bus = i2c_get_adapdata(adap);
  	unsigned long time_left, flags;
  
@@ -382,7 +415,7 @@ index 67e8b97c0c95..d1e92269dc32 100644
  	bus->cmd_err = 0;
  	bus->msgs = msgs;
  	bus->msgs_index = 0;
-@@ -701,15 +692,6 @@ static int aspeed_i2c_master_xfer(struct i2c_adapter *adap,
+@@ -706,15 +693,6 @@ static int aspeed_i2c_master_xfer(struct i2c_adapter *adap,
  		     ASPEED_I2CD_BUS_BUSY_STS))
  			aspeed_i2c_recover_bus(bus);
  
@@ -398,7 +431,7 @@ index 67e8b97c0c95..d1e92269dc32 100644
  		return -ETIMEDOUT;
  	}
  
-@@ -754,12 +736,11 @@ static int aspeed_i2c_reg_slave(struct i2c_client *client)
+@@ -759,12 +737,11 @@ static int aspeed_i2c_reg_slave(struct i2c_client *client)
  		return -EINVAL;
  	}
  
@@ -413,7 +446,7 @@ index 67e8b97c0c95..d1e92269dc32 100644
  	return 0;
  }
  
-@@ -977,6 +958,20 @@ static int aspeed_i2c_probe_bus(struct platform_device *pdev)
+@@ -982,6 +959,20 @@ static int aspeed_i2c_probe_bus(struct platform_device *pdev)
  	struct resource *res;
  	int irq, ret;
  
@@ -434,8 +467,17 @@ index 67e8b97c0c95..d1e92269dc32 100644
  	bus = devm_kzalloc(&pdev->dev, sizeof(*bus), GFP_KERNEL);
  	if (!bus)
  		return -ENOMEM;
+@@ -1029,7 +1020,7 @@ static int aspeed_i2c_probe_bus(struct platform_device *pdev)
+ 	bus->adap.algo = &aspeed_i2c_algo;
+ 	bus->adap.dev.parent = &pdev->dev;
+ 	bus->adap.dev.of_node = pdev->dev.of_node;
+-	strscpy(bus->adap.name, pdev->name, sizeof(bus->adap.name));
++	strlcpy(bus->adap.name, pdev->name, sizeof(bus->adap.name));
+ 	i2c_set_adapdata(&bus->adap, bus);
+ 
+ 	bus->dev = &pdev->dev;
 diff --git a/drivers/i2c/busses/i2c-ast2600-global.c b/drivers/i2c/busses/i2c-ast2600-global.c
-new file mode 100755
+new file mode 100644
 index 000000000000..85e95cd789c2
 --- /dev/null
 +++ b/drivers/i2c/busses/i2c-ast2600-global.c
@@ -534,7 +576,7 @@ index 000000000000..85e95cd789c2
 +MODULE_DESCRIPTION("AST2600 I2C Global Driver");
 +MODULE_LICENSE("GPL");
 diff --git a/drivers/i2c/busses/i2c-ast2600-global.h b/drivers/i2c/busses/i2c-ast2600-global.h
-new file mode 100755
+new file mode 100644
 index 000000000000..c2c55971f32a
 --- /dev/null
 +++ b/drivers/i2c/busses/i2c-ast2600-global.h
@@ -559,11 +601,11 @@ index 000000000000..c2c55971f32a
 +
 +#endif /* I2C_AST2600_GLOBAL_H */
 diff --git a/drivers/i2c/busses/i2c-ast2600.c b/drivers/i2c/busses/i2c-ast2600.c
-new file mode 100755
-index 000000000000..636965a3cf59
+new file mode 100644
+index 000000000000..304c74faa4ac
 --- /dev/null
 +++ b/drivers/i2c/busses/i2c-ast2600.c
-@@ -0,0 +1,1819 @@
+@@ -0,0 +1,1839 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * ASPEED AST2600 new register set I2C controller driver
@@ -1115,6 +1157,7 @@ index 000000000000..636965a3cf59
 +		writel(AST2600_I2CS_SET_RX_DMA_LEN(I2C_SLAVE_MSG_BUF_SIZE),
 +		       i2c_bus->reg_base + AST2600_I2CS_DMA_LEN);
 +		writel(cmd, i2c_bus->reg_base + AST2600_I2CS_CMD_STS);
++		writel(AST2600_I2CS_PKT_DONE, i2c_bus->reg_base + AST2600_I2CS_ISR);
 +		i2c_slave_event(i2c_bus->slave, I2C_SLAVE_STOP, &value);
 +		return;
 +	}
@@ -1241,7 +1284,7 @@ index 000000000000..636965a3cf59
 +	int i = 0;
 +
 +	//due to master slave is common buffer, so need force the master stop not issue
-+	if (readl(i2c_bus->reg_base + AST2600_I2CM_CMD_STS) & 0x1ffff) {
++	if (readl(i2c_bus->reg_base + AST2600_I2CM_CMD_STS) & 0xffff) {
 +		writel(0, i2c_bus->reg_base + AST2600_I2CM_CMD_STS);
 +		i2c_bus->cmd_err = -EBUSY;
 +		writel(0, i2c_bus->reg_base + AST2600_I2CC_BUFF_CTRL);
@@ -1251,6 +1294,7 @@ index 000000000000..636965a3cf59
 +	/* Handle i2c slave timeout condition */
 +	if (AST2600_I2CS_INACTIVE_TO & sts) {
 +		writel(SLAVE_TRIGGER_CMD, i2c_bus->reg_base + AST2600_I2CS_CMD_STS);
++		writel(AST2600_I2CS_PKT_DONE, i2c_bus->reg_base + AST2600_I2CS_ISR);
 +		i2c_slave_event(i2c_bus->slave, I2C_SLAVE_STOP, &value);
 +		i2c_bus->slave_operate = 0;
 +		return;
@@ -1548,6 +1592,7 @@ index 000000000000..636965a3cf59
 +				dma_map_single(i2c_bus->dev, i2c_bus->master_safe_buf, msg->len, DMA_FROM_DEVICE);
 +			if (dma_mapping_error(i2c_bus->dev, i2c_bus->master_dma_addr)) {
 +				i2c_put_dma_safe_msg_buf(i2c_bus->master_safe_buf, msg, false);
++				i2c_bus->master_safe_buf = NULL;
 +				return -ENOMEM;
 +			}
 +			writel(i2c_bus->master_dma_addr, i2c_bus->reg_base + AST2600_I2CM_RX_DMA);
@@ -1609,6 +1654,7 @@ index 000000000000..636965a3cf59
 +						       DMA_TO_DEVICE);
 +				if (dma_mapping_error(i2c_bus->dev, i2c_bus->master_dma_addr)) {
 +					i2c_put_dma_safe_msg_buf(i2c_bus->master_safe_buf, msg, false);
++					i2c_bus->master_safe_buf = NULL;
 +					return -ENOMEM;
 +				}
 +				writel(i2c_bus->master_dma_addr,
@@ -1736,6 +1782,7 @@ index 000000000000..636965a3cf59
 +				dma_unmap_single(i2c_bus->dev, i2c_bus->master_dma_addr, msg->len,
 +						 DMA_TO_DEVICE);
 +				i2c_put_dma_safe_msg_buf(i2c_bus->master_safe_buf, msg, true);
++				i2c_bus->master_safe_buf = NULL;
 +			}
 +			i2c_bus->msgs_index++;
 +			if (i2c_bus->msgs_index == i2c_bus->msgs_count) {
@@ -1843,6 +1890,11 @@ index 000000000000..636965a3cf59
 +			"M : AST2600_I2CM_RX_DONE | AST2600_I2CM_NORMAL_STOP = %x (%d)\n", sts, xfer_len);
 +
 +		if (msg->flags & I2C_M_RECV_LEN) {
++			if (unlikely(msg->buf[0] > I2C_SMBUS_BLOCK_MAX)) {
++				dev_dbg(i2c_bus->dev, "smbus len = %x is over max length\n", msg->buf[0]);
++				i2c_bus->cmd_err = -EPROTO;
++				complete(&i2c_bus->cmd_complete);
++			}
 +			dev_dbg(i2c_bus->dev, "smbus first len = %x\n", msg->buf[0]);
 +			msg->len = msg->buf[0] + ((msg->flags & I2C_CLIENT_PEC) ? 2 : 1);
 +			msg->flags &= ~I2C_M_RECV_LEN;
@@ -1856,6 +1908,7 @@ index 000000000000..636965a3cf59
 +				dma_unmap_single(i2c_bus->dev, i2c_bus->master_dma_addr, msg->len,
 +						 DMA_FROM_DEVICE);
 +				i2c_put_dma_safe_msg_buf(i2c_bus->master_safe_buf, msg, true);
++				i2c_bus->master_safe_buf = NULL;
 +			}
 +
 +			for (i = 0; i < msg->len; i++)
@@ -2085,6 +2138,11 @@ index 000000000000..636965a3cf59
 +	dev_dbg(i2c_bus->dev, "bus%d-m: %d end\n", i2c_bus->adap.nr, i2c_bus->cmd_err);
 +
 +master_out:
++	if (i2c_bus->mode == DMA_MODE) {
++		kfree(i2c_bus->master_safe_buf);
++		i2c_bus->master_safe_buf = NULL;
++	}
++
 +	return ret;
 +}
 +
@@ -2189,7 +2247,7 @@ index 000000000000..636965a3cf59
 +
 +static u32 ast2600_i2c_functionality(struct i2c_adapter *adap)
 +{
-+	return I2C_FUNC_I2C | I2C_FUNC_SMBUS_EMUL | I2C_FUNC_SMBUS_BLOCK_DATA;
++	return I2C_FUNC_I2C | I2C_FUNC_SMBUS_EMUL_ALL;
 +}
 +
 +static const struct i2c_algorithm i2c_ast2600_algorithm = {
@@ -2360,12 +2418,16 @@ index 000000000000..636965a3cf59
 +	writel(0, i2c_bus->reg_base + AST2600_I2CC_FUN_CTRL);
 +	writel(0, i2c_bus->reg_base + AST2600_I2CM_IER);
 +
-+	free_irq(i2c_bus->irq, i2c_bus);
++	devm_free_irq(&pdev->dev, i2c_bus->irq, i2c_bus);
 +
-+	platform_set_drvdata(pdev, NULL);
 +	i2c_del_adapter(&i2c_bus->adap);
 +
-+	kfree(i2c_bus);
++#ifdef CONFIG_I2C_SLAVE
++	/* for memory buffer initial */
++	if (i2c_bus->mode == DMA_MODE)
++		dma_free_coherent(i2c_bus->dev, I2C_SLAVE_MSG_BUF_SIZE,
++				i2c_bus->slave_dma_buf, i2c_bus->slave_dma_addr);
++#endif
 +
 +	return 0;
 +}
@@ -2384,10 +2446,18 @@ index 000000000000..636965a3cf59
 +MODULE_DESCRIPTION("ASPEED AST2600 I2C Controller Driver");
 +MODULE_LICENSE("GPL");
 diff --git a/drivers/i2c/i2c-core-smbus.c b/drivers/i2c/i2c-core-smbus.c
-index e5b2d1465e7e..f1f38a692b29 100644
+index e3b96fc53b5c..f1f38a692b29 100644
 --- a/drivers/i2c/i2c-core-smbus.c
 +++ b/drivers/i2c/i2c-core-smbus.c
-@@ -37,14 +37,7 @@ static u8 crc8(u16 data)
+@@ -14,7 +14,6 @@
+ #include <linux/err.h>
+ #include <linux/i2c.h>
+ #include <linux/i2c-smbus.h>
+-#include <linux/property.h>
+ #include <linux/slab.h>
+ 
+ #include "i2c-core.h"
+@@ -38,14 +37,7 @@ static u8 crc8(u16 data)
  	return (u8)(data >> 8);
  }
  
@@ -2403,8 +2473,36 @@ index e5b2d1465e7e..f1f38a692b29 100644
  u8 i2c_smbus_pec(u8 crc, u8 *p, size_t count)
  {
  	int i;
+@@ -702,17 +694,13 @@ struct i2c_client *i2c_new_smbus_alert_device(struct i2c_adapter *adapter,
+ }
+ EXPORT_SYMBOL_GPL(i2c_new_smbus_alert_device);
+ 
+-#if IS_ENABLED(CONFIG_I2C_SMBUS)
+-int i2c_setup_smbus_alert(struct i2c_adapter *adapter)
++#if IS_ENABLED(CONFIG_I2C_SMBUS) && IS_ENABLED(CONFIG_OF)
++int of_i2c_setup_smbus_alert(struct i2c_adapter *adapter)
+ {
+-	struct device *parent = adapter->dev.parent;
+ 	int irq;
+ 
+-	/* Adapter instantiated without parent, skip the SMBus alert setup */
+-	if (!parent)
+-		return 0;
+-
+-	irq = device_property_match_string(parent, "interrupt-names", "smbus_alert");
++	irq = of_property_match_string(adapter->dev.of_node, "interrupt-names",
++				       "smbus_alert");
+ 	if (irq == -EINVAL || irq == -ENODATA)
+ 		return 0;
+ 	else if (irq < 0)
+@@ -720,4 +708,5 @@ int i2c_setup_smbus_alert(struct i2c_adapter *adapter)
+ 
+ 	return PTR_ERR_OR_ZERO(i2c_new_smbus_alert_device(adapter, NULL));
+ }
++EXPORT_SYMBOL_GPL(of_i2c_setup_smbus_alert);
+ #endif
 diff --git a/drivers/i2c/i2c-slave-mqueue.c b/drivers/i2c/i2c-slave-mqueue.c
-new file mode 100755
+new file mode 100644
 index 000000000000..424f435508ee
 --- /dev/null
 +++ b/drivers/i2c/i2c-slave-mqueue.c

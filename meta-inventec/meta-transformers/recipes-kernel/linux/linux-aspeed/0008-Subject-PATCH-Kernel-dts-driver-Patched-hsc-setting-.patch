@@ -1,12 +1,11 @@
-From e915c4dabc3c59f50181ece972bb44b99787ffe4 Mon Sep 17 00:00:00 2001
-From: link <link@inventec.com>
-Date: Fri, 21 Oct 2022 01:11:09 +0000
+From b32acc3de8babcc77a301bc8abab1de5fb30f8cb Mon Sep 17 00:00:00 2001
+From: "liz.chiu" <Chiu.Liz@inventec.com>
+Date: Mon, 10 Jul 2023 14:22:50 +0800
 Subject: [PATCH] Subject: [PATCH] [Kernel][dts][driver] Patched hsc setting on
- dts and Pmbus/HSC driver
+ Pmbus/HSC driver
 
 - Enabled ADM1278 temperature monitor
- Due to some PSUs support fan but the FAN_CONFIG_1_2 (0x3A) and FAN_CONFIG_3_4 (0x3D) may not support,
-  e.g. P2000 Series PSU.
+  Due to some PSUs support fan but the FAN_CONFIG_1_2 (0x3A) and FAN_CONFIG_3_4 (0x3D) may not support, e.g. P2000 Series PSU.
 ---
  drivers/hwmon/pmbus/adm1275.c    | 59 ++++++++++++++++++++
  drivers/hwmon/pmbus/pmbus.c      | 13 ++++-
@@ -15,7 +14,7 @@ Subject: [PATCH] Subject: [PATCH] [Kernel][dts][driver] Patched hsc setting on
  4 files changed, 152 insertions(+), 18 deletions(-)
 
 diff --git a/drivers/hwmon/pmbus/adm1275.c b/drivers/hwmon/pmbus/adm1275.c
-index 3b07bfb43e93..4f8c6d865e3b 100644
+index 3b07bfb43e93..da73d372737b 100644
 --- a/drivers/hwmon/pmbus/adm1275.c
 +++ b/drivers/hwmon/pmbus/adm1275.c
 @@ -476,6 +476,8 @@ static int adm1275_probe(struct i2c_client *client)
@@ -62,7 +61,7 @@ index 3b07bfb43e93..4f8c6d865e3b 100644
 +		}
 +
 +		ret = of_property_read_u32(client->dev.of_node,
-+						"vi-avg-samples", &vi_avg);
++					"vi-avg-samples", &vi_avg);
 +		if (!(ret < 0)) {
 +			if ((vi_avg < 8) && (vi_avg >= 0)) {
 +				vi_avg  = vi_avg << ADM1278_VI_AVG_SHIFT;
@@ -87,12 +86,12 @@ index 3b07bfb43e93..4f8c6d865e3b 100644
 +
 +		if (config & ADM1278_TEMP1_EN)
 +			info->func[0] |=
-+				PMBUS_HAVE_TEMP | PMBUS_HAVE_STATUS_TEMP;
++				PMBUS_HAVE_TEMP | PMBUS_HAVE_STATUS_TEMP;	
  		if (config & ADM1278_VIN_EN)
  			info->func[0] |= PMBUS_HAVE_VIN;
  		break;
 diff --git a/drivers/hwmon/pmbus/pmbus.c b/drivers/hwmon/pmbus/pmbus.c
-index d0d386990af5..8fe1c400dcc1 100644
+index d0d386990af5..5b150053eec7 100644
 --- a/drivers/hwmon/pmbus/pmbus.c
 +++ b/drivers/hwmon/pmbus/pmbus.c
 @@ -42,13 +42,19 @@ static void pmbus_find_sensor_groups(struct i2c_client *client,
@@ -100,7 +99,7 @@ index d0d386990af5..8fe1c400dcc1 100644
  	    && pmbus_check_byte_register(client, 0, PMBUS_STATUS_INPUT))
  		info->func[0] |= PMBUS_HAVE_STATUS_INPUT;
 -	if (pmbus_check_byte_register(client, 0, PMBUS_FAN_CONFIG_12) &&
-+	/* Inventec -
++/* Inventec -
 +	 * Due to some PSUs support fan but the FAN_CONFIG_1_2 (0x3A) and FAN_CONFIG_3_4 (0x3D) may not support
 +	 * e.g. P2000 Series PSU.
 +	 * And the pmbus_add_fan_attributes function will check this value again.
@@ -128,7 +127,7 @@ index d0d386990af5..8fe1c400dcc1 100644
  	for (page = 0; page < info->pages; page++) {
  		if (pmbus_check_word_register(client, page, PMBUS_READ_VOUT)) {
 diff --git a/drivers/hwmon/pmbus/pmbus.h b/drivers/hwmon/pmbus/pmbus.h
-index ef3a8ecde4df..4a6b2d77e3ad 100644
+index 10fb17879f8e..28398882c947 100644
 --- a/drivers/hwmon/pmbus/pmbus.h
 +++ b/drivers/hwmon/pmbus/pmbus.h
 @@ -371,6 +371,7 @@ enum pmbus_sensor_classes {
@@ -148,13 +147,13 @@ index ef3a8ecde4df..4a6b2d77e3ad 100644
  #define PMBUS_PHASE_VIRTUAL	BIT(30)	/* Phases on this page are virtual */
  #define PMBUS_PAGE_VIRTUAL	BIT(31)	/* Page is virtual */
 diff --git a/drivers/hwmon/pmbus/pmbus_core.c b/drivers/hwmon/pmbus/pmbus_core.c
-index f495f0e79392..a224b3b0a1ad 100644
+index 385042433192..c8ecc0a956d9 100644
 --- a/drivers/hwmon/pmbus/pmbus_core.c
 +++ b/drivers/hwmon/pmbus/pmbus_core.c
-@@ -102,6 +102,13 @@ struct pmbus_data {
+@@ -107,6 +107,13 @@ struct pmbus_data {
  
- 	s16 currpage;	/* current page, -1 for unknown/unset */
- 	s16 currphase;	/* current phase, 0xff for all, -1 for unknown/unset */
+ 	int vout_low[PMBUS_PAGES];	/* voltage low margin */
+ 	int vout_high[PMBUS_PAGES];	/* voltage high margin */
 +
 +	/* Inventec -
 +	 * fixed fan_config value
@@ -165,20 +164,20 @@ index f495f0e79392..a224b3b0a1ad 100644
  };
  
  struct pmbus_debugfs_entry {
-@@ -292,18 +299,22 @@ int pmbus_update_fan(struct i2c_client *client, int page, int id,
+@@ -333,18 +340,22 @@ int pmbus_update_fan(struct i2c_client *client, int page, int id,
  	int from;
  	int rv;
  	u8 to;
 +	struct pmbus_data *data = i2c_get_clientdata(client);
  
--	from = pmbus_read_byte_data(client, page,
+-	from = _pmbus_read_byte_data(client, page,
 -				    pmbus_fan_config_registers[id]);
 -	if (from < 0)
 -		return from;
 -
 -	to = (from & ~mask) | (config & mask);
 -	if (to != from) {
--		rv = pmbus_write_byte_data(client, page,
+-		rv = _pmbus_write_byte_data(client, page,
 -					   pmbus_fan_config_registers[id], to);
 -		if (rv < 0)
 -			return rv;
@@ -199,12 +198,12 @@ index f495f0e79392..a224b3b0a1ad 100644
  	}
  
  	return _pmbus_write_word_data(client, page,
-@@ -465,8 +476,13 @@ static int pmbus_get_fan_rate(struct i2c_client *client, int page, int id,
+@@ -500,8 +511,13 @@ static int pmbus_get_fan_rate(struct i2c_client *client, int page, int id,
  		return s->data;
  	}
  
 -	config = _pmbus_read_byte_data(client, page,
--				       pmbus_fan_config_registers[id]);
+-				      pmbus_fan_config_registers[id]);
 +	// Inventec - check if we use fixed fan_config data
 +	if (data->fan_configs) {
 +		config = data->fan_configs[id];
@@ -215,7 +214,7 @@ index f495f0e79392..a224b3b0a1ad 100644
  	if (config < 0)
  		return config;
  
-@@ -623,7 +639,7 @@ static s64 pmbus_reg2data_linear(struct pmbus_data *data,
+@@ -734,7 +750,7 @@ static s64 pmbus_reg2data_linear(struct pmbus_data *data,
  	val = mantissa;
  
  	/* scale result to milli-units for all sensors except fans */
@@ -224,7 +223,7 @@ index f495f0e79392..a224b3b0a1ad 100644
  		val = val * 1000LL;
  
  	/* scale result to micro-units for power sensors */
-@@ -1956,8 +1972,13 @@ static int pmbus_add_fan_attributes(struct i2c_client *client,
+@@ -2203,8 +2219,13 @@ static int pmbus_add_fan_attributes(struct i2c_client *client,
  			 * Each fan configuration register covers multiple fans,
  			 * so we have to do some magic.
  			 */
@@ -236,11 +235,11 @@ index f495f0e79392..a224b3b0a1ad 100644
 +			} else {
 +				regval = _pmbus_read_byte_data(client, page,
 +					pmbus_fan_config_registers[f]);
-+			}
++			}			
  			if (regval < 0 ||
  			    (!(regval & (PB_FAN_1_INSTALLED >> ((f & 1) * 4)))))
  				continue;
-@@ -2118,6 +2139,23 @@ static int pmbus_add_samples_attributes(struct i2c_client *client,
+@@ -2365,6 +2386,23 @@ static int pmbus_add_samples_attributes(struct i2c_client *client,
  	return 0;
  }
  
@@ -264,7 +263,7 @@ index f495f0e79392..a224b3b0a1ad 100644
  static int pmbus_find_attributes(struct i2c_client *client,
  				 struct pmbus_data *data)
  {
-@@ -2147,6 +2185,11 @@ static int pmbus_find_attributes(struct i2c_client *client,
+@@ -2394,6 +2432,11 @@ static int pmbus_find_attributes(struct i2c_client *client,
  	if (ret)
  		return ret;
  
@@ -276,17 +275,17 @@ index f495f0e79392..a224b3b0a1ad 100644
  	/* Fans */
  	ret = pmbus_add_fan_attributes(client, data);
  	if (ret)
-@@ -2716,6 +2759,7 @@ int pmbus_do_probe(struct i2c_client *client, struct pmbus_driver_info *info)
- 	struct pmbus_data *data;
+@@ -3330,6 +3373,7 @@ int pmbus_do_probe(struct i2c_client *client, struct pmbus_driver_info *info)
  	size_t groups_num = 0;
  	int ret;
+ 	int i;
 +	u8 fan_configs[2] = {0}; // currently only consider fan_config_1_2 and fan_config_3_4
  	char *name;
  
  	if (!info)
-@@ -2749,6 +2793,26 @@ int pmbus_do_probe(struct i2c_client *client, struct pmbus_driver_info *info)
- 	data->currpage = -1;
- 	data->currphase = -1;
+@@ -3368,6 +3412,26 @@ int pmbus_do_probe(struct i2c_client *client, struct pmbus_driver_info *info)
+ 		data->vout_high[i] = -1;
+ 	}
  
 +	/* Inventec - Add fan configs*/
 +	ret = of_property_read_u8_array(dev->of_node, "fan_configs",
@@ -312,5 +311,5 @@ index f495f0e79392..a224b3b0a1ad 100644
  	if (ret < 0)
  		return ret;
 -- 
-2.17.1
+2.25.1
 

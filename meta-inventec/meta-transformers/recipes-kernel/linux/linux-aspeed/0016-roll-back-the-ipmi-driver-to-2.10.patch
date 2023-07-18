@@ -1,90 +1,48 @@
-From 3cf30fe5535a807534e8e462a884090184a427dd Mon Sep 17 00:00:00 2001
-From: "Fred.Chang" <chang.fredys@inventec.com>
-Date: Wed, 22 Jun 2022 16:14:08 +0800
+From 5d3b73664537fbb25caa16654b0c314208212da6 Mon Sep 17 00:00:00 2001
+From: "liz.chiu" <Chiu.Liz@inventec.com>
+Date: Wed, 12 Jul 2023 18:40:03 +0800
 Subject: [PATCH] roll back the ipmi driver to 2.10.
 
 ---
- drivers/char/ipmi/Kconfig             |  44 --
+ drivers/char/ipmi/Kconfig             |  43 --
  drivers/char/ipmi/Makefile            |   3 -
  drivers/char/ipmi/bt-bmc.c            |  74 ++-
- drivers/char/ipmi/ipmb_dev_int.c      |  24 +-
- drivers/char/ipmi/ipmi_bt_sm.c        |   0
+ drivers/char/ipmi/ipmb_dev_int.c      |  25 +-
  drivers/char/ipmi/ipmi_devintf.c      |   1 +
- drivers/char/ipmi/ipmi_dmi.c          |   0
- drivers/char/ipmi/ipmi_dmi.h          |   0
- drivers/char/ipmi/ipmi_kcs_sm.c       |   0
- drivers/char/ipmi/ipmi_msghandler.c   |  74 +--
+ drivers/char/ipmi/ipmi_msghandler.c   |  74 ++-
  drivers/char/ipmi/ipmi_plat_data.c    |   2 +-
- drivers/char/ipmi/ipmi_plat_data.h    |   0
- drivers/char/ipmi/ipmi_powernv.c      |   0
- drivers/char/ipmi/ipmi_poweroff.c     |   0
  drivers/char/ipmi/ipmi_si.h           |  10 +-
  drivers/char/ipmi/ipmi_si_hardcode.c  |  73 ++-
  drivers/char/ipmi/ipmi_si_hotmod.c    |  24 +-
- drivers/char/ipmi/ipmi_si_intf.c      |  67 ++-
- drivers/char/ipmi/ipmi_si_mem_io.c    |   0
+ drivers/char/ipmi/ipmi_si_intf.c      |  67 +-
  drivers/char/ipmi/ipmi_si_parisc.c    |   4 +-
  drivers/char/ipmi/ipmi_si_pci.c       |  22 +-
- drivers/char/ipmi/ipmi_si_platform.c  |  99 ++--
- drivers/char/ipmi/ipmi_si_port_io.c   |   0
- drivers/char/ipmi/ipmi_si_sm.h        |   0
- drivers/char/ipmi/ipmi_smic_sm.c      |   0
- drivers/char/ipmi/ipmi_ssif.c         |  81 +++-
- drivers/char/ipmi/ipmi_watchdog.c     |  47 +-
- drivers/char/ipmi/kcs_bmc.c           | 505 +++++++++++++++-----
- drivers/char/ipmi/kcs_bmc.h           |  92 +++-
- drivers/char/ipmi/kcs_bmc_aspeed.c    | 635 +++++++-------------------
- drivers/char/ipmi/kcs_bmc_cdev_ipmi.c | 568 -----------------------
- drivers/char/ipmi/kcs_bmc_cdev_raw.c  | 447 ------------------
+ drivers/char/ipmi/ipmi_si_platform.c  |  99 +--
+ drivers/char/ipmi/ipmi_ssif.c         |  81 ++-
+ drivers/char/ipmi/ipmi_watchdog.c     |  48 +-
+ drivers/char/ipmi/kcs_bmc.c           | 505 +++++++++++----
+ drivers/char/ipmi/kcs_bmc.h           |  92 ++-
+ drivers/char/ipmi/kcs_bmc_aspeed.c    | 649 ++++++-------------
+ drivers/char/ipmi/kcs_bmc_cdev_ipmi.c | 568 -----------------
+ drivers/char/ipmi/kcs_bmc_cdev_raw.c  | 447 -------------
  drivers/char/ipmi/kcs_bmc_client.h    |  45 --
  drivers/char/ipmi/kcs_bmc_device.h    |  22 -
- drivers/char/ipmi/kcs_bmc_npcm7xx.c   |  92 ++--
- drivers/char/ipmi/kcs_bmc_serio.c     | 159 -------
- 36 files changed, 1042 insertions(+), 2172 deletions(-)
- mode change 100644 => 100755 drivers/char/ipmi/Kconfig
- mode change 100644 => 100755 drivers/char/ipmi/Makefile
- mode change 100644 => 100755 drivers/char/ipmi/bt-bmc.c
- mode change 100644 => 100755 drivers/char/ipmi/ipmb_dev_int.c
- mode change 100644 => 100755 drivers/char/ipmi/ipmi_bt_sm.c
- mode change 100644 => 100755 drivers/char/ipmi/ipmi_devintf.c
- mode change 100644 => 100755 drivers/char/ipmi/ipmi_dmi.c
- mode change 100644 => 100755 drivers/char/ipmi/ipmi_dmi.h
- mode change 100644 => 100755 drivers/char/ipmi/ipmi_kcs_sm.c
- mode change 100644 => 100755 drivers/char/ipmi/ipmi_msghandler.c
- mode change 100644 => 100755 drivers/char/ipmi/ipmi_plat_data.c
- mode change 100644 => 100755 drivers/char/ipmi/ipmi_plat_data.h
- mode change 100644 => 100755 drivers/char/ipmi/ipmi_powernv.c
- mode change 100644 => 100755 drivers/char/ipmi/ipmi_poweroff.c
- mode change 100644 => 100755 drivers/char/ipmi/ipmi_si.h
- mode change 100644 => 100755 drivers/char/ipmi/ipmi_si_hardcode.c
- mode change 100644 => 100755 drivers/char/ipmi/ipmi_si_hotmod.c
- mode change 100644 => 100755 drivers/char/ipmi/ipmi_si_intf.c
- mode change 100644 => 100755 drivers/char/ipmi/ipmi_si_mem_io.c
- mode change 100644 => 100755 drivers/char/ipmi/ipmi_si_parisc.c
- mode change 100644 => 100755 drivers/char/ipmi/ipmi_si_pci.c
- mode change 100644 => 100755 drivers/char/ipmi/ipmi_si_platform.c
- mode change 100644 => 100755 drivers/char/ipmi/ipmi_si_port_io.c
- mode change 100644 => 100755 drivers/char/ipmi/ipmi_si_sm.h
- mode change 100644 => 100755 drivers/char/ipmi/ipmi_smic_sm.c
- mode change 100644 => 100755 drivers/char/ipmi/ipmi_ssif.c
- mode change 100644 => 100755 drivers/char/ipmi/ipmi_watchdog.c
- mode change 100644 => 100755 drivers/char/ipmi/kcs_bmc.c
- mode change 100644 => 100755 drivers/char/ipmi/kcs_bmc.h
- mode change 100644 => 100755 drivers/char/ipmi/kcs_bmc_aspeed.c
+ drivers/char/ipmi/kcs_bmc_npcm7xx.c   |  92 +--
+ drivers/char/ipmi/kcs_bmc_serio.c     | 159 -----
+ drivers/char/ipmi/ssif_bmc.c          | 873 --------------------------
+ 26 files changed, 1049 insertions(+), 3053 deletions(-)
  delete mode 100644 drivers/char/ipmi/kcs_bmc_cdev_ipmi.c
  delete mode 100644 drivers/char/ipmi/kcs_bmc_cdev_raw.c
  delete mode 100644 drivers/char/ipmi/kcs_bmc_client.h
  delete mode 100644 drivers/char/ipmi/kcs_bmc_device.h
- mode change 100644 => 100755 drivers/char/ipmi/kcs_bmc_npcm7xx.c
  delete mode 100644 drivers/char/ipmi/kcs_bmc_serio.c
+ delete mode 100644 drivers/char/ipmi/ssif_bmc.c
 
 diff --git a/drivers/char/ipmi/Kconfig b/drivers/char/ipmi/Kconfig
-old mode 100644
-new mode 100755
-index 19f1efc0bc3d..07847d9a459a
+index 8be37ea990cc..4ad1ba8f91e8 100644
 --- a/drivers/char/ipmi/Kconfig
 +++ b/drivers/char/ipmi/Kconfig
-@@ -124,50 +124,6 @@ config NPCM7XX_KCS_IPMI_BMC
+@@ -133,49 +133,6 @@ config NPCM7XX_KCS_IPMI_BMC
  	  This support is also available as a module.  If so, the module
  	  will be called kcs_bmc_npcm7xx.
  
@@ -131,17 +89,14 @@ index 19f1efc0bc3d..07847d9a459a
 -
 -	  This support is also available as a module. The module will be
 -	  called kcs_bmc_cdev_raw.
--
+ 
  config ASPEED_BT_IPMI_BMC
  	depends on ARCH_ASPEED || COMPILE_TEST
- 	depends on REGMAP && REGMAP_MMIO && MFD_SYSCON
 diff --git a/drivers/char/ipmi/Makefile b/drivers/char/ipmi/Makefile
-old mode 100644
-new mode 100755
-index 3390985b4802..0822adc2ec41
+index e8910e15d7c5..709e89149c11 100644
 --- a/drivers/char/ipmi/Makefile
 +++ b/drivers/char/ipmi/Makefile
-@@ -23,9 +23,6 @@ obj-$(CONFIG_IPMI_POWERNV) += ipmi_powernv.o
+@@ -24,9 +24,6 @@ obj-$(CONFIG_IPMI_POWERNV) += ipmi_powernv.o
  obj-$(CONFIG_IPMI_WATCHDOG) += ipmi_watchdog.o
  obj-$(CONFIG_IPMI_POWEROFF) += ipmi_poweroff.o
  obj-$(CONFIG_IPMI_KCS_BMC) += kcs_bmc.o
@@ -152,9 +107,7 @@ index 3390985b4802..0822adc2ec41
  obj-$(CONFIG_ASPEED_KCS_IPMI_BMC) += kcs_bmc_aspeed.o
  obj-$(CONFIG_NPCM7XX_KCS_IPMI_BMC) += kcs_bmc_npcm7xx.o
 diff --git a/drivers/char/ipmi/bt-bmc.c b/drivers/char/ipmi/bt-bmc.c
-old mode 100644
-new mode 100755
-index 7450904e330a..a514f531cb34
+index 7450904e330a..a514f531cb34 100644
 --- a/drivers/char/ipmi/bt-bmc.c
 +++ b/drivers/char/ipmi/bt-bmc.c
 @@ -8,11 +8,13 @@
@@ -314,9 +267,7 @@ index 7450904e330a..a514f531cb34
  	clr_b_busy(bt_bmc);
  
 diff --git a/drivers/char/ipmi/ipmb_dev_int.c b/drivers/char/ipmi/ipmb_dev_int.c
-old mode 100644
-new mode 100755
-index 49b8f22fdcf0..382b28f1cf2f
+index a0e9e80d92ee..b21b66eb6bcc 100644
 --- a/drivers/char/ipmi/ipmb_dev_int.c
 +++ b/drivers/char/ipmi/ipmb_dev_int.c
 @@ -137,7 +137,7 @@ static ssize_t ipmb_write(struct file *file, const char __user *buf,
@@ -328,7 +279,7 @@ index 49b8f22fdcf0..382b28f1cf2f
  	u8 msg[MAX_MSG_LEN];
  	ssize_t ret;
  
-@@ -160,21 +160,21 @@ static ssize_t ipmb_write(struct file *file, const char __user *buf,
+@@ -160,21 +160,20 @@ static ssize_t ipmb_write(struct file *file, const char __user *buf,
  	}
  
  	/*
@@ -337,7 +288,7 @@ index 49b8f22fdcf0..382b28f1cf2f
 +	 * subtract rq_sa and netf_rq_lun from the length of the msg passed to
 +	 * i2c_smbus_xfer
  	 */
- 	msg_len = msg[IPMB_MSG_LEN_IDX] - SMBUS_MSG_HEADER_LENGTH;
+-	msg_len = msg[IPMB_MSG_LEN_IDX] - SMBUS_MSG_HEADER_LENGTH;
 -	temp_client = kmemdup(ipmb_dev->client, sizeof(*temp_client), GFP_KERNEL);
 -	if (!temp_client)
 -		return -ENOMEM;
@@ -361,16 +312,11 @@ index 49b8f22fdcf0..382b28f1cf2f
  }
  
  static __poll_t ipmb_poll(struct file *file, poll_table *wait)
-diff --git a/drivers/char/ipmi/ipmi_bt_sm.c b/drivers/char/ipmi/ipmi_bt_sm.c
-old mode 100644
-new mode 100755
 diff --git a/drivers/char/ipmi/ipmi_devintf.c b/drivers/char/ipmi/ipmi_devintf.c
-old mode 100644
-new mode 100755
-index 3dd1d5abb298..f7b1c004a12b
+index d160fa4c73fe..e2048b5152b1 100644
 --- a/drivers/char/ipmi/ipmi_devintf.c
 +++ b/drivers/char/ipmi/ipmi_devintf.c
-@@ -490,6 +490,7 @@ static long ipmi_ioctl(struct file   *file,
+@@ -492,6 +492,7 @@ static long ipmi_ioctl(struct file   *file,
  		}
  
  		return ipmi_set_my_address(priv->user, val.channel, val.value);
@@ -378,19 +324,8 @@ index 3dd1d5abb298..f7b1c004a12b
  	}
  
  	case IPMICTL_GET_MY_CHANNEL_ADDRESS_CMD:
-diff --git a/drivers/char/ipmi/ipmi_dmi.c b/drivers/char/ipmi/ipmi_dmi.c
-old mode 100644
-new mode 100755
-diff --git a/drivers/char/ipmi/ipmi_dmi.h b/drivers/char/ipmi/ipmi_dmi.h
-old mode 100644
-new mode 100755
-diff --git a/drivers/char/ipmi/ipmi_kcs_sm.c b/drivers/char/ipmi/ipmi_kcs_sm.c
-old mode 100644
-new mode 100755
 diff --git a/drivers/char/ipmi/ipmi_msghandler.c b/drivers/char/ipmi/ipmi_msghandler.c
-old mode 100644
-new mode 100755
-index a08f53f208bf..8774a3b8ff95
+index 5d403fb5bd92..eff9210d1934 100644
 --- a/drivers/char/ipmi/ipmi_msghandler.c
 +++ b/drivers/char/ipmi/ipmi_msghandler.c
 @@ -16,7 +16,6 @@
@@ -479,7 +414,7 @@ index a08f53f208bf..8774a3b8ff95
  }
  
  static const struct kernel_param_ops panic_op_ops = {
-@@ -735,8 +747,7 @@ int ipmi_smi_watcher_register(struct ipmi_smi_watcher *watcher)
+@@ -754,8 +766,7 @@ int ipmi_smi_watcher_register(struct ipmi_smi_watcher *watcher)
  	list_add(&watcher->link, &smi_watchers);
  
  	index = srcu_read_lock(&ipmi_interfaces_srcu);
@@ -489,7 +424,7 @@ index a08f53f208bf..8774a3b8ff95
  		int intf_num = READ_ONCE(intf->intf_num);
  
  		if (intf_num == -1)
-@@ -2435,8 +2446,10 @@ static int __get_device_id(struct ipmi_smi *intf, struct bmc_device *bmc)
+@@ -2571,8 +2582,10 @@ static int __get_device_id(struct ipmi_smi *intf, struct bmc_device *bmc)
  	wait_event(intf->waitq, bmc->dyn_id_set != 2);
  
  	if (!bmc->dyn_id_set) {
@@ -502,7 +437,7 @@ index a08f53f208bf..8774a3b8ff95
  			msleep(500);
  			dev_warn(intf->si_dev,
  			    "BMC returned 0x%2.2x, retry get bmc device id\n",
-@@ -4789,9 +4802,7 @@ static atomic_t recv_msg_inuse_count = ATOMIC_INIT(0);
+@@ -5128,9 +5141,7 @@ static atomic_t recv_msg_inuse_count = ATOMIC_INIT(0);
  static void free_smi_msg(struct ipmi_smi_msg *msg)
  {
  	atomic_dec(&smi_msg_inuse_count);
@@ -513,7 +448,7 @@ index a08f53f208bf..8774a3b8ff95
  }
  
  struct ipmi_smi_msg *ipmi_alloc_smi_msg(void)
-@@ -4810,9 +4821,7 @@ EXPORT_SYMBOL(ipmi_alloc_smi_msg);
+@@ -5150,9 +5161,7 @@ EXPORT_SYMBOL(ipmi_alloc_smi_msg);
  static void free_recv_msg(struct ipmi_recv_msg *msg)
  {
  	atomic_dec(&recv_msg_inuse_count);
@@ -524,7 +459,7 @@ index a08f53f208bf..8774a3b8ff95
  }
  
  static struct ipmi_recv_msg *ipmi_alloc_recv_msg(void)
-@@ -4830,7 +4839,7 @@ static struct ipmi_recv_msg *ipmi_alloc_recv_msg(void)
+@@ -5170,7 +5179,7 @@ static struct ipmi_recv_msg *ipmi_alloc_recv_msg(void)
  
  void ipmi_free_recv_msg(struct ipmi_recv_msg *msg)
  {
@@ -533,7 +468,7 @@ index a08f53f208bf..8774a3b8ff95
  		kref_put(&msg->user->refcount, free_user);
  	msg->done(msg);
  }
-@@ -5214,6 +5223,7 @@ module_exit(cleanup_ipmi);
+@@ -5568,6 +5577,7 @@ module_exit(cleanup_ipmi);
  module_init(ipmi_init_msghandler_mod);
  MODULE_LICENSE("GPL");
  MODULE_AUTHOR("Corey Minyard <minyard@mvista.com>");
@@ -543,9 +478,7 @@ index a08f53f208bf..8774a3b8ff95
  MODULE_VERSION(IPMI_DRIVER_VERSION);
  MODULE_SOFTDEP("post: ipmi_devintf");
 diff --git a/drivers/char/ipmi/ipmi_plat_data.c b/drivers/char/ipmi/ipmi_plat_data.c
-old mode 100644
-new mode 100755
-index 747b51ae01a8..28471ff2a3a3
+index 747b51ae01a8..28471ff2a3a3 100644
 --- a/drivers/char/ipmi/ipmi_plat_data.c
 +++ b/drivers/char/ipmi/ipmi_plat_data.c
 @@ -102,7 +102,7 @@ struct platform_device *ipmi_platform_add(const char *name, unsigned int inst,
@@ -557,19 +490,8 @@ index 747b51ae01a8..28471ff2a3a3
  	if (rv) {
  		dev_err(&pdev->dev,
  			"Unable to add hard-code properties: %d\n", rv);
-diff --git a/drivers/char/ipmi/ipmi_plat_data.h b/drivers/char/ipmi/ipmi_plat_data.h
-old mode 100644
-new mode 100755
-diff --git a/drivers/char/ipmi/ipmi_powernv.c b/drivers/char/ipmi/ipmi_powernv.c
-old mode 100644
-new mode 100755
-diff --git a/drivers/char/ipmi/ipmi_poweroff.c b/drivers/char/ipmi/ipmi_poweroff.c
-old mode 100644
-new mode 100755
 diff --git a/drivers/char/ipmi/ipmi_si.h b/drivers/char/ipmi/ipmi_si.h
-old mode 100644
-new mode 100755
-index a7ead2a4c753..bac0ff86e48e
+index a7ead2a4c753..bac0ff86e48e 100644
 --- a/drivers/char/ipmi/ipmi_si.h
 +++ b/drivers/char/ipmi/ipmi_si.h
 @@ -18,14 +18,10 @@
@@ -607,9 +529,7 @@ index a7ead2a4c753..bac0ff86e48e
  				      unsigned long addr);
  void ipmi_hardcode_init(void);
 diff --git a/drivers/char/ipmi/ipmi_si_hardcode.c b/drivers/char/ipmi/ipmi_si_hardcode.c
-old mode 100644
-new mode 100755
-index ed5e91b1e040..f6ece7569504
+index ed5e91b1e040..f6ece7569504 100644
 --- a/drivers/char/ipmi/ipmi_si_hardcode.c
 +++ b/drivers/char/ipmi/ipmi_si_hardcode.c
 @@ -32,29 +32,47 @@ static int slave_addrs[SI_MAX_PARMS] __initdata;
@@ -713,9 +633,7 @@ index ed5e91b1e040..f6ece7569504
  
  	p.regsize = regsizes[i];
 diff --git a/drivers/char/ipmi/ipmi_si_hotmod.c b/drivers/char/ipmi/ipmi_si_hotmod.c
-old mode 100644
-new mode 100755
-index 6b12a83ccd4c..4fbb4e18bae2
+index 6b12a83ccd4c..4fbb4e18bae2 100644
 --- a/drivers/char/ipmi/ipmi_si_hotmod.c
 +++ b/drivers/char/ipmi/ipmi_si_hotmod.c
 @@ -17,8 +17,9 @@
@@ -773,9 +691,7 @@ index 6b12a83ccd4c..4fbb4e18bae2
  	kfree(str);
  	return rv;
 diff --git a/drivers/char/ipmi/ipmi_si_intf.c b/drivers/char/ipmi/ipmi_si_intf.c
-old mode 100644
-new mode 100755
-index 6f3272b58ced..5eac94cf4ff8
+index abddd7e43a9a..1b3b00fbb408 100644
 --- a/drivers/char/ipmi/ipmi_si_intf.c
 +++ b/drivers/char/ipmi/ipmi_si_intf.c
 @@ -70,8 +70,7 @@ enum si_intf_state {
@@ -788,7 +704,7 @@ index 6f3272b58ced..5eac94cf4ff8
  
  static bool initialized;
  
-@@ -591,7 +590,7 @@ static void handle_transaction_done(struct smi_info *smi_info)
+@@ -592,7 +591,7 @@ static void handle_transaction_done(struct smi_info *smi_info)
  		smi_info->handlers->get_result(smi_info->si_sm, msg, 3);
  		if (msg[2] != 0) {
  			/* Error clearing flags */
@@ -797,7 +713,7 @@ index 6f3272b58ced..5eac94cf4ff8
  				 "Error clearing flags: %2.2x\n", msg[2]);
  		}
  		smi_info->si_state = SI_NORMAL;
-@@ -683,10 +682,10 @@ static void handle_transaction_done(struct smi_info *smi_info)
+@@ -684,10 +683,10 @@ static void handle_transaction_done(struct smi_info *smi_info)
  		/* We got the flags from the SMI, now handle them. */
  		smi_info->handlers->get_result(smi_info->si_sm, msg, 4);
  		if (msg[2] != 0) {
@@ -812,7 +728,7 @@ index 6f3272b58ced..5eac94cf4ff8
  			smi_info->si_state = SI_NORMAL;
  			break;
  		}
-@@ -721,7 +720,7 @@ static void handle_transaction_done(struct smi_info *smi_info)
+@@ -722,7 +721,7 @@ static void handle_transaction_done(struct smi_info *smi_info)
  
  		smi_info->handlers->get_result(smi_info->si_sm, msg, 4);
  		if (msg[2] != 0)
@@ -821,7 +737,7 @@ index 6f3272b58ced..5eac94cf4ff8
  				 "Could not set the global enables: 0x%x.\n",
  				 msg[2]);
  
-@@ -1170,8 +1169,9 @@ static int smi_start_processing(void            *send_info,
+@@ -1171,8 +1170,9 @@ static int smi_start_processing(void            *send_info,
  		new_smi->thread = kthread_run(ipmi_thread, new_smi,
  					      "kipmi%d", new_smi->si_num);
  		if (IS_ERR(new_smi->thread)) {
@@ -833,7 +749,7 @@ index 6f3272b58ced..5eac94cf4ff8
  				   PTR_ERR(new_smi->thread));
  			new_smi->thread = NULL;
  		}
-@@ -1223,14 +1223,18 @@ static int smi_num; /* Used to sequence the SMIs */
+@@ -1224,14 +1224,18 @@ static int smi_num; /* Used to sequence the SMIs */
  static const char * const addr_space_to_str[] = { "i/o", "mem" };
  
  module_param_array(force_kipmid, int, &num_force_kipmid, 0);
@@ -857,7 +773,7 @@ index 6f3272b58ced..5eac94cf4ff8
  
  void ipmi_irq_finish_setup(struct si_sm_io *io)
  {
-@@ -1266,7 +1270,8 @@ int ipmi_std_irq_setup(struct si_sm_io *io)
+@@ -1267,7 +1271,8 @@ int ipmi_std_irq_setup(struct si_sm_io *io)
  			 SI_DEVICE_NAME,
  			 io->irq_handler_data);
  	if (rv) {
@@ -867,7 +783,7 @@ index 6f3272b58ced..5eac94cf4ff8
  			 SI_DEVICE_NAME, io->irq);
  		io->irq = 0;
  	} else {
-@@ -1341,9 +1346,11 @@ static int try_get_dev_id(struct smi_info *smi_info)
+@@ -1342,9 +1347,11 @@ static int try_get_dev_id(struct smi_info *smi_info)
  		/* record completion code */
  		unsigned char cc = *(resp + 2);
  
@@ -882,27 +798,27 @@ index 6f3272b58ced..5eac94cf4ff8
  			    "BMC returned 0x%2.2x, retry get bmc device id\n",
  			    cc);
  			goto retry;
-@@ -1605,7 +1612,7 @@ static ssize_t name##_show(struct device *dev,			\
+@@ -1606,7 +1613,7 @@ static ssize_t name##_show(struct device *dev,			\
  									\
- 	return snprintf(buf, 10, "%u\n", smi_get_stat(smi_info, name));	\
+ 	return sysfs_emit(buf, "%u\n", smi_get_stat(smi_info, name));	\
  }									\
 -static DEVICE_ATTR_RO(name)
 +static DEVICE_ATTR(name, 0444, name##_show, NULL)
  
  static ssize_t type_show(struct device *dev,
  			 struct device_attribute *attr,
-@@ -1615,7 +1622,7 @@ static ssize_t type_show(struct device *dev,
+@@ -1616,7 +1623,7 @@ static ssize_t type_show(struct device *dev,
  
- 	return snprintf(buf, 10, "%s\n", si_to_str[smi_info->io.si_type]);
+ 	return sysfs_emit(buf, "%s\n", si_to_str[smi_info->io.si_type]);
  }
 -static DEVICE_ATTR_RO(type);
 +static DEVICE_ATTR(type, 0444, type_show, NULL);
  
  static ssize_t interrupts_enabled_show(struct device *dev,
  				       struct device_attribute *attr,
-@@ -1626,7 +1633,8 @@ static ssize_t interrupts_enabled_show(struct device *dev,
+@@ -1627,7 +1634,8 @@ static ssize_t interrupts_enabled_show(struct device *dev,
  
- 	return snprintf(buf, 10, "%d\n", enabled);
+ 	return sysfs_emit(buf, "%d\n", enabled);
  }
 -static DEVICE_ATTR_RO(interrupts_enabled);
 +static DEVICE_ATTR(interrupts_enabled, 0444,
@@ -910,7 +826,7 @@ index 6f3272b58ced..5eac94cf4ff8
  
  IPMI_SI_ATTR(short_timeouts);
  IPMI_SI_ATTR(long_timeouts);
-@@ -1657,7 +1665,7 @@ static ssize_t params_show(struct device *dev,
+@@ -1658,7 +1666,7 @@ static ssize_t params_show(struct device *dev,
  			smi_info->io.irq,
  			smi_info->io.slave_addr);
  }
@@ -919,7 +835,7 @@ index 6f3272b58ced..5eac94cf4ff8
  
  static struct attribute *ipmi_si_dev_attrs[] = {
  	&dev_attr_type.attr,
-@@ -2199,6 +2207,10 @@ static void shutdown_smi(void *send_info)
+@@ -2211,6 +2219,10 @@ static void shutdown_smi(void *send_info)
  	if (smi_info->handlers)
  		smi_info->handlers->cleanup(smi_info->si_sm);
  
@@ -930,7 +846,7 @@ index 6f3272b58ced..5eac94cf4ff8
  	if (smi_info->io.io_cleanup) {
  		smi_info->io.io_cleanup(&smi_info->io);
  		smi_info->io.io_cleanup = NULL;
-@@ -2227,18 +2239,22 @@ static void cleanup_one_si(struct smi_info *smi_info)
+@@ -2236,18 +2248,22 @@ static void cleanup_one_si(struct smi_info *smi_info)
  	kfree(smi_info);
  }
  
@@ -944,7 +860,7 @@ index 6f3272b58ced..5eac94cf4ff8
  	list_for_each_entry(e, &smi_infos, link) {
  		if (e->io.dev == dev) {
  			cleanup_one_si(e);
-+			rv = 0;
++			rv = 0;			
  			break;
  		}
  	}
@@ -954,20 +870,15 @@ index 6f3272b58ced..5eac94cf4ff8
  }
  
  struct device *ipmi_si_remove_by_data(int addr_space, enum si_type si_type,
-@@ -2290,4 +2306,5 @@ module_exit(cleanup_ipmi_si);
+@@ -2299,4 +2315,5 @@ module_exit(cleanup_ipmi_si);
  MODULE_ALIAS("platform:dmi-ipmi-si");
  MODULE_LICENSE("GPL");
  MODULE_AUTHOR("Corey Minyard <minyard@mvista.com>");
 -MODULE_DESCRIPTION("Interface to the IPMI driver for the KCS, SMIC, and BT system interfaces.");
 +MODULE_DESCRIPTION("Interface to the IPMI driver for the KCS, SMIC, and BT"
 +		   " system interfaces.");
-diff --git a/drivers/char/ipmi/ipmi_si_mem_io.c b/drivers/char/ipmi/ipmi_si_mem_io.c
-old mode 100644
-new mode 100755
 diff --git a/drivers/char/ipmi/ipmi_si_parisc.c b/drivers/char/ipmi/ipmi_si_parisc.c
-old mode 100644
-new mode 100755
-index 2be2967f6b5f..11c9160275df
+index 2be2967f6b5f..11c9160275df 100644
 --- a/drivers/char/ipmi/ipmi_si_parisc.c
 +++ b/drivers/char/ipmi/ipmi_si_parisc.c
 @@ -29,9 +29,9 @@ static int __init ipmi_parisc_probe(struct parisc_device *dev)
@@ -983,9 +894,7 @@ index 2be2967f6b5f..11c9160275df
  
  static const struct parisc_device_id ipmi_parisc_tbl[] __initconst = {
 diff --git a/drivers/char/ipmi/ipmi_si_pci.c b/drivers/char/ipmi/ipmi_si_pci.c
-old mode 100644
-new mode 100755
-index 74fa2055868b..95bbcfba5408
+index 74fa2055868b..28f8ea6978cb 100644
 --- a/drivers/char/ipmi/ipmi_si_pci.c
 +++ b/drivers/char/ipmi/ipmi_si_pci.c
 @@ -16,11 +16,18 @@ static bool pci_registered;
@@ -999,7 +908,7 @@ index 74fa2055868b..95bbcfba5408
  
  #define PCI_DEVICE_ID_HP_MMC 0x121A
  
-+static void ipmi_pci_cleanup(struct si_sm_io *io)
+++static void ipmi_pci_cleanup(struct si_sm_io *io)
 +{
 +	struct pci_dev *pdev = io->addr_source_data;
 +
@@ -1040,9 +949,7 @@ index 74fa2055868b..95bbcfba5408
  
  static void ipmi_pci_remove(struct pci_dev *pdev)
 diff --git a/drivers/char/ipmi/ipmi_si_platform.c b/drivers/char/ipmi/ipmi_si_platform.c
-old mode 100644
-new mode 100755
-index 505cc978c97a..129b5713f187
+index 505cc978c97a..129b5713f187 100644
 --- a/drivers/char/ipmi/ipmi_si_platform.c
 +++ b/drivers/char/ipmi/ipmi_si_platform.c
 @@ -34,22 +34,23 @@ static bool          si_trydmi = false;
@@ -1254,19 +1161,8 @@ index 505cc978c97a..129b5713f187
  }
  
  static int pdev_match_name(struct device *dev, const void *data)
-diff --git a/drivers/char/ipmi/ipmi_si_port_io.c b/drivers/char/ipmi/ipmi_si_port_io.c
-old mode 100644
-new mode 100755
-diff --git a/drivers/char/ipmi/ipmi_si_sm.h b/drivers/char/ipmi/ipmi_si_sm.h
-old mode 100644
-new mode 100755
-diff --git a/drivers/char/ipmi/ipmi_smic_sm.c b/drivers/char/ipmi/ipmi_smic_sm.c
-old mode 100644
-new mode 100755
 diff --git a/drivers/char/ipmi/ipmi_ssif.c b/drivers/char/ipmi/ipmi_ssif.c
-old mode 100644
-new mode 100755
-index 20d5af92966d..0416b9c9d410
+index e1072809fe31..9534beee8307 100644
 --- a/drivers/char/ipmi/ipmi_ssif.c
 +++ b/drivers/char/ipmi/ipmi_ssif.c
 @@ -510,7 +510,7 @@ static int ipmi_ssif_thread(void *data)
@@ -1368,7 +1264,7 @@ index 20d5af92966d..0416b9c9d410
  		}
  	}
  
-@@ -882,6 +908,8 @@ static void msg_done_handler(struct ssif_info *ssif_info, int result,
+@@ -905,6 +931,8 @@ static void msg_done_handler(struct ssif_info *ssif_info, int result,
  static void msg_written_handler(struct ssif_info *ssif_info, int result,
  				unsigned char *data, unsigned int len)
  {
@@ -1377,7 +1273,7 @@ index 20d5af92966d..0416b9c9d410
  	/* We are single-threaded here, so no need for a lock. */
  	if (result < 0) {
  		ssif_info->retries_left--;
-@@ -944,9 +972,18 @@ static void msg_written_handler(struct ssif_info *ssif_info, int result,
+@@ -967,9 +995,18 @@ static void msg_written_handler(struct ssif_info *ssif_info, int result,
  			ssif_info->multi_data = NULL;
  		}
  
@@ -1399,7 +1295,7 @@ index 20d5af92966d..0416b9c9d410
  	} else {
  		/* Ready to request the result. */
  		unsigned long oflags, *flags;
-@@ -975,6 +1012,7 @@ static void msg_written_handler(struct ssif_info *ssif_info, int result,
+@@ -998,6 +1035,7 @@ static void msg_written_handler(struct ssif_info *ssif_info, int result,
  
  static int start_resend(struct ssif_info *ssif_info)
  {
@@ -1407,7 +1303,7 @@ index 20d5af92966d..0416b9c9d410
  	int command;
  
  	ssif_info->got_alert = false;
-@@ -996,9 +1034,12 @@ static int start_resend(struct ssif_info *ssif_info)
+@@ -1019,9 +1057,12 @@ static int start_resend(struct ssif_info *ssif_info)
  		ssif_info->data[0] = ssif_info->data_len;
  	}
  
@@ -1424,9 +1320,7 @@ index 20d5af92966d..0416b9c9d410
  
  static int start_send(struct ssif_info *ssif_info,
 diff --git a/drivers/char/ipmi/ipmi_watchdog.c b/drivers/char/ipmi/ipmi_watchdog.c
-old mode 100644
-new mode 100755
-index 883b4a341012..f78156d93c3f
+index 5b4e677929ca..2e5c64f851cb 100644
 --- a/drivers/char/ipmi/ipmi_watchdog.c
 +++ b/drivers/char/ipmi/ipmi_watchdog.c
 @@ -342,17 +342,13 @@ static atomic_t msg_tofree = ATOMIC_INIT(0);
@@ -1449,9 +1343,9 @@ index 883b4a341012..f78156d93c3f
 +	if (atomic_dec_and_test(&msg_tofree))
 +		complete(&msg_wait);
  }
- static struct ipmi_smi_msg smi_msg = {
- 	.done = msg_free_smi
-@@ -375,18 +371,16 @@ static int __ipmi_set_timeout(struct ipmi_smi_msg  *smi_msg,
+ static struct ipmi_smi_msg smi_msg = INIT_IPMI_SMI_MSG(msg_free_smi);
+ static struct ipmi_recv_msg recv_msg = INIT_IPMI_RECV_MSG(msg_free_recv);
+@@ -371,18 +367,17 @@ static int __ipmi_set_timeout(struct ipmi_smi_msg  *smi_msg,
  	data[0] = 0;
  	WDOG_SET_TIMER_USE(data[0], WDOG_TIMER_USE_SMS_OS);
  
@@ -1477,22 +1371,23 @@ index 883b4a341012..f78156d93c3f
 +		 * need to start it back up again.
 +		 */
 +		hbnow = 1;
++
  	}
  
  	data[1] = 0;
-@@ -438,10 +432,8 @@ static int _ipmi_set_timeout(int do_heartbeat)
+@@ -434,10 +429,8 @@ static int _ipmi_set_timeout(int do_heartbeat)
  	rv = __ipmi_set_timeout(&smi_msg,
  				&recv_msg,
  				&send_heartbeat_now);
 -	if (rv) {
 -		atomic_set(&msg_tofree, 0);
-+	if (rv)
++	if (rv) 
  		return rv;
 -	}
  
  	wait_for_completion(&msg_wait);
  
-@@ -503,7 +495,7 @@ static void panic_halt_ipmi_heartbeat(void)
+@@ -497,7 +490,7 @@ static void panic_halt_ipmi_heartbeat(void)
  	msg.cmd = IPMI_WDOG_RESET_TIMER;
  	msg.data = NULL;
  	msg.data_len = 0;
@@ -1501,7 +1396,7 @@ index 883b4a341012..f78156d93c3f
  	rv = ipmi_request_supply_msgs(watchdog_user,
  				      (struct ipmi_addr *) &addr,
  				      0,
-@@ -513,7 +505,7 @@ static void panic_halt_ipmi_heartbeat(void)
+@@ -507,7 +500,7 @@ static void panic_halt_ipmi_heartbeat(void)
  				      &panic_halt_heartbeat_recv_msg,
  				      1);
  	if (rv)
@@ -1509,8 +1404,8 @@ index 883b4a341012..f78156d93c3f
 +		atomic_sub(1, &panic_done_count);
  }
  
- static struct ipmi_smi_msg panic_halt_smi_msg = {
-@@ -537,12 +529,12 @@ static void panic_halt_ipmi_set_timeout(void)
+ static struct ipmi_smi_msg panic_halt_smi_msg =
+@@ -529,12 +522,12 @@ static void panic_halt_ipmi_set_timeout(void)
  	/* Wait for the messages to be free. */
  	while (atomic_read(&panic_done_count) != 0)
  		ipmi_poll_interface(watchdog_user);
@@ -1525,7 +1420,7 @@ index 883b4a341012..f78156d93c3f
  		pr_warn("Unable to extend the watchdog timeout\n");
  	} else {
  		if (send_heartbeat_now)
-@@ -586,7 +578,6 @@ static int __ipmi_heartbeat(void)
+@@ -578,7 +571,6 @@ static int __ipmi_heartbeat(void)
  				      &recv_msg,
  				      1);
  	if (rv) {
@@ -1534,9 +1429,7 @@ index 883b4a341012..f78156d93c3f
  		return rv;
  	}
 diff --git a/drivers/char/ipmi/kcs_bmc.c b/drivers/char/ipmi/kcs_bmc.c
-old mode 100644
-new mode 100755
-index 03d02a848f3a..f292e74bd4a5
+index 03d02a848f3a..f292e74bd4a5 100644
 --- a/drivers/char/ipmi/kcs_bmc.c
 +++ b/drivers/char/ipmi/kcs_bmc.c
 @@ -1,189 +1,458 @@
@@ -2117,9 +2010,7 @@ index 03d02a848f3a..f292e74bd4a5
 -MODULE_AUTHOR("Andrew Jeffery <andrew@aj.id.au>");
  MODULE_DESCRIPTION("KCS BMC to handle the IPMI request from system software");
 diff --git a/drivers/char/ipmi/kcs_bmc.h b/drivers/char/ipmi/kcs_bmc.h
-old mode 100644
-new mode 100755
-index fa408b802c79..eb9ea4ce78b8
+index fa408b802c79..d34240dcdee6 100644
 --- a/drivers/char/ipmi/kcs_bmc.h
 +++ b/drivers/char/ipmi/kcs_bmc.h
 @@ -6,14 +6,54 @@
@@ -2167,7 +2058,7 @@ index fa408b802c79..eb9ea4ce78b8
 +	KCS_PHASE_WAIT_READ,
 +	KCS_PHASE_READ,
 +
-+	KCS_PHASE_ABORT_ERROR1,
++KCS_PHASE_ABORT_ERROR1,
 +	KCS_PHASE_ABORT_ERROR2,
 +	KCS_PHASE_ERROR
 +};
@@ -2237,9 +2128,7 @@ index fa408b802c79..eb9ea4ce78b8
 +					u32 channel);
  #endif /* __KCS_BMC_H__ */
 diff --git a/drivers/char/ipmi/kcs_bmc_aspeed.c b/drivers/char/ipmi/kcs_bmc_aspeed.c
-old mode 100644
-new mode 100755
-index b555286016b1..5cc46c35de6f
+index 2dea8cd5a09a..787f3252a8d1 100644
 --- a/drivers/char/ipmi/kcs_bmc_aspeed.c
 +++ b/drivers/char/ipmi/kcs_bmc_aspeed.c
 @@ -9,12 +9,10 @@
@@ -2313,7 +2202,7 @@ index b555286016b1..5cc46c35de6f
  #define LPC_LADR3H           0x014
  #define LPC_LADR3L           0x018
  #define LPC_LADR12H          0x01C
-@@ -83,64 +52,21 @@
+@@ -83,59 +52,21 @@
  #define LPC_STR2             0x040
  #define LPC_STR3             0x044
  #define LPC_HICRB            0x100
@@ -2340,7 +2229,7 @@ index b555286016b1..5cc46c35de6f
 -#define     LPC_LSADR12_LSADR1_SHIFT 0
 -
 -#define OBE_POLL_PERIOD	     (HZ / 2)
--
+ 
 -enum aspeed_kcs_irq_mode {
 -	aspeed_kcs_irq_none,
 -	aspeed_kcs_irq_serirq,
@@ -2363,25 +2252,20 @@ index b555286016b1..5cc46c35de6f
 -	} obe;
  };
  
--struct aspeed_kcs_of_ops {
--	int (*get_channel)(struct platform_device *pdev);
--	int (*get_io_address)(struct platform_device *pdev, u32 addrs[2]);
--};
- 
 -static inline struct aspeed_kcs_bmc *to_aspeed_kcs_bmc(struct kcs_bmc_device *kcs_bmc)
-+static u8 aspeed_kcs_inb(struct kcs_bmc *kcs_bmc, u32 reg)
- {
+-{
 -	return container_of(kcs_bmc, struct aspeed_kcs_bmc, kcs_bmc);
 -}
 -
 -static u8 aspeed_kcs_inb(struct kcs_bmc_device *kcs_bmc, u32 reg)
--{
++static u8 aspeed_kcs_inb(struct kcs_bmc *kcs_bmc, u32 reg)
+ {
 -	struct aspeed_kcs_bmc *priv = to_aspeed_kcs_bmc(kcs_bmc);
 +	struct aspeed_kcs_bmc *priv = kcs_bmc_priv(kcs_bmc);
  	u32 val = 0;
  	int rc;
  
-@@ -150,66 +76,15 @@ static u8 aspeed_kcs_inb(struct kcs_bmc_device *kcs_bmc, u32 reg)
+@@ -145,66 +76,16 @@ static u8 aspeed_kcs_inb(struct kcs_bmc_device *kcs_bmc, u32 reg)
  	return rc == 0 ? (u8) val : 0;
  }
  
@@ -2443,16 +2327,16 @@ index b555286016b1..5cc46c35de6f
 -{
 -	struct aspeed_kcs_bmc *priv = to_aspeed_kcs_bmc(kcs_bmc);
 -	int rc;
--
+ 
 -	rc = regmap_update_bits(priv->map, reg, mask, val);
 -	WARN(rc != 0, "regmap_update_bits() failed: %d\n", rc);
 -}
  
  /*
-  * AST_usrGuide_KCS.pdf
-@@ -224,237 +99,118 @@ static void aspeed_kcs_updateb(struct kcs_bmc_device *kcs_bmc, u32 reg, u8 mask,
-  *     C. KCS4
-  *        D / C : CA4h / CA5h
+  * We note D for Data, and C for Cmd/Status, default rules are
+@@ -226,255 +107,117 @@ static void aspeed_kcs_updateb(struct kcs_bmc_device *kcs_bmc, u32 reg, u8 mask,
+  *   B. KCS3 (D/C: XX2/XX3h)
+  *      D/C: CA2h/CA3h
   */
 -static int aspeed_kcs_set_address(struct kcs_bmc_device *kcs_bmc, u32 addrs[2], int nr_addrs)
 +static void aspeed_kcs_set_address(struct kcs_bmc *kcs_bmc, u16 addr)
@@ -2549,7 +2433,8 @@ index b555286016b1..5cc46c35de6f
  {
 -	unsigned int mask, val, hw_type;
 -	int ret;
--
++	struct aspeed_kcs_bmc *priv = kcs_bmc_priv(kcs_bmc);
+ 
 -	if (id > 15)
 -		return -EINVAL;
 -
@@ -2560,8 +2445,7 @@ index b555286016b1..5cc46c35de6f
 -
 -	priv->upstream_irq.mode = aspeed_kcs_irq_serirq;
 -	priv->upstream_irq.id = id;
-+	struct aspeed_kcs_bmc *priv = kcs_bmc_priv(kcs_bmc);
- 
+-
 -	switch (priv->kcs_bmc.channel) {
 +	switch (kcs_bmc->channel) {
  	case 1:
@@ -2626,12 +2510,20 @@ index b555286016b1..5cc46c35de6f
 +					LPC_HICR2_IBFIF3, 0);
 +		}
  		break;
--	case 4:
+ 	case 4:
 -		mask = LPC_HICRC_ID4IRQX_MASK | LPC_HICRC_TY4IRQX_MASK | LPC_HICRC_OBF4_AUTO_CLR;
 -		val = (id << LPC_HICRC_ID4IRQX_SHIFT) | (hw_type << LPC_HICRC_TY4IRQX_SHIFT);
 -		regmap_update_bits(priv->map, LPC_HICRC, mask, val);
--		break;
--	default:
++		if (enable)
++			regmap_update_bits(priv->map, LPC_HICRB,
++					LPC_HICRB_IBFIF4 | LPC_HICRB_LPC4E,
++					LPC_HICRB_IBFIF4 | LPC_HICRB_LPC4E);
++		else
++			regmap_update_bits(priv->map, LPC_HICRB,
++					LPC_HICRB_IBFIF4 | LPC_HICRB_LPC4E,
++					0);
+ 		break;
+ 	default:
 -		dev_warn(priv->kcs_bmc.dev,
 -			 "SerIRQ configuration not supported on KCS channel %d\n",
 -			 priv->kcs_bmc.channel);
@@ -2644,7 +2536,7 @@ index b555286016b1..5cc46c35de6f
 -static void aspeed_kcs_enable_channel(struct kcs_bmc_device *kcs_bmc, bool enable)
 -{
 -	struct aspeed_kcs_bmc *priv = to_aspeed_kcs_bmc(kcs_bmc);
- 
+-
 -	switch (kcs_bmc->channel) {
 -	case 1:
 -		regmap_update_bits(priv->map, LPC_HICR0, LPC_HICR0_LPC1E, enable * LPC_HICR0_LPC1E);
@@ -2657,7 +2549,7 @@ index b555286016b1..5cc46c35de6f
 -		regmap_update_bits(priv->map, LPC_HICR4,
 -				   LPC_HICR4_KCSENBL, enable * LPC_HICR4_KCSENBL);
 -		return;
- 	case 4:
+-	case 4:
 -		regmap_update_bits(priv->map, LPC_HICRB, LPC_HICRB_LPC4E, enable * LPC_HICRB_LPC4E);
 -		return;
 -	default:
@@ -2692,21 +2584,32 @@ index b555286016b1..5cc46c35de6f
 -static void aspeed_kcs_irq_mask_update(struct kcs_bmc_device *kcs_bmc, u8 mask, u8 state)
 -{
 -	struct aspeed_kcs_bmc *priv = to_aspeed_kcs_bmc(kcs_bmc);
+-	int rc;
+-	u8 str;
 -
 -	/* We don't have an OBE IRQ, emulate it */
 -	if (mask & KCS_BMC_EVENT_TYPE_OBE) {
--		if (KCS_BMC_EVENT_TYPE_OBE & state)
--			mod_timer(&priv->obe.timer, jiffies + OBE_POLL_PERIOD);
-+		if (enable)
-+			regmap_update_bits(priv->map, LPC_HICRB,
-+					LPC_HICRB_IBFIF4 | LPC_HICRB_LPC4E,
-+					LPC_HICRB_IBFIF4 | LPC_HICRB_LPC4E);
- 		else
+-		if (KCS_BMC_EVENT_TYPE_OBE & state) {
+-			/*
+-			 * Given we don't have an OBE IRQ, delay by polling briefly to see if we can
+-			 * observe such an event before returning to the caller. This is not
+-			 * incorrect because OBF may have already become clear before enabling the
+-			 * IRQ if we had one, under which circumstance no event will be propagated
+-			 * anyway.
+-			 *
+-			 * The onus is on the client to perform a race-free check that it hasn't
+-			 * missed the event.
+-			 */
+-			rc = read_poll_timeout_atomic(aspeed_kcs_inb, str,
+-						      !(str & KCS_BMC_STR_OBF), 1, 100, false,
+-						      &priv->kcs_bmc, priv->kcs_bmc.ioreg.str);
+-			/* Time for the slow path? */
+-			if (rc == -ETIMEDOUT)
+-				mod_timer(&priv->obe.timer, jiffies + OBE_POLL_PERIOD);
+-		} else {
 -			del_timer(&priv->obe.timer);
+-		}
 -	}
-+			regmap_update_bits(priv->map, LPC_HICRB,
-+					LPC_HICRB_IBFIF4 | LPC_HICRB_LPC4E,
-+					0);
 +		break;
  
 -	if (mask & KCS_BMC_EVENT_TYPE_IBF) {
@@ -2733,8 +2636,6 @@ index b555286016b1..5cc46c35de6f
 -			pr_warn("%s: Unsupported channel: %d", __func__, kcs_bmc->channel);
 -			return;
 -		}
-+	default:
-+		break;
  	}
  }
  
@@ -2749,11 +2650,11 @@ index b555286016b1..5cc46c35de6f
  {
 -	struct kcs_bmc_device *kcs_bmc = arg;
 +	struct kcs_bmc *kcs_bmc = arg;
- 
--	return kcs_bmc_handle_event(kcs_bmc);
++
 +	if (!kcs_bmc_handle_event(kcs_bmc))
 +		return IRQ_HANDLED;
-+
+ 
+-	return kcs_bmc_handle_event(kcs_bmc);
 +	return IRQ_NONE;
  }
  
@@ -2762,161 +2663,140 @@ index b555286016b1..5cc46c35de6f
  			struct platform_device *pdev)
  {
  	struct device *dev = &pdev->dev;
-@@ -475,10 +231,13 @@ static const struct kcs_ioreg ast_kcs_bmc_ioregs[KCS_CHANNEL_MAX] = {
+@@ -495,176 +238,143 @@ static const struct kcs_ioreg ast_kcs_bmc_ioregs[KCS_CHANNEL_MAX] = {
  	{ .idr = LPC_IDR4, .odr = LPC_ODR4, .str = LPC_STR4 },
  };
  
--static int aspeed_kcs_of_v1_get_channel(struct platform_device *pdev)
+-static int aspeed_kcs_of_get_channel(struct platform_device *pdev)
 +static struct kcs_bmc *aspeed_kcs_probe_of_v1(struct platform_device *pdev)
  {
 +	struct aspeed_kcs_bmc *priv;
  	struct device_node *np;
+-	struct kcs_ioreg ioreg;
+-	const __be32 *reg;
 +	struct kcs_bmc *kcs;
- 	u32 channel;
++	u32 channel;
 +	u32 slave;
- 	int rc;
- 
- 	np = pdev->dev.of_node;
-@@ -486,214 +245,167 @@ static int aspeed_kcs_of_v1_get_channel(struct platform_device *pdev)
- 	rc = of_property_read_u32(np, "kcs_chan", &channel);
- 	if ((rc != 0) || (channel == 0 || channel > KCS_CHANNEL_MAX)) {
- 		dev_err(&pdev->dev, "no valid 'kcs_chan' configured\n");
--		return -EINVAL;
++	int rc;
++	np = pdev->dev.of_node;
++	rc = of_property_read_u32(np, "kcs_chan", &channel);
++	if ((rc != 0) || (channel == 0 || channel > KCS_CHANNEL_MAX)) {
++		dev_err(&pdev->dev, "no valid 'kcs_chan' configured\n");
 +		return ERR_PTR(-EINVAL);
- 	}
- 
--	return channel;
++	}
 +	kcs = kcs_bmc_alloc(&pdev->dev, sizeof(struct aspeed_kcs_bmc), channel);
 +	if (!kcs)
 +		return ERR_PTR(-ENOMEM);
-+
 +	priv = kcs_bmc_priv(kcs);
 +	priv->map = syscon_node_to_regmap(pdev->dev.parent->of_node);
 +	if (IS_ERR(priv->map)) {
 +		dev_err(&pdev->dev, "Couldn't get regmap\n");
 +		return ERR_PTR(-ENODEV);
 +	}
-+
 +	rc = of_property_read_u32(np, "kcs_addr", &slave);
 +	if (rc) {
 +		dev_err(&pdev->dev, "no valid 'kcs_addr' configured\n");
 +		return ERR_PTR(-EINVAL);
 +	}
-+
 +	kcs->ioreg = ast_kcs_bmc_ioregs[channel - 1];
 +	aspeed_kcs_set_address(kcs, slave);
 +
 +	return kcs;
- }
- 
--static int
--aspeed_kcs_of_v1_get_io_address(struct platform_device *pdev, u32 addrs[2])
++}
++
 +static int aspeed_kcs_calculate_channel(const struct kcs_ioreg *regs)
- {
--	int rc;
-+	int i;
- 
--	rc = of_property_read_u32(pdev->dev.of_node, "kcs_addr", addrs);
--	if (rc || addrs[0] > 0xffff) {
--		dev_err(&pdev->dev, "no valid 'kcs_addr' configured\n");
--		return -EINVAL;
++{
+ 	int i;
 +	for (i = 0; i < ARRAY_SIZE(ast_kcs_bmc_ioregs); i++) {
 +		if (!memcmp(&ast_kcs_bmc_ioregs[i], regs, sizeof(*regs)))
 +			return i + 1;
- 	}
- 
--	return 1;
++	}
 +	return -EINVAL;
- }
++}
  
--static int aspeed_kcs_of_v2_get_channel(struct platform_device *pdev)
 +static struct kcs_bmc *aspeed_kcs_probe_of_v2(struct platform_device *pdev)
- {
++{
 +	struct aspeed_kcs_bmc *priv;
- 	struct device_node *np;
- 	struct kcs_ioreg ioreg;
++	struct device_node *np;
++	struct kcs_ioreg ioreg;
 +	struct kcs_bmc *kcs;
- 	const __be32 *reg;
--	int i;
++	const __be32 *reg;
 +	int channel;
 +	u32 slave;
 +	int rc;
- 
  	np = pdev->dev.of_node;
- 
+-
  	/* Don't translate addresses, we want offsets for the regmaps */
  	reg = of_get_address(np, 0, NULL, NULL);
  	if (!reg)
 -		return -EINVAL;
 +		return ERR_PTR(-EINVAL);
  	ioreg.idr = be32_to_cpup(reg);
- 
+-
  	reg = of_get_address(np, 1, NULL, NULL);
  	if (!reg)
 -		return -EINVAL;
 +		return ERR_PTR(-EINVAL);
  	ioreg.odr = be32_to_cpup(reg);
- 
+-
  	reg = of_get_address(np, 2, NULL, NULL);
  	if (!reg)
 -		return -EINVAL;
 +		return ERR_PTR(-EINVAL);
  	ioreg.str = be32_to_cpup(reg);
- 
+-
 -	for (i = 0; i < ARRAY_SIZE(ast_kcs_bmc_ioregs); i++) {
 -		if (!memcmp(&ast_kcs_bmc_ioregs[i], &ioreg, sizeof(ioreg)))
 -			return i + 1;
 -	}
-+	channel = aspeed_kcs_calculate_channel(&ioreg);
-+	if (channel < 0)
-+		return ERR_PTR(channel);
- 
 -	return -EINVAL;
 -}
-+	kcs = kcs_bmc_alloc(&pdev->dev, sizeof(struct aspeed_kcs_bmc), channel);
-+	if (!kcs)
-+		return ERR_PTR(-ENOMEM);
- 
+-
 -static int
--aspeed_kcs_of_v2_get_io_address(struct platform_device *pdev, u32 addrs[2])
+-aspeed_kcs_of_get_io_address(struct platform_device *pdev, u32 addrs[2])
 -{
 -	int rc;
-+	kcs->ioreg = ioreg;
- 
+-
 -	rc = of_property_read_variable_u32_array(pdev->dev.of_node,
 -						 "aspeed,lpc-io-reg",
 -						 addrs, 1, 2);
 -	if (rc < 0) {
 -		dev_err(&pdev->dev, "No valid 'aspeed,lpc-io-reg' configured\n");
 -		return rc;
+-	}
+-
+-	if (addrs[0] > 0xffff) {
+-		dev_err(&pdev->dev, "Invalid data address in 'aspeed,lpc-io-reg'\n");
+-		return -EINVAL;
+-	}
+-
+-	if (rc == 2 && addrs[1] > 0xffff) {
+-		dev_err(&pdev->dev, "Invalid status address in 'aspeed,lpc-io-reg'\n");
+-		return -EINVAL;
++	channel = aspeed_kcs_calculate_channel(&ioreg);
++	if (channel < 0)
++		return ERR_PTR(channel);
++	kcs = kcs_bmc_alloc(&pdev->dev, sizeof(struct aspeed_kcs_bmc), channel);
++	if (!kcs)
++		return ERR_PTR(-ENOMEM);
++	kcs->ioreg = ioreg;
 +	priv = kcs_bmc_priv(kcs);
 +	priv->map = syscon_node_to_regmap(pdev->dev.parent->of_node);
 +	if (IS_ERR(priv->map)) {
 +		dev_err(&pdev->dev, "Couldn't get regmap\n");
 +		return ERR_PTR(-ENODEV);
  	}
- 
--	if (addrs[0] > 0xffff) {
--		dev_err(&pdev->dev, "Invalid data address in 'aspeed,lpc-io-reg'\n");
--		return -EINVAL;
--	}
+-
+-	return rc;
 +	rc = of_property_read_u32(np, "aspeed,lpc-io-reg", &slave);
 +	if (rc)
 +		return ERR_PTR(rc);
- 
--	if (rc == 2 && addrs[1] > 0xffff) {
--		dev_err(&pdev->dev, "Invalid status address in 'aspeed,lpc-io-reg'\n");
--		return -EINVAL;
--	}
 +	aspeed_kcs_set_address(kcs, slave);
- 
--	return rc;
 +	return kcs;
  }
  
  static int aspeed_kcs_probe(struct platform_device *pdev)
  {
--	const struct aspeed_kcs_of_ops *ops;
 -	struct kcs_bmc_device *kcs_bmc;
 -	struct aspeed_kcs_bmc *priv;
 +	struct device *dev = &pdev->dev;
@@ -2927,46 +2807,35 @@ index b555286016b1..5cc46c35de6f
 -	int rc, channel;
 -	int nr_addrs;
 -	u32 addrs[2];
-+	int rc;
- 
+-
 -	np = pdev->dev.of_node->parent;
-+	np = dev->of_node->parent;
- 	if (!of_device_is_compatible(np, "aspeed,ast2400-lpc-v2") &&
- 	    !of_device_is_compatible(np, "aspeed,ast2500-lpc-v2") &&
- 	    !of_device_is_compatible(np, "aspeed,ast2600-lpc-v2")) {
+-	if (!of_device_is_compatible(np, "aspeed,ast2400-lpc-v2") &&
+-	    !of_device_is_compatible(np, "aspeed,ast2500-lpc-v2") &&
+-	    !of_device_is_compatible(np, "aspeed,ast2600-lpc-v2")) {
 -		dev_err(&pdev->dev, "unsupported LPC device binding\n");
-+		dev_err(dev, "unsupported LPC device binding\n");
- 		return -ENODEV;
- 	}
- 
--	ops = of_device_get_match_data(&pdev->dev);
--	if (!ops)
-+	np = dev->of_node;
+-		return -ENODEV;
+-	}
+-
+-	channel = aspeed_kcs_of_get_channel(pdev);
+-	if (channel < 0)
+-		return channel;
+-
+-	nr_addrs = aspeed_kcs_of_get_io_address(pdev, addrs);
+-	if (nr_addrs < 0)
+-		return nr_addrs;
+-
++	int rc;
+ 	np = pdev->dev.of_node;
+-	rc = of_property_read_u32_array(np, "aspeed,lpc-interrupts", upstream_irq, 2);
+-	if (rc && rc != -EINVAL)
 +	if (of_device_is_compatible(np, "aspeed,ast2400-kcs-bmc") ||
-+	    of_device_is_compatible(np, "aspeed,ast2500-kcs-bmc"))
++			of_device_is_compatible(np, "aspeed,ast2500-kcs-bmc"))
 +		kcs_bmc = aspeed_kcs_probe_of_v1(pdev);
 +	else if (of_device_is_compatible(np, "aspeed,ast2400-kcs-bmc-v2") ||
-+		 of_device_is_compatible(np, "aspeed,ast2500-kcs-bmc-v2"))
++			of_device_is_compatible(np, "aspeed,ast2500-kcs-bmc-v2"))
 +		kcs_bmc = aspeed_kcs_probe_of_v2(pdev);
 +	else
  		return -EINVAL;
- 
--	channel = ops->get_channel(pdev);
--	if (channel < 0)
--		return channel;
-+	if (IS_ERR(kcs_bmc))
-+		return PTR_ERR(kcs_bmc);
- 
--	nr_addrs = ops->get_io_address(pdev, addrs);
--	if (nr_addrs < 0)
--		return nr_addrs;
-+	kcs_bmc->io_inputb = aspeed_kcs_inb;
-+	kcs_bmc->io_outputb = aspeed_kcs_outb;
- 
--	np = pdev->dev.of_node;
--	rc = of_property_read_u32_array(np, "aspeed,lpc-interrupts", upstream_irq, 2);
--	if (rc && rc != -EINVAL)
--		return -EINVAL;
 -
 -	have_upstream_irq = !rc;
 -
@@ -2991,14 +2860,18 @@ index b555286016b1..5cc46c35de6f
 -	timer_setup(&priv->obe.timer, aspeed_kcs_check_obe, 0);
 -
 -	rc = aspeed_kcs_set_address(kcs_bmc, addrs, nr_addrs);
+-	if (rc)
+-		return rc;
+-
+-	/* Host to BMC IRQ */
+-	rc = aspeed_kcs_config_downstream_irq(kcs_bmc, pdev);
++	if (IS_ERR(kcs_bmc))
++		return PTR_ERR(kcs_bmc);
++	kcs_bmc->io_inputb = aspeed_kcs_inb;
++	kcs_bmc->io_outputb = aspeed_kcs_outb;
 +	rc = aspeed_kcs_config_irq(kcs_bmc, pdev);
  	if (rc)
  		return rc;
- 
--	/* Host to BMC IRQ */
--	rc = aspeed_kcs_config_downstream_irq(kcs_bmc, pdev);
--	if (rc)
--		return rc;
 -
 -	/* BMC to Host IRQ */
 -	if (have_upstream_irq) {
@@ -3010,11 +2883,11 @@ index b555286016b1..5cc46c35de6f
 -	}
 -
 -	platform_set_drvdata(pdev, priv);
-+	dev_set_drvdata(dev, kcs_bmc);
- 
+-
 -	aspeed_kcs_irq_mask_update(kcs_bmc, (KCS_BMC_EVENT_TYPE_IBF | KCS_BMC_EVENT_TYPE_OBE), 0);
++	dev_set_drvdata(dev, kcs_bmc);
  	aspeed_kcs_enable_channel(kcs_bmc, true);
- 
+-
 -	rc = kcs_bmc_add_device(&priv->kcs_bmc);
 +	rc = misc_register(&kcs_bmc->miscdev);
  	if (rc) {
@@ -3022,14 +2895,14 @@ index b555286016b1..5cc46c35de6f
 +		dev_err(dev, "Unable to register device\n");
  		return rc;
  	}
- 
+-
 -	dev_info(&pdev->dev, "Initialised channel %d at 0x%x\n",
 -			kcs_bmc->channel, addrs[0]);
+-
 +	dev_dbg(&pdev->dev,
 +		"Probed KCS device %d (IDR=0x%x, ODR=0x%x, STR=0x%x)\n",
 +		kcs_bmc->channel, kcs_bmc->ioreg.idr, kcs_bmc->ioreg.odr,
 +		kcs_bmc->ioreg.str);
- 
  	return 0;
  }
  
@@ -3039,8 +2912,7 @@ index b555286016b1..5cc46c35de6f
 -	struct kcs_bmc_device *kcs_bmc = &priv->kcs_bmc;
 -
 -	kcs_bmc_remove_device(kcs_bmc);
-+	struct kcs_bmc *kcs_bmc = dev_get_drvdata(&pdev->dev);
- 
+-
 -	aspeed_kcs_enable_channel(kcs_bmc, false);
 -	aspeed_kcs_irq_mask_update(kcs_bmc, (KCS_BMC_EVENT_TYPE_IBF | KCS_BMC_EVENT_TYPE_OBE), 0);
 -
@@ -3049,36 +2921,23 @@ index b555286016b1..5cc46c35de6f
 -	priv->obe.remove = true;
 -	spin_unlock_irq(&priv->obe.lock);
 -	del_timer_sync(&priv->obe.timer);
+-
++	struct kcs_bmc *kcs_bmc = dev_get_drvdata(&pdev->dev);
 +	misc_deregister(&kcs_bmc->miscdev);
- 
  	return 0;
  }
  
--static const struct aspeed_kcs_of_ops of_v1_ops = {
--	.get_channel = aspeed_kcs_of_v1_get_channel,
--	.get_io_address = aspeed_kcs_of_v1_get_io_address,
--};
--
--static const struct aspeed_kcs_of_ops of_v2_ops = {
--	.get_channel = aspeed_kcs_of_v2_get_channel,
--	.get_io_address = aspeed_kcs_of_v2_get_io_address,
--};
--
++
  static const struct of_device_id ast_kcs_bmc_match[] = {
--	{ .compatible = "aspeed,ast2400-kcs-bmc", .data = &of_v1_ops },
--	{ .compatible = "aspeed,ast2500-kcs-bmc", .data = &of_v1_ops },
--	{ .compatible = "aspeed,ast2400-kcs-bmc-v2", .data = &of_v2_ops },
--	{ .compatible = "aspeed,ast2500-kcs-bmc-v2", .data = &of_v2_ops },
--	{ .compatible = "aspeed,ast2600-kcs-bmc", .data = &of_v2_ops },
 +	{ .compatible = "aspeed,ast2400-kcs-bmc" },
 +	{ .compatible = "aspeed,ast2500-kcs-bmc" },
-+	{ .compatible = "aspeed,ast2400-kcs-bmc-v2" },
-+	{ .compatible = "aspeed,ast2500-kcs-bmc-v2" },
-+	{ .compatible = "aspeed,ast2600-kcs-bmc" },
+ 	{ .compatible = "aspeed,ast2400-kcs-bmc-v2" },
+ 	{ .compatible = "aspeed,ast2500-kcs-bmc-v2" },
+-	{ .compatible = "aspeed,ast2600-kcs-bmc" },
  	{ }
  };
  MODULE_DEVICE_TABLE(of, ast_kcs_bmc_match);
-@@ -710,5 +422,4 @@ module_platform_driver(ast_kcs_bmc_driver);
+@@ -681,5 +391,4 @@ module_platform_driver(ast_kcs_bmc_driver);
  
  MODULE_LICENSE("GPL v2");
  MODULE_AUTHOR("Haiyue Wang <haiyue.wang@linux.intel.com>");
@@ -3086,7 +2945,7 @@ index b555286016b1..5cc46c35de6f
  MODULE_DESCRIPTION("Aspeed device interface to the KCS BMC device");
 diff --git a/drivers/char/ipmi/kcs_bmc_cdev_ipmi.c b/drivers/char/ipmi/kcs_bmc_cdev_ipmi.c
 deleted file mode 100644
-index 486834a962c3..000000000000
+index cf670e891966..000000000000
 --- a/drivers/char/ipmi/kcs_bmc_cdev_ipmi.c
 +++ /dev/null
 @@ -1,568 +0,0 @@
@@ -3640,7 +3499,7 @@ index 486834a962c3..000000000000
 -	.ops = &kcs_bmc_ipmi_driver_ops,
 -};
 -
--static int kcs_bmc_ipmi_init(void)
+-static int __init kcs_bmc_ipmi_init(void)
 -{
 -	kcs_bmc_register_driver(&kcs_bmc_ipmi_driver);
 -
@@ -3648,7 +3507,7 @@ index 486834a962c3..000000000000
 -}
 -module_init(kcs_bmc_ipmi_init);
 -
--static void kcs_bmc_ipmi_exit(void)
+-static void __exit kcs_bmc_ipmi_exit(void)
 -{
 -	kcs_bmc_unregister_driver(&kcs_bmc_ipmi_driver);
 -}
@@ -4191,9 +4050,7 @@ index 17c572f25c54..000000000000
 -
 -#endif
 diff --git a/drivers/char/ipmi/kcs_bmc_npcm7xx.c b/drivers/char/ipmi/kcs_bmc_npcm7xx.c
-old mode 100644
-new mode 100755
-index 7961fec56476..722f7391fe1f
+index 7961fec56476..722f7391fe1f 100644
 --- a/drivers/char/ipmi/kcs_bmc_npcm7xx.c
 +++ b/drivers/char/ipmi/kcs_bmc_npcm7xx.c
 @@ -17,7 +17,7 @@
@@ -4390,7 +4247,7 @@ index 7961fec56476..722f7391fe1f
  }
 diff --git a/drivers/char/ipmi/kcs_bmc_serio.c b/drivers/char/ipmi/kcs_bmc_serio.c
 deleted file mode 100644
-index 7e2067628a6c..000000000000
+index 1793358be782..000000000000
 --- a/drivers/char/ipmi/kcs_bmc_serio.c
 +++ /dev/null
 @@ -1,159 +0,0 @@
@@ -4536,7 +4393,7 @@ index 7e2067628a6c..000000000000
 -	.ops = &kcs_bmc_serio_driver_ops,
 -};
 -
--static int kcs_bmc_serio_init(void)
+-static int __init kcs_bmc_serio_init(void)
 -{
 -	kcs_bmc_register_driver(&kcs_bmc_serio_driver);
 -
@@ -4544,7 +4401,7 @@ index 7e2067628a6c..000000000000
 -}
 -module_init(kcs_bmc_serio_init);
 -
--static void kcs_bmc_serio_exit(void)
+-static void __exit kcs_bmc_serio_exit(void)
 -{
 -	kcs_bmc_unregister_driver(&kcs_bmc_serio_driver);
 -}
@@ -4553,3 +4410,885 @@ index 7e2067628a6c..000000000000
 -MODULE_LICENSE("GPL v2");
 -MODULE_AUTHOR("Andrew Jeffery <andrew@aj.id.au>");
 -MODULE_DESCRIPTION("Adapter driver for serio access to BMC KCS devices");
+diff --git a/drivers/char/ipmi/ssif_bmc.c b/drivers/char/ipmi/ssif_bmc.c
+deleted file mode 100644
+index caee848261e9..000000000000
+--- a/drivers/char/ipmi/ssif_bmc.c
++++ /dev/null
+@@ -1,873 +0,0 @@
+-// SPDX-License-Identifier: GPL-2.0-only
+-/*
+- * The driver for BMC side of SSIF interface
+- *
+- * Copyright (c) 2022, Ampere Computing LLC
+- *
+- */
+-
+-#include <linux/i2c.h>
+-#include <linux/miscdevice.h>
+-#include <linux/module.h>
+-#include <linux/of.h>
+-#include <linux/platform_device.h>
+-#include <linux/poll.h>
+-#include <linux/sched.h>
+-#include <linux/mutex.h>
+-#include <linux/spinlock.h>
+-#include <linux/timer.h>
+-#include <linux/jiffies.h>
+-#include <linux/ipmi_ssif_bmc.h>
+-
+-#define DEVICE_NAME                             "ipmi-ssif-host"
+-
+-#define GET_8BIT_ADDR(addr_7bit)                (((addr_7bit) << 1) & 0xff)
+-
+-/* A standard SMBus Transaction is limited to 32 data bytes */
+-#define MAX_PAYLOAD_PER_TRANSACTION             32
+-/* Transaction includes the address, the command, the length and the PEC byte */
+-#define MAX_TRANSACTION                         (MAX_PAYLOAD_PER_TRANSACTION + 4)
+-
+-#define MAX_IPMI_DATA_PER_START_TRANSACTION     30
+-#define MAX_IPMI_DATA_PER_MIDDLE_TRANSACTION    31
+-
+-#define SSIF_IPMI_SINGLEPART_WRITE              0x2
+-#define SSIF_IPMI_SINGLEPART_READ               0x3
+-#define SSIF_IPMI_MULTIPART_WRITE_START         0x6
+-#define SSIF_IPMI_MULTIPART_WRITE_MIDDLE        0x7
+-#define SSIF_IPMI_MULTIPART_WRITE_END           0x8
+-#define SSIF_IPMI_MULTIPART_READ_START          0x3
+-#define SSIF_IPMI_MULTIPART_READ_MIDDLE         0x9
+-
+-/*
+- * IPMI 2.0 Spec, section 12.7 SSIF Timing,
+- * Request-to-Response Time is T6max(250ms) - T1max(20ms) - 3ms = 227ms
+- * Recover ssif_bmc from busy state if it takes up to 500ms
+- */
+-#define RESPONSE_TIMEOUT                        500 /* ms */
+-
+-struct ssif_part_buffer {
+-	u8 address;
+-	u8 smbus_cmd;
+-	u8 length;
+-	u8 payload[MAX_PAYLOAD_PER_TRANSACTION];
+-	u8 pec;
+-	u8 index;
+-};
+-
+-/*
+- * SSIF internal states:
+- *   SSIF_READY         0x00 : Ready state
+- *   SSIF_START         0x01 : Start smbus transaction
+- *   SSIF_SMBUS_CMD     0x02 : Received SMBus command
+- *   SSIF_REQ_RECVING   0x03 : Receiving request
+- *   SSIF_RES_SENDING   0x04 : Sending response
+- *   SSIF_ABORTING      0x05 : Aborting state
+- */
+-enum ssif_state {
+-	SSIF_READY,
+-	SSIF_START,
+-	SSIF_SMBUS_CMD,
+-	SSIF_REQ_RECVING,
+-	SSIF_RES_SENDING,
+-	SSIF_ABORTING,
+-	SSIF_STATE_MAX
+-};
+-
+-struct ssif_bmc_ctx {
+-	struct i2c_client       *client;
+-	struct miscdevice       miscdev;
+-	int                     msg_idx;
+-	bool                    pec_support;
+-	/* ssif bmc spinlock */
+-	spinlock_t              lock;
+-	wait_queue_head_t       wait_queue;
+-	u8                      running;
+-	enum ssif_state         state;
+-	/* Timeout waiting for response */
+-	struct timer_list       response_timer;
+-	bool                    response_timer_inited;
+-	/* Flag to identify a Multi-part Read Transaction */
+-	bool                    is_singlepart_read;
+-	u8                      nbytes_processed;
+-	u8                      remain_len;
+-	u8                      recv_len;
+-	/* Block Number of a Multi-part Read Transaction */
+-	u8                      block_num;
+-	bool                    request_available;
+-	bool                    response_in_progress;
+-	bool                    busy;
+-	bool                    aborting;
+-	/* Buffer for SSIF Transaction part*/
+-	struct ssif_part_buffer part_buf;
+-	struct ipmi_ssif_msg    response;
+-	struct ipmi_ssif_msg    request;
+-};
+-
+-static inline struct ssif_bmc_ctx *to_ssif_bmc(struct file *file)
+-{
+-	return container_of(file->private_data, struct ssif_bmc_ctx, miscdev);
+-}
+-
+-static const char *state_to_string(enum ssif_state state)
+-{
+-	switch (state) {
+-	case SSIF_READY:
+-		return "SSIF_READY";
+-	case SSIF_START:
+-		return "SSIF_START";
+-	case SSIF_SMBUS_CMD:
+-		return "SSIF_SMBUS_CMD";
+-	case SSIF_REQ_RECVING:
+-		return "SSIF_REQ_RECVING";
+-	case SSIF_RES_SENDING:
+-		return "SSIF_RES_SENDING";
+-	case SSIF_ABORTING:
+-		return "SSIF_ABORTING";
+-	default:
+-		return "SSIF_STATE_UNKNOWN";
+-	}
+-}
+-
+-/* Handle SSIF message that will be sent to user */
+-static ssize_t ssif_bmc_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
+-{
+-	struct ssif_bmc_ctx *ssif_bmc = to_ssif_bmc(file);
+-	struct ipmi_ssif_msg msg;
+-	unsigned long flags;
+-	ssize_t ret;
+-
+-	spin_lock_irqsave(&ssif_bmc->lock, flags);
+-	while (!ssif_bmc->request_available) {
+-		spin_unlock_irqrestore(&ssif_bmc->lock, flags);
+-		if (file->f_flags & O_NONBLOCK)
+-			return -EAGAIN;
+-		ret = wait_event_interruptible(ssif_bmc->wait_queue,
+-					       ssif_bmc->request_available);
+-		if (ret)
+-			return ret;
+-		spin_lock_irqsave(&ssif_bmc->lock, flags);
+-	}
+-
+-	if (count < min_t(ssize_t,
+-			  sizeof_field(struct ipmi_ssif_msg, len) + ssif_bmc->request.len,
+-			  sizeof(struct ipmi_ssif_msg))) {
+-		spin_unlock_irqrestore(&ssif_bmc->lock, flags);
+-		ret = -EINVAL;
+-	} else {
+-		count = min_t(ssize_t,
+-			      sizeof_field(struct ipmi_ssif_msg, len) + ssif_bmc->request.len,
+-			      sizeof(struct ipmi_ssif_msg));
+-		memcpy(&msg, &ssif_bmc->request, count);
+-		ssif_bmc->request_available = false;
+-		spin_unlock_irqrestore(&ssif_bmc->lock, flags);
+-
+-		ret = copy_to_user(buf, &msg, count);
+-	}
+-
+-	return (ret < 0) ? ret : count;
+-}
+-
+-/* Handle SSIF message that is written by user */
+-static ssize_t ssif_bmc_write(struct file *file, const char __user *buf, size_t count,
+-			      loff_t *ppos)
+-{
+-	struct ssif_bmc_ctx *ssif_bmc = to_ssif_bmc(file);
+-	struct ipmi_ssif_msg msg;
+-	unsigned long flags;
+-	ssize_t ret;
+-
+-	if (count > sizeof(struct ipmi_ssif_msg))
+-		return -EINVAL;
+-
+-	if (copy_from_user(&msg, buf, count))
+-		return -EFAULT;
+-
+-	if (!msg.len || count < sizeof_field(struct ipmi_ssif_msg, len) + msg.len)
+-		return -EINVAL;
+-
+-	spin_lock_irqsave(&ssif_bmc->lock, flags);
+-	while (ssif_bmc->response_in_progress) {
+-		spin_unlock_irqrestore(&ssif_bmc->lock, flags);
+-		if (file->f_flags & O_NONBLOCK)
+-			return -EAGAIN;
+-		ret = wait_event_interruptible(ssif_bmc->wait_queue,
+-					       !ssif_bmc->response_in_progress);
+-		if (ret)
+-			return ret;
+-		spin_lock_irqsave(&ssif_bmc->lock, flags);
+-	}
+-
+-	/*
+-	 * The write must complete before the response timeout fired, otherwise
+-	 * the response is aborted and wait for next request
+-	 * Return -EINVAL if the response is aborted
+-	 */
+-	ret = (ssif_bmc->response_timer_inited) ? 0 : -EINVAL;
+-	if (ret)
+-		goto exit;
+-
+-	del_timer(&ssif_bmc->response_timer);
+-	ssif_bmc->response_timer_inited = false;
+-
+-	memcpy(&ssif_bmc->response, &msg, count);
+-	ssif_bmc->is_singlepart_read = (msg.len <= MAX_PAYLOAD_PER_TRANSACTION);
+-
+-	ssif_bmc->response_in_progress = true;
+-
+-	/* ssif_bmc not busy */
+-	ssif_bmc->busy = false;
+-
+-	/* Clean old request buffer */
+-	memset(&ssif_bmc->request, 0, sizeof(struct ipmi_ssif_msg));
+-exit:
+-	spin_unlock_irqrestore(&ssif_bmc->lock, flags);
+-
+-	return (ret < 0) ? ret : count;
+-}
+-
+-static int ssif_bmc_open(struct inode *inode, struct file *file)
+-{
+-	struct ssif_bmc_ctx *ssif_bmc = to_ssif_bmc(file);
+-	int ret = 0;
+-
+-	spin_lock_irq(&ssif_bmc->lock);
+-	if (!ssif_bmc->running)
+-		ssif_bmc->running = 1;
+-	else
+-		ret = -EBUSY;
+-	spin_unlock_irq(&ssif_bmc->lock);
+-
+-	return ret;
+-}
+-
+-static __poll_t ssif_bmc_poll(struct file *file, poll_table *wait)
+-{
+-	struct ssif_bmc_ctx *ssif_bmc = to_ssif_bmc(file);
+-	__poll_t mask = 0;
+-
+-	poll_wait(file, &ssif_bmc->wait_queue, wait);
+-
+-	spin_lock_irq(&ssif_bmc->lock);
+-	/* The request is available, userspace application can get the request */
+-	if (ssif_bmc->request_available)
+-		mask |= EPOLLIN;
+-
+-	spin_unlock_irq(&ssif_bmc->lock);
+-
+-	return mask;
+-}
+-
+-static int ssif_bmc_release(struct inode *inode, struct file *file)
+-{
+-	struct ssif_bmc_ctx *ssif_bmc = to_ssif_bmc(file);
+-
+-	spin_lock_irq(&ssif_bmc->lock);
+-	ssif_bmc->running = 0;
+-	spin_unlock_irq(&ssif_bmc->lock);
+-
+-	return 0;
+-}
+-
+-/*
+- * System calls to device interface for user apps
+- */
+-static const struct file_operations ssif_bmc_fops = {
+-	.owner		= THIS_MODULE,
+-	.open		= ssif_bmc_open,
+-	.read		= ssif_bmc_read,
+-	.write		= ssif_bmc_write,
+-	.release	= ssif_bmc_release,
+-	.poll		= ssif_bmc_poll,
+-};
+-
+-/* Called with ssif_bmc->lock held. */
+-static void complete_response(struct ssif_bmc_ctx *ssif_bmc)
+-{
+-	/* Invalidate response in buffer to denote it having been sent. */
+-	ssif_bmc->response.len = 0;
+-	ssif_bmc->response_in_progress = false;
+-	ssif_bmc->nbytes_processed = 0;
+-	ssif_bmc->remain_len = 0;
+-	ssif_bmc->busy = false;
+-	memset(&ssif_bmc->part_buf, 0, sizeof(struct ssif_part_buffer));
+-	wake_up_all(&ssif_bmc->wait_queue);
+-}
+-
+-static void response_timeout(struct timer_list *t)
+-{
+-	struct ssif_bmc_ctx *ssif_bmc = from_timer(ssif_bmc, t, response_timer);
+-	unsigned long flags;
+-
+-	spin_lock_irqsave(&ssif_bmc->lock, flags);
+-
+-	/* Do nothing if the response is in progress */
+-	if (!ssif_bmc->response_in_progress) {
+-		/* Recover ssif_bmc from busy */
+-		ssif_bmc->busy = false;
+-		ssif_bmc->response_timer_inited = false;
+-		/* Set aborting flag */
+-		ssif_bmc->aborting = true;
+-	}
+-
+-	spin_unlock_irqrestore(&ssif_bmc->lock, flags);
+-}
+-
+-/* Called with ssif_bmc->lock held. */
+-static void handle_request(struct ssif_bmc_ctx *ssif_bmc)
+-{
+-	/* set ssif_bmc to busy waiting for response */
+-	ssif_bmc->busy = true;
+-	/* Request message is available to process */
+-	ssif_bmc->request_available = true;
+-	/* Clean old response buffer */
+-	memset(&ssif_bmc->response, 0, sizeof(struct ipmi_ssif_msg));
+-	/* This is the new READ request.*/
+-	wake_up_all(&ssif_bmc->wait_queue);
+-
+-	/* Armed timer to recover slave from busy state in case of no response */
+-	if (!ssif_bmc->response_timer_inited) {
+-		timer_setup(&ssif_bmc->response_timer, response_timeout, 0);
+-		ssif_bmc->response_timer_inited = true;
+-	}
+-	mod_timer(&ssif_bmc->response_timer, jiffies + msecs_to_jiffies(RESPONSE_TIMEOUT));
+-}
+-
+-static void calculate_response_part_pec(struct ssif_part_buffer *part)
+-{
+-	u8 addr = part->address;
+-
+-	/* PEC - Start Read Address */
+-	part->pec = i2c_smbus_pec(0, &addr, 1);
+-	/* PEC - SSIF Command */
+-	part->pec = i2c_smbus_pec(part->pec, &part->smbus_cmd, 1);
+-	/* PEC - Restart Write Address */
+-	addr = addr | 0x01;
+-	part->pec = i2c_smbus_pec(part->pec, &addr, 1);
+-	part->pec = i2c_smbus_pec(part->pec, &part->length, 1);
+-	if (part->length)
+-		part->pec = i2c_smbus_pec(part->pec, part->payload, part->length);
+-}
+-
+-static void set_singlepart_response_buffer(struct ssif_bmc_ctx *ssif_bmc)
+-{
+-	struct ssif_part_buffer *part = &ssif_bmc->part_buf;
+-
+-	part->address = GET_8BIT_ADDR(ssif_bmc->client->addr);
+-	part->length = (u8)ssif_bmc->response.len;
+-
+-	/* Clear the rest to 0 */
+-	memset(part->payload + part->length, 0, MAX_PAYLOAD_PER_TRANSACTION - part->length);
+-	memcpy(&part->payload[0], &ssif_bmc->response.payload[0], part->length);
+-}
+-
+-static void set_multipart_response_buffer(struct ssif_bmc_ctx *ssif_bmc)
+-{
+-	struct ssif_part_buffer *part = &ssif_bmc->part_buf;
+-	u8 part_len = 0;
+-
+-	part->address = GET_8BIT_ADDR(ssif_bmc->client->addr);
+-	switch (part->smbus_cmd) {
+-	case SSIF_IPMI_MULTIPART_READ_START:
+-		/*
+-		 * Read Start length is 32 bytes.
+-		 * Read Start transfer first 30 bytes of IPMI response
+-		 * and 2 special code 0x00, 0x01.
+-		 */
+-		ssif_bmc->nbytes_processed = 0;
+-		ssif_bmc->block_num = 0;
+-		part->length = MAX_PAYLOAD_PER_TRANSACTION;
+-		part_len = MAX_IPMI_DATA_PER_START_TRANSACTION;
+-		ssif_bmc->remain_len = ssif_bmc->response.len - part_len;
+-
+-		part->payload[0] = 0x00; /* Start Flag */
+-		part->payload[1] = 0x01; /* Start Flag */
+-
+-		memcpy(&part->payload[2], &ssif_bmc->response.payload[0], part_len);
+-		break;
+-
+-	case SSIF_IPMI_MULTIPART_READ_MIDDLE:
+-		/*
+-		 * IPMI READ Middle or READ End messages can carry up to 31 bytes
+-		 * IPMI data plus block number byte.
+-		 */
+-		if (ssif_bmc->remain_len <= MAX_IPMI_DATA_PER_MIDDLE_TRANSACTION) {
+-			/*
+-			 * This is READ End message
+-			 *  Return length is the remaining response data length
+-			 *  plus block number
+-			 *  Block number 0xFF is to indicate this is last message
+-			 *
+-			 */
+-			/* Clean the buffer */
+-			memset(&part->payload[0], 0, MAX_PAYLOAD_PER_TRANSACTION);
+-			part->length = ssif_bmc->remain_len + 1;
+-			part_len = ssif_bmc->remain_len;
+-			ssif_bmc->block_num = 0xFF;
+-			part->payload[0] = ssif_bmc->block_num;
+-		} else {
+-			/*
+-			 * This is READ Middle message
+-			 *  Response length is the maximum SMBUS transfer length
+-			 *  Block number byte is incremented
+-			 * Return length is maximum SMBUS transfer length
+-			 */
+-			part->length = MAX_PAYLOAD_PER_TRANSACTION;
+-			part_len = MAX_IPMI_DATA_PER_MIDDLE_TRANSACTION;
+-			part->payload[0] = ssif_bmc->block_num;
+-			ssif_bmc->block_num++;
+-		}
+-
+-		ssif_bmc->remain_len -= part_len;
+-		memcpy(&part->payload[1], ssif_bmc->response.payload + ssif_bmc->nbytes_processed,
+-		       part_len);
+-		break;
+-
+-	default:
+-		/* Do not expect to go to this case */
+-		dev_err(&ssif_bmc->client->dev, "%s: Unexpected SMBus command 0x%x\n",
+-			__func__, part->smbus_cmd);
+-		break;
+-	}
+-
+-	ssif_bmc->nbytes_processed += part_len;
+-}
+-
+-static bool supported_read_cmd(u8 cmd)
+-{
+-	if (cmd == SSIF_IPMI_SINGLEPART_READ ||
+-	    cmd == SSIF_IPMI_MULTIPART_READ_START ||
+-	    cmd == SSIF_IPMI_MULTIPART_READ_MIDDLE)
+-		return true;
+-
+-	return false;
+-}
+-
+-static bool supported_write_cmd(u8 cmd)
+-{
+-	if (cmd == SSIF_IPMI_SINGLEPART_WRITE ||
+-	    cmd == SSIF_IPMI_MULTIPART_WRITE_START ||
+-	    cmd == SSIF_IPMI_MULTIPART_WRITE_MIDDLE ||
+-	    cmd == SSIF_IPMI_MULTIPART_WRITE_END)
+-		return true;
+-
+-	return false;
+-}
+-
+-/* Process the IPMI response that will be read by master */
+-static void handle_read_processed(struct ssif_bmc_ctx *ssif_bmc, u8 *val)
+-{
+-	struct ssif_part_buffer *part = &ssif_bmc->part_buf;
+-
+-	/* msg_idx start from 0 */
+-	if (part->index < part->length)
+-		*val = part->payload[part->index];
+-	else if (part->index == part->length && ssif_bmc->pec_support)
+-		*val = part->pec;
+-	else
+-		*val = 0;
+-
+-	part->index++;
+-}
+-
+-static void handle_write_received(struct ssif_bmc_ctx *ssif_bmc, u8 *val)
+-{
+-	/*
+-	 * The msg_idx must be 1 when first enter SSIF_REQ_RECVING state
+-	 * And it would never exceeded 36 bytes included the 32 bytes max payload +
+-	 * the address + the command + the len and the PEC.
+-	 */
+-	if (ssif_bmc->msg_idx < 1  || ssif_bmc->msg_idx > MAX_TRANSACTION)
+-		return;
+-
+-	if (ssif_bmc->msg_idx == 1) {
+-		ssif_bmc->part_buf.length = *val;
+-		ssif_bmc->part_buf.index = 0;
+-	} else {
+-		ssif_bmc->part_buf.payload[ssif_bmc->part_buf.index++] = *val;
+-	}
+-
+-	ssif_bmc->msg_idx++;
+-}
+-
+-static bool validate_request_part(struct ssif_bmc_ctx *ssif_bmc)
+-{
+-	struct ssif_part_buffer *part = &ssif_bmc->part_buf;
+-	bool ret = true;
+-	u8 cpec;
+-	u8 addr;
+-
+-	if (part->index == part->length) {
+-		/* PEC is not included */
+-		ssif_bmc->pec_support = false;
+-		ret = true;
+-		goto exit;
+-	}
+-
+-	if (part->index != part->length + 1) {
+-		ret = false;
+-		goto exit;
+-	}
+-
+-	/* PEC is included */
+-	ssif_bmc->pec_support = true;
+-	part->pec = part->payload[part->length];
+-	addr = GET_8BIT_ADDR(ssif_bmc->client->addr);
+-	cpec = i2c_smbus_pec(0, &addr, 1);
+-	cpec = i2c_smbus_pec(cpec, &part->smbus_cmd, 1);
+-	cpec = i2c_smbus_pec(cpec, &part->length, 1);
+-	/*
+-	 * As SMBus specification does not allow the length
+-	 * (byte count) in the Write-Block protocol to be zero.
+-	 * Therefore, it is illegal to have the last Middle
+-	 * transaction in the sequence carry 32-byte and have
+-	 * a length of ‘0’ in the End transaction.
+-	 * But some users may try to use this way and we should
+-	 * prevent ssif_bmc driver broken in this case.
+-	 */
+-	if (part->length)
+-		cpec = i2c_smbus_pec(cpec, part->payload, part->length);
+-
+-	if (cpec != part->pec)
+-		ret = false;
+-
+-exit:
+-	return ret;
+-}
+-
+-static void process_request_part(struct ssif_bmc_ctx *ssif_bmc)
+-{
+-	struct ssif_part_buffer *part = &ssif_bmc->part_buf;
+-	unsigned int len;
+-
+-	switch (part->smbus_cmd) {
+-	case SSIF_IPMI_SINGLEPART_WRITE:
+-		/* save the whole part to request*/
+-		ssif_bmc->request.len = part->length;
+-		memcpy(ssif_bmc->request.payload, part->payload, part->length);
+-
+-		break;
+-	case SSIF_IPMI_MULTIPART_WRITE_START:
+-		ssif_bmc->request.len = 0;
+-
+-		fallthrough;
+-	case SSIF_IPMI_MULTIPART_WRITE_MIDDLE:
+-	case SSIF_IPMI_MULTIPART_WRITE_END:
+-		len = ssif_bmc->request.len + part->length;
+-		/* Do the bound check here, not allow the request len exceed 254 bytes */
+-		if (len > IPMI_SSIF_PAYLOAD_MAX) {
+-			dev_warn(&ssif_bmc->client->dev,
+-				 "Warn: Request exceeded 254 bytes, aborting");
+-			/* Request too long, aborting */
+-			ssif_bmc->aborting =  true;
+-		} else {
+-			memcpy(ssif_bmc->request.payload + ssif_bmc->request.len,
+-			       part->payload, part->length);
+-			ssif_bmc->request.len += part->length;
+-		}
+-		break;
+-	default:
+-		/* Do not expect to go to this case */
+-		dev_err(&ssif_bmc->client->dev, "%s: Unexpected SMBus command 0x%x\n",
+-			__func__, part->smbus_cmd);
+-		break;
+-	}
+-}
+-
+-static void process_smbus_cmd(struct ssif_bmc_ctx *ssif_bmc, u8 *val)
+-{
+-	/* SMBUS command can vary (single or multi-part) */
+-	ssif_bmc->part_buf.smbus_cmd = *val;
+-	ssif_bmc->msg_idx = 1;
+-	memset(&ssif_bmc->part_buf.payload[0], 0, MAX_PAYLOAD_PER_TRANSACTION);
+-
+-	if (*val == SSIF_IPMI_SINGLEPART_WRITE || *val == SSIF_IPMI_MULTIPART_WRITE_START) {
+-		/*
+-		 * The response maybe not come in-time, causing host SSIF driver
+-		 * to timeout and resend a new request. In such case check for
+-		 * pending response and clear it
+-		 */
+-		if (ssif_bmc->response_in_progress)
+-			complete_response(ssif_bmc);
+-
+-		/* This is new request, flip aborting flag if set */
+-		if (ssif_bmc->aborting)
+-			ssif_bmc->aborting = false;
+-	}
+-}
+-
+-static void on_read_requested_event(struct ssif_bmc_ctx *ssif_bmc, u8 *val)
+-{
+-	if (ssif_bmc->state == SSIF_READY ||
+-	    ssif_bmc->state == SSIF_START ||
+-	    ssif_bmc->state == SSIF_REQ_RECVING ||
+-	    ssif_bmc->state == SSIF_RES_SENDING) {
+-		dev_warn(&ssif_bmc->client->dev,
+-			 "Warn: %s unexpected READ REQUESTED in state=%s\n",
+-			 __func__, state_to_string(ssif_bmc->state));
+-		ssif_bmc->state = SSIF_ABORTING;
+-		*val = 0;
+-		return;
+-
+-	} else if (ssif_bmc->state == SSIF_SMBUS_CMD) {
+-		if (!supported_read_cmd(ssif_bmc->part_buf.smbus_cmd)) {
+-			dev_warn(&ssif_bmc->client->dev, "Warn: Unknown SMBus read command=0x%x",
+-				 ssif_bmc->part_buf.smbus_cmd);
+-			ssif_bmc->aborting = true;
+-		}
+-
+-		if (ssif_bmc->aborting)
+-			ssif_bmc->state = SSIF_ABORTING;
+-		else
+-			ssif_bmc->state = SSIF_RES_SENDING;
+-	}
+-
+-	ssif_bmc->msg_idx = 0;
+-
+-	/* Send 0 if there is nothing to send */
+-	if (!ssif_bmc->response_in_progress || ssif_bmc->state == SSIF_ABORTING) {
+-		*val = 0;
+-		return;
+-	}
+-
+-	if (ssif_bmc->is_singlepart_read)
+-		set_singlepart_response_buffer(ssif_bmc);
+-	else
+-		set_multipart_response_buffer(ssif_bmc);
+-
+-	calculate_response_part_pec(&ssif_bmc->part_buf);
+-	ssif_bmc->part_buf.index = 0;
+-	*val = ssif_bmc->part_buf.length;
+-}
+-
+-static void on_read_processed_event(struct ssif_bmc_ctx *ssif_bmc, u8 *val)
+-{
+-	if (ssif_bmc->state == SSIF_READY ||
+-	    ssif_bmc->state == SSIF_START ||
+-	    ssif_bmc->state == SSIF_REQ_RECVING ||
+-	    ssif_bmc->state == SSIF_SMBUS_CMD) {
+-		dev_warn(&ssif_bmc->client->dev,
+-			 "Warn: %s unexpected READ PROCESSED in state=%s\n",
+-			 __func__, state_to_string(ssif_bmc->state));
+-		ssif_bmc->state = SSIF_ABORTING;
+-		*val = 0;
+-		return;
+-	}
+-
+-	/* Send 0 if there is nothing to send */
+-	if (!ssif_bmc->response_in_progress || ssif_bmc->state == SSIF_ABORTING) {
+-		*val = 0;
+-		return;
+-	}
+-
+-	handle_read_processed(ssif_bmc, val);
+-}
+-
+-static void on_write_requested_event(struct ssif_bmc_ctx *ssif_bmc, u8 *val)
+-{
+-	if (ssif_bmc->state == SSIF_READY || ssif_bmc->state == SSIF_SMBUS_CMD) {
+-		ssif_bmc->state = SSIF_START;
+-
+-	} else if (ssif_bmc->state == SSIF_START ||
+-		   ssif_bmc->state == SSIF_REQ_RECVING ||
+-		   ssif_bmc->state == SSIF_RES_SENDING) {
+-		dev_warn(&ssif_bmc->client->dev,
+-			 "Warn: %s unexpected WRITE REQUEST in state=%s\n",
+-			 __func__, state_to_string(ssif_bmc->state));
+-		ssif_bmc->state = SSIF_ABORTING;
+-		return;
+-	}
+-
+-	ssif_bmc->msg_idx = 0;
+-	ssif_bmc->part_buf.address = *val;
+-}
+-
+-static void on_write_received_event(struct ssif_bmc_ctx *ssif_bmc, u8 *val)
+-{
+-	if (ssif_bmc->state == SSIF_READY ||
+-	    ssif_bmc->state == SSIF_RES_SENDING) {
+-		dev_warn(&ssif_bmc->client->dev,
+-			 "Warn: %s unexpected WRITE RECEIVED in state=%s\n",
+-			 __func__, state_to_string(ssif_bmc->state));
+-		ssif_bmc->state = SSIF_ABORTING;
+-
+-	} else if (ssif_bmc->state == SSIF_START) {
+-		ssif_bmc->state = SSIF_SMBUS_CMD;
+-
+-	} else if (ssif_bmc->state == SSIF_SMBUS_CMD) {
+-		if (!supported_write_cmd(ssif_bmc->part_buf.smbus_cmd)) {
+-			dev_warn(&ssif_bmc->client->dev, "Warn: Unknown SMBus write command=0x%x",
+-				 ssif_bmc->part_buf.smbus_cmd);
+-			ssif_bmc->aborting = true;
+-		}
+-
+-		if (ssif_bmc->aborting)
+-			ssif_bmc->state = SSIF_ABORTING;
+-		else
+-			ssif_bmc->state = SSIF_REQ_RECVING;
+-	}
+-
+-	/* This is response sending state */
+-	if (ssif_bmc->state == SSIF_REQ_RECVING)
+-		handle_write_received(ssif_bmc, val);
+-	else if (ssif_bmc->state == SSIF_SMBUS_CMD)
+-		process_smbus_cmd(ssif_bmc, val);
+-}
+-
+-static void on_stop_event(struct ssif_bmc_ctx *ssif_bmc, u8 *val)
+-{
+-	if (ssif_bmc->state == SSIF_READY ||
+-	    ssif_bmc->state == SSIF_START ||
+-	    ssif_bmc->state == SSIF_SMBUS_CMD ||
+-	    ssif_bmc->state == SSIF_ABORTING) {
+-		dev_warn(&ssif_bmc->client->dev,
+-			 "Warn: %s unexpected SLAVE STOP in state=%s\n",
+-			 __func__, state_to_string(ssif_bmc->state));
+-		ssif_bmc->state = SSIF_READY;
+-
+-	} else if (ssif_bmc->state == SSIF_REQ_RECVING) {
+-		if (validate_request_part(ssif_bmc)) {
+-			process_request_part(ssif_bmc);
+-			if (ssif_bmc->part_buf.smbus_cmd == SSIF_IPMI_SINGLEPART_WRITE ||
+-			    ssif_bmc->part_buf.smbus_cmd == SSIF_IPMI_MULTIPART_WRITE_END)
+-				handle_request(ssif_bmc);
+-			ssif_bmc->state = SSIF_READY;
+-		} else {
+-			/*
+-			 * A BMC that receives an invalid request drop the data for the write
+-			 * transaction and any further transactions (read or write) until
+-			 * the next valid read or write Start transaction is received
+-			 */
+-			dev_err(&ssif_bmc->client->dev, "Error: invalid pec\n");
+-			ssif_bmc->aborting = true;
+-		}
+-	} else if (ssif_bmc->state == SSIF_RES_SENDING) {
+-		if (ssif_bmc->is_singlepart_read || ssif_bmc->block_num == 0xFF)
+-			/* Invalidate response buffer to denote it is sent */
+-			complete_response(ssif_bmc);
+-		ssif_bmc->state = SSIF_READY;
+-	}
+-
+-	/* Reset message index */
+-	ssif_bmc->msg_idx = 0;
+-}
+-
+-/*
+- * Callback function to handle I2C slave events
+- */
+-static int ssif_bmc_cb(struct i2c_client *client, enum i2c_slave_event event, u8 *val)
+-{
+-	unsigned long flags;
+-	struct ssif_bmc_ctx *ssif_bmc = i2c_get_clientdata(client);
+-	int ret = 0;
+-
+-	spin_lock_irqsave(&ssif_bmc->lock, flags);
+-
+-	switch (event) {
+-	case I2C_SLAVE_READ_REQUESTED:
+-		on_read_requested_event(ssif_bmc, val);
+-		break;
+-
+-	case I2C_SLAVE_WRITE_REQUESTED:
+-		on_write_requested_event(ssif_bmc, val);
+-		break;
+-
+-	case I2C_SLAVE_READ_PROCESSED:
+-		on_read_processed_event(ssif_bmc, val);
+-		break;
+-
+-	case I2C_SLAVE_WRITE_RECEIVED:
+-		on_write_received_event(ssif_bmc, val);
+-		break;
+-
+-	case I2C_SLAVE_STOP:
+-		on_stop_event(ssif_bmc, val);
+-		break;
+-
+-	default:
+-		dev_warn(&ssif_bmc->client->dev, "Warn: Unknown i2c slave event\n");
+-		break;
+-	}
+-
+-	if (!ssif_bmc->aborting && ssif_bmc->busy)
+-		ret = -EBUSY;
+-
+-	spin_unlock_irqrestore(&ssif_bmc->lock, flags);
+-
+-	return ret;
+-}
+-
+-static int ssif_bmc_probe(struct i2c_client *client)
+-{
+-	struct ssif_bmc_ctx *ssif_bmc;
+-	int ret;
+-
+-	ssif_bmc = devm_kzalloc(&client->dev, sizeof(*ssif_bmc), GFP_KERNEL);
+-	if (!ssif_bmc)
+-		return -ENOMEM;
+-
+-	spin_lock_init(&ssif_bmc->lock);
+-
+-	init_waitqueue_head(&ssif_bmc->wait_queue);
+-	ssif_bmc->request_available = false;
+-	ssif_bmc->response_in_progress = false;
+-	ssif_bmc->busy = false;
+-	ssif_bmc->response_timer_inited = false;
+-
+-	/* Register misc device interface */
+-	ssif_bmc->miscdev.minor = MISC_DYNAMIC_MINOR;
+-	ssif_bmc->miscdev.name = DEVICE_NAME;
+-	ssif_bmc->miscdev.fops = &ssif_bmc_fops;
+-	ssif_bmc->miscdev.parent = &client->dev;
+-	ret = misc_register(&ssif_bmc->miscdev);
+-	if (ret)
+-		return ret;
+-
+-	ssif_bmc->client = client;
+-	ssif_bmc->client->flags |= I2C_CLIENT_SLAVE;
+-
+-	/* Register I2C slave */
+-	i2c_set_clientdata(client, ssif_bmc);
+-	ret = i2c_slave_register(client, ssif_bmc_cb);
+-	if (ret)
+-		misc_deregister(&ssif_bmc->miscdev);
+-
+-	return ret;
+-}
+-
+-static void ssif_bmc_remove(struct i2c_client *client)
+-{
+-	struct ssif_bmc_ctx *ssif_bmc = i2c_get_clientdata(client);
+-
+-	i2c_slave_unregister(client);
+-	misc_deregister(&ssif_bmc->miscdev);
+-}
+-
+-static const struct of_device_id ssif_bmc_match[] = {
+-	{ .compatible = "ssif-bmc" },
+-	{ },
+-};
+-MODULE_DEVICE_TABLE(of, ssif_bmc_match);
+-
+-static const struct i2c_device_id ssif_bmc_id[] = {
+-	{ DEVICE_NAME, 0 },
+-	{ },
+-};
+-MODULE_DEVICE_TABLE(i2c, ssif_bmc_id);
+-
+-static struct i2c_driver ssif_bmc_driver = {
+-	.driver         = {
+-		.name           = DEVICE_NAME,
+-		.of_match_table = ssif_bmc_match,
+-	},
+-	.probe_new      = ssif_bmc_probe,
+-	.remove         = ssif_bmc_remove,
+-	.id_table       = ssif_bmc_id,
+-};
+-
+-module_i2c_driver(ssif_bmc_driver);
+-
+-MODULE_AUTHOR("Quan Nguyen <quan@os.amperecomputing.com>");
+-MODULE_AUTHOR("Chuong Tran <chuong@os.amperecomputing.com>");
+-MODULE_DESCRIPTION("Linux device driver of the BMC IPMI SSIF interface.");
+-MODULE_LICENSE("GPL");
+-- 
+2.25.1
+

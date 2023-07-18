@@ -1,9 +1,8 @@
 FILESEXTRAPATHS:append := "${THISDIR}/${BPN}:"
 
+
 SRC_URI:append = " file://transformers-ast2600.cfg \
-                   file://transformers-ast2600_defconfig \
                    file://ast2600-transformers.dts \
-                   file://0001-spi-aspeed-Use-jedec-spi-nor-compatible-to-count-dev.patch \
                    file://0001-Modify-bootfile-name-and-env-offset.patch \
                    file://0002-Add-debug-mesg-to-show-SPI-clock-frequency.patch \
                    file://0003-Read-MAC0-address-from-EEPROM.patch \
@@ -21,20 +20,6 @@ do_copyfile () {
         # if use devtool modify, then the append files were stored under oe-local-files
         cp -v ${S}/oe-local-files/ast2600-transformers.dts ${S}/arch/arm/dts/
     fi
-
-    if [ -e ${WORKDIR}/transformers-ast2600_defconfig  ] ; then
-        cp -v ${WORKDIR}/transformers-ast2600_defconfig  ${S}/configs/
-    else
-        cp -v ${S}/oe-local-files/transformers-ast2600_defconfig ${S}/configs/
-    fi
-}
-
-do_deploy:append() {
-    mv ${UBOOT_IMAGE} uboot-tmp.bin
-    filesize=$(stat -c %s "uboot-tmp.bin")
-    checksum=`md5sum uboot-tmp.bin | awk '{ print $1 }'`
-    echo "INVENTEC_UBOOT_SIZE_${filesize}_CHECKSUM_${checksum}" > uboot-checksum
-    cat uboot-tmp.bin uboot-checksum >> ${UBOOT_IMAGE}
 }
 
 addtask copyfile after do_patch before do_configure
@@ -66,3 +51,4 @@ EOF
 }
 
 addtask patch_headerfile after do_patch before do_configure
+
