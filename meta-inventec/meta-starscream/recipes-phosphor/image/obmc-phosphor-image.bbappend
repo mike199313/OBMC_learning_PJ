@@ -5,7 +5,6 @@ useradd -e '' -ou 0 -d /home/root -G priv-admin,root,sudo,ipmi,web,redfish -p 'g
 useradd -e '' -ou 0 -d /home/root -G priv-admin,root,sudo,ipmi,web,redfish -p 'kFdHdjRkot8KQ' admin; \
 "
 OBMC_IMAGE_EXTRA_INSTALL:append = " openssh-sftp-server"
-OBMC_IMAGE_EXTRA_INSTALL:append = " python3-smbus"
 OBMC_IMAGE_EXTRA_INSTALL:append = " ipmitool"
 OBMC_IMAGE_EXTRA_INSTALL:append = " gpiolib"
 OBMC_IMAGE_EXTRA_INSTALL:append = " mmc-utils"

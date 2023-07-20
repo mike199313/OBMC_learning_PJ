@@ -28,7 +28,6 @@ do_prepare_bootloaders() {
 
 OBMC_IMAGE_EXTRA_INSTALL:append = " openssh-sftp-server"
 OBMC_IMAGE_EXTRA_INSTALL:append = " phosphor-ipmi-ipmb"
-OBMC_IMAGE_EXTRA_INSTALL:append = " python3-smbus"
 OBMC_IMAGE_EXTRA_INSTALL:append = " ipmitool"
 OBMC_IMAGE_EXTRA_INSTALL:append = " gpiolib"
 #BMC_IMAGE_EXTRA_INSTALL:append = " rest-dbus"
