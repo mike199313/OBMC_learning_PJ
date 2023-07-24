@@ -1,8 +1,8 @@
-From 9020e936c1a5eef4427c8232805e3bb0427536a8 Mon Sep 17 00:00:00 2001
+From 5953eb7db034d9acf29a9f78e5287f966c066ecd Mon Sep 17 00:00:00 2001
 From: Jason Lin <lin.jasonyy@inventec.com>
 Date: Thu, 16 Mar 2023 14:35:52 +0800
-Subject: [PATCH 24/27] Bug 1615 - [Transformers][OpenBMC][Redfish] Clear
- action in PostCodes does not response complete information
+Subject: [PATCH 6/9] Bug 1615 - [Transformers][OpenBMC][Redfish] Clear action
+ in PostCodes does not response complete information
 
 Symptom/Reason:
 	Not responding Success response.
@@ -33,5 +33,5 @@ index 235de8bd..9b4b35c0 100644
              "xyz.openbmc_project.State.Boot.PostCode0",
              "/xyz/openbmc_project/State/Boot/PostCode0",
 -- 
-2.34.1
+2.25.1
 

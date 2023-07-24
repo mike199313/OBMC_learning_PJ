@@ -1,7 +1,7 @@
-From 7395472262e5a57f8fc742c13c3c6bf0a0ee330a Mon Sep 17 00:00:00 2001
+From b46c03ab0746da2bcfe56a7e638519e93dd4265c Mon Sep 17 00:00:00 2001
 From: Jason Lin <lin.jasonyy@inventec.com>
 Date: Tue, 16 May 2023 15:17:06 +0800
-Subject: [PATCH 27/27] Redfish log & session schema enhancements
+Subject: [PATCH 9/9] Redfish log & session schema enhancements
 
 ---
  redfish-core/lib/log_services.hpp     | 69 +++++++++++++++++++++++++++
@@ -9,7 +9,7 @@ Subject: [PATCH 27/27] Redfish log & session schema enhancements
  2 files changed, 71 insertions(+)
 
 diff --git a/redfish-core/lib/log_services.hpp b/redfish-core/lib/log_services.hpp
-index 9b4b35c0..0a498b35 100644
+index 9b4b35c0..9982eb82 100644
 --- a/redfish-core/lib/log_services.hpp
 +++ b/redfish-core/lib/log_services.hpp
 @@ -52,6 +52,7 @@
@@ -191,5 +191,5 @@ index 35d5d5cf..87ded600 100644
  
  inline void handleSessionCollectionMembersGet(
 -- 
-2.34.1
+2.25.1
 

@@ -1,7 +1,7 @@
-From 4f25b85b8a7798609c2c74badad82cc56c5adff3 Mon Sep 17 00:00:00 2001
+From a2dbdb606a0d8a5a1e18d38387127ac042cf05ed Mon Sep 17 00:00:00 2001
 From: Tommy Lin <lin.tommysc@inventec.com>
 Date: Thu, 16 Feb 2023 05:29:30 +0000
-Subject: [PATCH 21/27] Simple Rack-mounted Server for Sensors
+Subject: [PATCH 3/9] Simple Rack-mounted Server for Sensors
 
 Symptom/Reason:
 - N/A
@@ -26,7 +26,7 @@ Entry Test:
  1 file changed, 39 insertions(+)
 
 diff --git a/redfish-core/lib/sensors.hpp b/redfish-core/lib/sensors.hpp
-index ff764aad..c6e83ee2 100644
+index ff764aad..18602041 100644
 --- a/redfish-core/lib/sensors.hpp
 +++ b/redfish-core/lib/sensors.hpp
 @@ -187,6 +187,34 @@ inline std::string_view toReadingUnits(std::string_view sensorType)
@@ -83,5 +83,5 @@ index ff764aad..c6e83ee2 100644
      else if (sensorType == "temperature")
      {
 -- 
-2.34.1
+2.25.1
 

@@ -45,8 +45,6 @@ SRC_URI:append = " \
     file://0015-NTP-Server-not-loss-after-reboot.patch \
     file://0016-enable-fru-to-set-product-properties-by-PATCH.patch \
     file://0017-Fix-excerpt-query-fail.patch \
-    file://0013-Redfish-Support-for-composition-service.patch \
-    file://0018-Bug-1436-System-count-doesnt-match.patch \
     file://0019-Bug-1431-Members-of-PCIe-Functions-are-missing.patch \
     file://0020-Bug-1075-Transformers-OpenBMC-WebUI-network-Unable-t.patch \
     file://0021-Simple-Rack-mounted-Server-for-Sensors.patch \

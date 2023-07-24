@@ -1,7 +1,7 @@
-From 3f79b742eed2709260044d61fce420d014bfd6cf Mon Sep 17 00:00:00 2001
+From 371ebf64e516ca5950e349691aa07cd19a9b7e35 Mon Sep 17 00:00:00 2001
 From: Tommy Lin <Lin.TommySC@inventec.com>
 Date: Wed, 17 May 2023 01:40:28 +0000
-Subject: [PATCH 26/27] AccountService enhancement
+Subject: [PATCH 8/9] AccountService enhancement
 
 Symptom/Reason:
 - AccountService enhancement for Simple Rack mounted Server Profile
@@ -267,5 +267,5 @@ index 79d19b21..de744e7a 100644
      };
  
 -- 
-2.34.1
+2.25.1
 

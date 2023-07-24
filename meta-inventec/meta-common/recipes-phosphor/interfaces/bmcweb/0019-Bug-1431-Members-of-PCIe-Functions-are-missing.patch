@@ -1,8 +1,8 @@
-From ba6c604536c9a0b27b4571fa0907528e315cf5c2 Mon Sep 17 00:00:00 2001
+From 62ada6552b1a229496dcb0ee3fef266f139cb210 Mon Sep 17 00:00:00 2001
 From: Matt Cheng <cheng.matt@inventec.com>
 Date: Mon, 12 Dec 2022 09:28:44 +0800
-Subject: [PATCH 19/27] =?UTF-8?q?Bug=C2=A01431=20-=20[Transformers][OpenBM?=
- =?UTF-8?q?C][Redfish]Members=20of=20PCIe=20Functions=20are=20missing.?=
+Subject: [PATCH 1/9] =?UTF-8?q?Bug=C2=A01431=20-=20[Transformers][OpenBMC]?=
+ =?UTF-8?q?[Redfish]Members=20of=20PCIe=20Functions=20are=20missing.?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -41,5 +41,5 @@ index 97f1e245..e1a6c1b8 100644
                      continue;
                  }
 -- 
-2.34.1
+2.25.1
 

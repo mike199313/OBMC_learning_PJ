@@ -1,7 +1,7 @@
-From 7cca60367914f30288ff04c20367c46f8ed6c928 Mon Sep 17 00:00:00 2001
+From 8cb90a9ec41338e040db9fcfa33cb8df6968402e Mon Sep 17 00:00:00 2001
 From: Jason Lin <lin.jasonyy@inventec.com>
 Date: Tue, 21 Feb 2023 06:11:59 +0000
-Subject: [PATCH 22/27] Redfish Chassis, Manager schema enhancements
+Subject: [PATCH 4/9] Redfish Chassis, Manager schema enhancements
 
 Symptom/Reason:
 Schema enhancements for 2023 Q1
@@ -453,3 +453,4 @@ index aea450a5..6e24c7c2 100644
  
 -- 
 2.25.1
+
