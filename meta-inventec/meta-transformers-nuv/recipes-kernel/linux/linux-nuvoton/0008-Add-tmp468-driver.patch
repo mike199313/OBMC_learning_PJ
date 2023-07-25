@@ -1,6 +1,6 @@
-From 69e659ff1e496e44cbe2f1cd4319fb4d3f6123fe Mon Sep 17 00:00:00 2001
-From: Neil Chen <Chen.NeilZX@inventec.com>
-Date: Thu, 4 Feb 2021 05:04:43 +0000
+From 060cfe14a1676c5801779b284691aba20374a7b6 Mon Sep 17 00:00:00 2001
+From: Matt Cheng <cheng.matt@inventec.com>
+Date: Mon, 24 Jul 2023 15:51:51 +0800
 Subject: [PATCH] Add tmp468 driver
 
 ---
@@ -11,31 +11,31 @@ Subject: [PATCH] Add tmp468 driver
  create mode 100644 drivers/hwmon/tmp468.c
 
 diff --git a/drivers/hwmon/Kconfig b/drivers/hwmon/Kconfig
-index 0a6e6dc76471..1d2a8a05e349 100644
+index e5866419261c..f4066b8a3b14 100755
 --- a/drivers/hwmon/Kconfig
 +++ b/drivers/hwmon/Kconfig
-@@ -1948,6 +1948,16 @@ config SENSORS_TMP513
+@@ -1987,6 +1987,16 @@ config SENSORS_TMP513
  	  This driver can also be built as a module. If so, the module
  	  will be called tmp513.
  
 +config SENSORS_TMP468
-+        tristate "Texas Instruments TMP468 and compatible"
-+        depends on I2C
-+        help
-+          If you say yes here you get support for Texas Instruments TMP468
-+          temperature sensor chips.
++	tristate "Texas Instruments TMP468 and compatible"
++	depends on I2C
++	help
++	  If you say yes here you get support for Texas Instruments TMP468
++	  temperature sensor chips.
 +
-+          This driver can also be built as a module. If so, the module
-+          will be called tmp468
++	  This driver can also be built as a module. If so, the module
++	  will be called tmp468
 +
  config SENSORS_VEXPRESS
  	tristate "Versatile Express"
  	depends on VEXPRESS_CONFIG
 diff --git a/drivers/hwmon/Makefile b/drivers/hwmon/Makefile
-index 7ae0886ef36d..d91653d12732 100644
+index b7054f7d8587..94a47fadf176 100755
 --- a/drivers/hwmon/Makefile
 +++ b/drivers/hwmon/Makefile
-@@ -188,6 +188,7 @@ obj-$(CONFIG_SENSORS_TMP108)	+= tmp108.o
+@@ -193,6 +193,7 @@ obj-$(CONFIG_SENSORS_TMP108)	+= tmp108.o
  obj-$(CONFIG_SENSORS_TMP401)	+= tmp401.o
  obj-$(CONFIG_SENSORS_TMP421)	+= tmp421.o
  obj-$(CONFIG_SENSORS_TMP513)	+= tmp513.o
@@ -567,5 +567,5 @@ index 000000000000..b27474b81aac
 +MODULE_DESCRIPTION("TI TMP468 temperature sensor driver");
 +MODULE_LICENSE("GPL");
 -- 
-2.17.1
+2.25.1
 

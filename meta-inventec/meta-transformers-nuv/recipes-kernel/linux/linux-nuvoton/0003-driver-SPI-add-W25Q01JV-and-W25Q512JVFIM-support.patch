@@ -1,0 +1,30 @@
+From b55c28f4422dc63120f5332b78b11879743751cc Mon Sep 17 00:00:00 2001
+From: Matt Cheng <cheng.matt@inventec.com>
+Date: Mon, 24 Jul 2023 14:02:25 +0800
+Subject: [PATCH] driver: SPI: add W25Q01JV and W25Q512JVFIM support
+
+---
+ drivers/mtd/spi-nor/winbond.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+ mode change 100644 => 100755 drivers/mtd/spi-nor/winbond.c
+
+diff --git a/drivers/mtd/spi-nor/winbond.c b/drivers/mtd/spi-nor/winbond.c
+old mode 100644
+new mode 100755
+index 0ff7a20d030c..5ca743a50143
+--- a/drivers/mtd/spi-nor/winbond.c
++++ b/drivers/mtd/spi-nor/winbond.c
+@@ -106,6 +106,10 @@ static const struct flash_info winbond_parts[] = {
+ 			     SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ) },
+ 	{ "w25q01jviq", INFO(0xef4021, 0, 64 * 1024, 2048,
+ 			     SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ) },
++	{ "w25q512jvf", INFO(0xef7020, 0, 64 * 1024, 1024,
++			    SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ) },
++	{ "w25q01jv", INFO(0xef7021, 0, 64 * 1024, 2048,
++			    SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ) },
+ };
+ 
+ /**
+-- 
+2.25.1
+

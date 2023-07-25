@@ -1,6 +1,6 @@
-From 72c1304eb8bd85f641e490cfd1ef869e3fe7eb8e Mon Sep 17 00:00:00 2001
-From: "sun.cwsun" <sun.cwsun@inventec.com>
-Date: Wed, 30 Mar 2022 18:31:45 +0800
+From 430c2c06b82bedd1d9217f63d8d921e7db2a31ef Mon Sep 17 00:00:00 2001
+From: Matt Cheng <cheng.matt@inventec.com>
+Date: Mon, 24 Jul 2023 18:06:30 +0800
 Subject: [PATCH] reset DMA again if stmmac_reset failed
 
 ---
@@ -8,18 +8,20 @@ Subject: [PATCH] reset DMA again if stmmac_reset failed
  1 file changed, 20 insertions(+), 5 deletions(-)
 
 diff --git a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
-index 31e774087ba8..f0acf7e7cd3f 100644
+index b4f83c865568..6310fe6b77ff 100644
 --- a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
 +++ b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
-@@ -2293,6 +2293,7 @@ static int stmmac_init_dma_engine(struct stmmac_priv *priv)
+@@ -2889,7 +2889,8 @@ static int stmmac_init_dma_engine(struct stmmac_priv *priv)
  	u32 chan = 0;
  	int atds = 0;
  	int ret = 0;
+-
 +	int retry = 0;
- 
++	
  	if (!priv->plat->dma_cfg || !priv->plat->dma_cfg->pbl) {
  		dev_err(priv->device, "Invalid DMA configuration\n");
-@@ -2302,11 +2303,25 @@ static int stmmac_init_dma_engine(struct stmmac_priv *priv)
+ 		return -EINVAL;
+@@ -2898,11 +2899,25 @@ static int stmmac_init_dma_engine(struct stmmac_priv *priv)
  	if (priv->extend_desc && (priv->mode == STMMAC_RING_MODE))
  		atds = 1;
  
@@ -27,26 +29,28 @@ index 31e774087ba8..f0acf7e7cd3f 100644
 -	if (ret) {
 -		dev_err(priv->device, "Failed to reset the dma\n");
 -		return ret;
--	}
-+    for(retry = 0; 1; retry++)
-+    {
-+       //bug879. retry the dma reset again will fix the problem
-+    	ret = stmmac_reset(priv, priv->ioaddr);
-+    	if (ret)
-+       {
-+        	if(retry >= 50){
-+        	    //max try 51 times if error. take almost 500ms.
-+               return ret;
-+            }else{
-+           	dev_err(priv->device, "Failed to reset the dma retry=%d\n", retry);
-+      			mdelay(10);
-+               continue;
-+            }
-+        }else{
-+        	break;
-+        }
-+    }
-+    dev_err(priv->device, "stmac_reset retry=%d\n", retry);
++	for(retry = 0; 1; retry++)
++	{
++		//bug879. retry the dma reset again will fix the problem
++		ret = stmmac_reset(priv, priv->ioaddr);
++		if (ret)
++		{
++			if(retry >= 50){
++				//max try 51 times if error. take almost 500ms.
++				return ret;
++			}else{
++				dev_err(priv->device, "Failed to reset the dma retry=%d\n", retry);
++				mdelay(10);
++				continue;
++			}
++		}else{
++			break;
++		}
+ 	}
++	dev_err(priv->device, "stmac_reset retry=%d\n", retry);
  
  	/* DMA Configuration */
  	stmmac_dma_init(priv, priv->ioaddr, priv->plat->dma_cfg, atds);
+-- 
+2.25.1
+

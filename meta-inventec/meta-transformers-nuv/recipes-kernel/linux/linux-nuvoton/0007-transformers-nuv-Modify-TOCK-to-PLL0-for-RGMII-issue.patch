@@ -1,6 +1,6 @@
-From 95743bf61c8afced8c84e9de69c4bf5896e85616 Mon Sep 17 00:00:00 2001
+From 43ec942f508e0e5a865663e35d536301558ac4f1 Mon Sep 17 00:00:00 2001
 From: Matt Cheng <cheng.matt@inventec.com>
-Date: Mon, 17 Jul 2023 17:59:34 +0800
+Date: Mon, 24 Jul 2023 15:32:14 +0800
 Subject: [PATCH] [transformers-nuv] Modify TOCK to PLL0 for RGMII issue
 
 ---

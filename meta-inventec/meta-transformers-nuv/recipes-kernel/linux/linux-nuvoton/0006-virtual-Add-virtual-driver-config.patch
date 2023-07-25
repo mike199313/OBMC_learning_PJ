@@ -1,32 +1,31 @@
-From bd4ad8fd71472912756834a42d46dbd3e702b1cb Mon Sep 17 00:00:00 2001
-From: "pj.chen" <chen.pj@inventec.com>
-Date: Mon, 6 Sep 2021 03:20:29 +0000
+From a6a8a1d149f0a599b8153565fec9b06f4e10bdc0 Mon Sep 17 00:00:00 2001
+From: Matt Cheng <cheng.matt@inventec.com>
+Date: Mon, 24 Jul 2023 15:07:10 +0800
 Subject: [PATCH] virtual - Add virtual driver config
 
 ---
- drivers/Kconfig         | 3 +++
+ drivers/Kconfig         | 2 ++
  drivers/Makefile        | 1 +
  drivers/virtual/Kconfig | 9 +++++++++
- 3 files changed, 13 insertions(+)
+ 3 files changed, 12 insertions(+)
  create mode 100755 drivers/virtual/Kconfig
 
 diff --git a/drivers/Kconfig b/drivers/Kconfig
-index 4b2d27b15f90..5ee07d0c685d 100644
+index 8d6cd5d08722..1df07c2eca87 100755
 --- a/drivers/Kconfig
 +++ b/drivers/Kconfig
-@@ -237,4 +237,7 @@ source "drivers/counter/Kconfig"
- source "drivers/most/Kconfig"
+@@ -239,4 +239,6 @@ source "drivers/most/Kconfig"
  
  source "drivers/peci/Kconfig"
-+
+ 
 +source "drivers/virtual/Kconfig"
 +
  endmenu
 diff --git a/drivers/Makefile b/drivers/Makefile
-index 0f793750d590..428b4761d9cd 100644
+index 020780b6b4d2..6cad05a3222f 100755
 --- a/drivers/Makefile
 +++ b/drivers/Makefile
-@@ -190,3 +190,4 @@ obj-$(CONFIG_INTERCONNECT)	+= interconnect/
+@@ -188,3 +188,4 @@ obj-$(CONFIG_INTERCONNECT)	+= interconnect/
  obj-$(CONFIG_COUNTER)		+= counter/
  obj-$(CONFIG_MOST)		+= most/
  obj-$(CONFIG_PECI)		+= peci/
@@ -48,5 +47,5 @@ index 000000000000..97f314ced81d
 +	  be called virtual.
 \ No newline at end of file
 -- 
-2.17.1
+2.25.1
 

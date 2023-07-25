@@ -557,10 +557,12 @@
 	status = "okay";
 };
 
+/*
 &video {
        memory-region = <&video_memory>;
        status = "okay";
 };
+*/
 
 &watchdog1 {
 	nuvoton,ext1-reset-type = "wd1";
@@ -733,6 +735,7 @@
 	"","","","","","","","";
 };
 
+/*
 &sgpio2 {
 	status = "okay";
 	bus-frequency = <1000000>;
@@ -749,3 +752,4 @@
 	"","","NMI_SW","INTRUDER","","","","MEM_CONTROLLER_PWR_FAIL",
 	"","","","","","","","";
 };
+*/

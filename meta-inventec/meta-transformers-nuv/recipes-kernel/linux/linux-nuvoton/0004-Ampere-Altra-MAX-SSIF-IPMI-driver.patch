@@ -1,28 +1,26 @@
-From e16d8d3d260e4bfe76f94f42d2923e47c63c6db4 Mon Sep 17 00:00:00 2001
-From: Mohaimen <mohaimen.alsamarai@foxconn.com>
-Date: Thu, 22 Oct 2020 17:31:05 -0500
+From 44ea6a56799b6137f499b8e07c5129d8824f434b Mon Sep 17 00:00:00 2001
+From: Matt Cheng <cheng.matt@inventec.com>
+Date: Mon, 24 Jul 2023 14:30:10 +0800
 Subject: [PATCH] Ampere Altra (MAX) SSIF IPMI driver
 
-1. Add Ampere SSIF IPMI driver to provide the interface
-between CPU & BMC
-2. Add Ampere SSIF IPMI driver supports Nuvoton chipset
-
-Signed-off-by: Mohaimen alsmarai <Mohaimen.alsamarai@fii-na.com>
-Signed-off-by: Joseph Liu <kwliu@nuvoton.com>
 ---
  drivers/char/ipmi/Kconfig     |   12 +
  drivers/char/ipmi/Makefile    |    1 +
  drivers/char/ipmi/ssif-bmc.c  | 1071 +++++++++++++++++++++++++++++++++
  include/uapi/linux/ssif-bmc.h |   27 +
  4 files changed, 1111 insertions(+)
- create mode 100644 drivers/char/ipmi/ssif-bmc.c
- create mode 100644 include/uapi/linux/ssif-bmc.h
+ mode change 100644 => 100755 drivers/char/ipmi/Kconfig
+ mode change 100644 => 100755 drivers/char/ipmi/Makefile
+ create mode 100755 drivers/char/ipmi/ssif-bmc.c
+ create mode 100755 include/uapi/linux/ssif-bmc.h
 
 diff --git a/drivers/char/ipmi/Kconfig b/drivers/char/ipmi/Kconfig
-index 56eba099e705..5343c6988d56 100644
+old mode 100644
+new mode 100755
+index 19f1efc0bc3d..74463f1ba9e4
 --- a/drivers/char/ipmi/Kconfig
 +++ b/drivers/char/ipmi/Kconfig
-@@ -133,6 +133,18 @@ config ASPEED_BT_IPMI_BMC
+@@ -177,6 +177,18 @@ config ASPEED_BT_IPMI_BMC
  	  found on Aspeed SOCs (AST2400 and AST2500). The driver
  	  implements the BMC side of the BT interface.
  
@@ -42,17 +40,19 @@ index 56eba099e705..5343c6988d56 100644
  	tristate 'IPMB Interface handler'
  	depends on I2C
 diff --git a/drivers/char/ipmi/Makefile b/drivers/char/ipmi/Makefile
-index 0822adc2ec41..0a5fdd0b37fc 100644
+old mode 100644
+new mode 100755
+index 3390985b4802..dc5b9c5f1cbf
 --- a/drivers/char/ipmi/Makefile
 +++ b/drivers/char/ipmi/Makefile
-@@ -26,4 +26,5 @@ obj-$(CONFIG_IPMI_KCS_BMC) += kcs_bmc.o
+@@ -29,4 +29,5 @@ obj-$(CONFIG_IPMI_KCS_BMC_CDEV_RAW) += kcs_bmc_cdev_raw.o
  obj-$(CONFIG_ASPEED_BT_IPMI_BMC) += bt-bmc.o
  obj-$(CONFIG_ASPEED_KCS_IPMI_BMC) += kcs_bmc_aspeed.o
  obj-$(CONFIG_NPCM7XX_KCS_IPMI_BMC) += kcs_bmc_npcm7xx.o
 +obj-$(CONFIG_SSIF_IPMI_BMC) += ssif-bmc.o
  obj-$(CONFIG_IPMB_DEVICE_INTERFACE) += ipmb_dev_int.o
 diff --git a/drivers/char/ipmi/ssif-bmc.c b/drivers/char/ipmi/ssif-bmc.c
-new file mode 100644
+new file mode 100755
 index 000000000000..ed3ef32c0d1c
 --- /dev/null
 +++ b/drivers/char/ipmi/ssif-bmc.c
@@ -1129,7 +1129,7 @@ index 000000000000..ed3ef32c0d1c
 +MODULE_DESCRIPTION("Linux device driver of the BMC IPMI SSIF interface.");
 +MODULE_LICENSE("GPL");
 diff --git a/include/uapi/linux/ssif-bmc.h b/include/uapi/linux/ssif-bmc.h
-new file mode 100644
+new file mode 100755
 index 000000000000..8a8b85b33240
 --- /dev/null
 +++ b/include/uapi/linux/ssif-bmc.h
@@ -1162,5 +1162,5 @@ index 000000000000..8a8b85b33240
 +
 +#endif /* _UAPI_LINUX_SSIF_BMC_H */
 -- 
-2.17.1
+2.25.1
 

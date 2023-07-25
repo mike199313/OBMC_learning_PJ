@@ -1,6 +1,6 @@
-From 041cda2e7f2a76b4757dd86e4e2c0df762962d51 Mon Sep 17 00:00:00 2001
-From: Neil Chen <Chen.NeilZX@inventec.com>
-Date: Tue, 16 Nov 2021 02:13:26 +0000
+From e7c14e64c9c698e8e3b16550f0684fc61214c9c2 Mon Sep 17 00:00:00 2001
+From: Matt Cheng <cheng.matt@inventec.com>
+Date: Mon, 24 Jul 2023 16:21:09 +0800
 Subject: [PATCH] Add watchdog time
 
 ---
@@ -8,7 +8,7 @@ Subject: [PATCH] Add watchdog time
  1 file changed, 2 insertions(+), 2 deletions(-)
 
 diff --git a/drivers/watchdog/npcm_wdt.c b/drivers/watchdog/npcm_wdt.c
-index 2656ba278178..53a94621a8b0 100644
+index 622b30566a5b..5d12f7f04a08 100644
 --- a/drivers/watchdog/npcm_wdt.c
 +++ b/drivers/watchdog/npcm_wdt.c
 @@ -142,8 +142,8 @@ static int npcm_wdt_set_timeout(struct watchdog_device *wdd,
@@ -23,5 +23,5 @@ index 2656ba278178..53a94621a8b0 100644
  		wdd->timeout = 2750;
  
 -- 
-2.17.1
+2.25.1
 
