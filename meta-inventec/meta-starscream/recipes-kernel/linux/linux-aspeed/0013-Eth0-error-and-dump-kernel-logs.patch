@@ -1,9 +1,12 @@
-From 6d111adc18ae0df1c60f68bc486b3c75892b679f Mon Sep 17 00:00:00 2001
-From: Matt Cheng <cheng.matt@inventec.com>
-Date: Fri, 24 Mar 2023 08:03:21 +0800
+From 8627a79097e40944359310ca47b6a72526a20491 Mon Sep 17 00:00:00 2001
+From: "liz.chiu" <Chiu.Liz@inventec.com>
+Date: Mon, 17 Jul 2023 16:13:09 +0800
 Subject: [PATCH] Bug 1482 - [Starscream-ast][OpenBMC][System]Kernal logs
  "NETDEV WATCHDOG: eth0 (ftgmac100): transmit queue 0 timed out" after
  ipmitool mc reset cold.
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -22,14 +25,11 @@ Entry Test:
 	Step 4 ：Wait more 30 mins if print "warning kernel: ftgmac100 1e670000.ftgmac eth0: Wrong NCSI state 0x100 in workqueue"
 	Step 5：After 30 mins, check kernal log or dmesg, will see "NETDEV WATCHDOG: eth0 (ftgmac100): transmit queue 0 timed out" etc....
 ---
- drivers/net/ethernet/faraday/ftgmac100.c | 24 ++++++++++++++++++++++--
- 1 file changed, 22 insertions(+), 2 deletions(-)
- mode change 100644 => 100755 drivers/net/ethernet/faraday/ftgmac100.c
+ drivers/net/ethernet/faraday/ftgmac100.c | 23 +++++++++++++++++++++--
+ 1 file changed, 21 insertions(+), 2 deletions(-)
 
 diff --git a/drivers/net/ethernet/faraday/ftgmac100.c b/drivers/net/ethernet/faraday/ftgmac100.c
-old mode 100644
-new mode 100755
-index c96d4bf4d5e3..4df73346c959
+index 0e7fd1a6299f..16dbf481365e 100644
 --- a/drivers/net/ethernet/faraday/ftgmac100.c
 +++ b/drivers/net/ethernet/faraday/ftgmac100.c
 @@ -34,8 +34,8 @@
@@ -43,7 +43,7 @@ index c96d4bf4d5e3..4df73346c959
  
  /* Defaults */
  #define DEF_RX_QUEUE_ENTRIES	128
-@@ -831,6 +831,21 @@ static netdev_tx_t ftgmac100_hard_start_xmit(struct sk_buff *skb,
+@@ -828,6 +828,21 @@ static netdev_tx_t ftgmac100_hard_start_xmit(struct sk_buff *skb,
  			netif_wake_queue(netdev);
  	}
  
@@ -56,20 +56,19 @@ index c96d4bf4d5e3..4df73346c959
 +	    (ip_hdr(skb)->protocol == IPPROTO_UDP)) {
 +		u32 ier = ioread32(priv->base + FTGMAC100_OFFSET_IER);
 +
-+		/* IER == FTGMAC100_INT_ALL implies NAPI is not running */
++	/* IER == FTGMAC100_INT_ALL implies NAPI is not running */
 +		if (ier == FTGMAC100_INT_ALL)
 +			iowrite32(ier | FTGMAC100_INT_XPKT_ETH,
 +				  priv->base + FTGMAC100_OFFSET_IER);
 +	}
-+
++ 
  	/* Poke transmitter to read the updated TX descriptors */
  	iowrite32(1, priv->base + FTGMAC100_OFFSET_NPTXPD);
  
-@@ -1920,6 +1935,11 @@ static int ftgmac100_probe(struct platform_device *pdev)
- 	/* AST2400  doesn't have working HW checksum generation */
- 	if (np && (of_device_is_compatible(np, "aspeed,ast2400-mac")))
+@@ -1980,6 +1995,10 @@ static int ftgmac100_probe(struct platform_device *pdev)
+ 	if (priv->use_ncsi && of_device_is_compatible(np, "aspeed,ast2600-mac"))
  		netdev->hw_features &= ~NETIF_F_HW_CSUM;
-+
+ 
 +	/* AST2600 tx checksum with NCSI is broken */
 +	if (priv->use_ncsi && of_device_is_compatible(np, "aspeed,ast2600-mac"))
 +		netdev->hw_features &= ~NETIF_F_HW_CSUM;

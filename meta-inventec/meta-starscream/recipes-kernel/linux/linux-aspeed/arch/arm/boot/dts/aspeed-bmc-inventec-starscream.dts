@@ -183,9 +183,9 @@
 };
 
 &spi1 {
-	status = "okay";
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_spi1_default>;
+        status = "okay";
+        pinctrl-names = "default";
+        pinctrl-0 = <&pinctrl_spi1_default>;
 
         flash@0 {
                 status = "okay";
@@ -225,7 +225,7 @@
 };
 
 &uart_routing {
-	status = "okay";
+        status = "okay";
 };
 
 #if 1 //using i2c mode instead of i3c
@@ -262,7 +262,7 @@
                                 compatible = "amd,sbtsi";
                                 reg = <0x4c>;
                         };
-		};
+                };
 
                 i2c@1 {
                         #address-cells = <1>;
@@ -316,7 +316,7 @@
                         #size-cells = <0>;
                         reg = <3>;
                 };
-	};
+        };
 };
 
 &i2c6 {
@@ -387,7 +387,7 @@
                         #size-cells = <0>;
                         reg = <3>;
                 };
-	};
+        };
 };
 
 
@@ -457,7 +457,7 @@
 
 #if 0 //using i2c mode instead of i3c
 &i3cglobal {
-	status = "okay";
+        status = "okay";
 };
 
 &i3c2 {
@@ -542,7 +542,7 @@
 
 
 &jtag0 {
-	status = "okay";
+        status = "okay";
 };
 
 &jtag1 {
@@ -580,7 +580,7 @@
 
 &video {
         status = "okay";
-	memory-region = <&video_engine_memory>;
+        memory-region = <&video_engine_memory>;
 };
 
 &vhub {

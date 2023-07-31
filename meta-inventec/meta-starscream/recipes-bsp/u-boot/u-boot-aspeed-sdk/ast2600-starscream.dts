@@ -233,3 +233,13 @@
 &display_port {
 	status = "okay";
 };
+
+&hace {
+	u-boot,dm-pre-reloc;
+	status = "okay";
+};
+
+&acry {
+	u-boot,dm-pre-reloc;
+	status = "okay";
+};

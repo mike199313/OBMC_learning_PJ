@@ -1,28 +1,28 @@
-From 53562a9ba42d1816ebd4f6ad40205b474d790bed Mon Sep 17 00:00:00 2001
+From 816ca84f0acee01d838740843b4aa7b7f7fac022 Mon Sep 17 00:00:00 2001
 From: link <link@inventec.com>
-Date: Mon, 14 Nov 2022 07:47:01 +0000
+Date: Thu, 15 Jun 2023 17:44:13 +0800
 Subject: [PATCH] Initial starscream machine
 
 - Add ast-2600-starscream.dtb to Makefile
 ---
  arch/arm/dts/Makefile                       |   1 +
- arch/arm/mach-aspeed/ast2600/board_common.c | 150 ++++++++++++++++++++
- 2 files changed, 151 insertions(+)
+ arch/arm/mach-aspeed/ast2600/board_common.c | 152 ++++++++++++++++++++
+ 2 files changed, 153 insertions(+)
 
 diff --git a/arch/arm/dts/Makefile b/arch/arm/dts/Makefile
-index a79f885f54..56f3d3f3b5 100755
+index 6c34b83336..8f50790b82 100755
 --- a/arch/arm/dts/Makefile
 +++ b/arch/arm/dts/Makefile
-@@ -688,6 +688,7 @@ dtb-$(CONFIG_ARCH_ASPEED) += \
- 	ast2600-rainier.dtb \
+@@ -693,6 +693,7 @@ dtb-$(CONFIG_ARCH_ASPEED) += \
+ 	ast2600-qcom-dc-scm-v1.dtb \
  	ast2600-s6q.dtb \
  	ast2600-slt.dtb \
 +	ast2600-starscream.dtb \
+ 	ast2600-tacoma.dtb \
+ 	ast2600-intel.dtb \
  	ast2600-tacoma.dtb
- 
- dtb-$(CONFIG_ARCH_STI) += stih410-b2260.dtb
 diff --git a/arch/arm/mach-aspeed/ast2600/board_common.c b/arch/arm/mach-aspeed/ast2600/board_common.c
-index 53870dd71d..6099962a19 100644
+index 70d2a97b5d..24336ab52b 100644
 --- a/arch/arm/mach-aspeed/ast2600/board_common.c
 +++ b/arch/arm/mach-aspeed/ast2600/board_common.c
 @@ -14,6 +14,12 @@
@@ -88,15 +88,16 @@ index 53870dd71d..6099962a19 100644
  #ifdef ASPEED_RMII_DAUGHTER_CARD
  	reset_eth_phy();
  #endif
-+	gpio_init();
-+	sgpio_init_port80();
++    gpio_init();
++    sgpio_init_port80();
  	/*
  	 * Loop over all MISC uclass drivers to call the comphy code
  	 * and init all CP110 devices enabled in the DT
-@@ -222,3 +269,106 @@ void aspeed_mmc_init(void)
+@@ -227,3 +274,108 @@ void aspeed_mmc_init(void)
+ 	return;
  
  }
- 
++
 +int gpio_init(void)
 +{
 +    u32 reg;
@@ -200,6 +201,7 @@ index 53870dd71d..6099962a19 100644
 +
 +    return 0;
 +}
++
 -- 
 2.17.1
 

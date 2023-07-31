@@ -930,11 +930,12 @@ static const struct hwmon_chip_info virtual_hwmon_fan_chip_info = {
   Remove
 *******/
 
-static int virtual_hwmon_remove(struct i2c_client *client)
+//static int virtual_hwmon_remove(struct i2c_client *client)
+static void virtual_hwmon_remove(struct i2c_client *client)
 {
 	struct device *dev = &client->dev;
 	virtual_hwmon_data_t *data = dev_get_drvdata(dev);
-	int err = 0;
+	//int err = 0;
 
 	switch(data->kind)
 	{
@@ -949,13 +950,12 @@ static int virtual_hwmon_remove(struct i2c_client *client)
 		break;
 	default:
 		dev_info(dev, "sensor '%s' not support kind %d\n", client->name, data->kind);
-		err = -EINVAL;
+		//err = -EINVAL;
 		break;
 	}
 
 	dev_info(dev, "sensor '%s'\n", client->name);
-
-	return err;
+	//return err;
 }
 
 
