@@ -54,9 +54,10 @@ RDEPENDS:${PN}-system = " \
         phosphor-host-postd \
         e2fsprogs \
         phosphor-post-code-manager \
-	iptables \
-	nbd-server \
+        iptables \
+        nbd-server \
         nfs-utils \
-	ms-subsystem-check \
+        ms-subsystem-check \
+        wget \
         "
 
