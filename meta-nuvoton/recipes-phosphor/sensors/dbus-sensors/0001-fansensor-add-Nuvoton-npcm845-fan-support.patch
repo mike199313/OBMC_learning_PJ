@@ -1,0 +1,28 @@
+From 7c2c36e993c71c9fe3d6ffe99727c393dace3c4a Mon Sep 17 00:00:00 2001
+From: Brian Ma <chma0@nuvoton.com>
+Date: Mon, 8 May 2023 13:36:53 +0800
+Subject: [PATCH] fansensor: add Nuvoton npcm845 fan support
+
+Add npcm845-pwm-fan in compatibleFanTypes to support Nuvoton npcm845 fan.
+
+Change-Id: I46ebc19e8c20c16bd2df8976c06b5e58b9991c47
+Signed-off-by: Brian Ma <chma0@nuvoton.com>
+---
+ src/FanMain.cpp | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/FanMain.cpp b/src/FanMain.cpp
+index 32022c17..abcb2a9a 100644
+--- a/src/FanMain.cpp
++++ b/src/FanMain.cpp
+@@ -67,6 +67,7 @@ static const std::map<std::string, FanTypes> compatibleFanTypes = {
+     {"aspeed,ast2400-pwm-tacho", FanTypes::aspeed},
+     {"aspeed,ast2500-pwm-tacho", FanTypes::aspeed},
+     {"nuvoton,npcm750-pwm-fan", FanTypes::nuvoton},
++    {"nuvoton,npcm845-pwm-fan", FanTypes::nuvoton},
+     {"hpe,gxp-fan-ctrl", FanTypes::hpe}
+     // add compatible string here for new fan type
+ };
+-- 
+2.34.1
+

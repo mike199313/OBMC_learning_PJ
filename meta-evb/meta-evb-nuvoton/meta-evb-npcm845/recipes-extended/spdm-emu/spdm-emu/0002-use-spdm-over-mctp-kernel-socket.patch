@@ -1,0 +1,375 @@
+From 4a78746020edb36117ae0206bb724a626b6b51af Mon Sep 17 00:00:00 2001
+From: Stanley Chu <yschu@nuvoton.com>
+Date: Fri, 5 May 2023 15:29:42 +0800
+Subject: [PATCH 2/2] use spdm over mctp kernel socket
+
+Signed-off-by: Stanley Chu <yschu@nuvoton.com>
+---
+ spdm_emu/spdm_emu_common/command.c            | 127 ++++++++++++++++++
+ spdm_emu/spdm_emu_common/command.h            |  26 +++-
+ spdm_emu/spdm_emu_common/spdm_emu.h           |   4 +
+ .../spdm_requester_emu/spdm_requester_emu.c   |  25 +++-
+ .../spdm_requester_emu/spdm_requester_spdm.c  |   3 +
+ .../spdm_responder_emu/spdm_responder_emu.c   |  33 ++++-
+ .../spdm_responder_emu/spdm_responder_spdm.c  |   4 +
+ 7 files changed, 214 insertions(+), 8 deletions(-)
+
+diff --git a/spdm_emu/spdm_emu_common/command.c b/spdm_emu/spdm_emu_common/command.c
+index d1613c6..e2166db 100644
+--- a/spdm_emu/spdm_emu_common/command.c
++++ b/spdm_emu/spdm_emu_common/command.c
+@@ -17,6 +17,94 @@ bool m_send_receive_buffer_acquired = false;
+ uint8_t m_send_receive_buffer[LIBSPDM_MAX_SENDER_RECEIVER_BUFFER_SIZE];
+ size_t m_send_receive_buffer_size;
+ 
++struct sockaddr_mctp mctp_addr;
++
++int mctp_set_sockaddr(uint32_t net, uint8_t eid, uint8_t type, uint8_t tag)
++{
++    printf("%s: net %d eid %d type %d tag 0x%x\n",
++            __func__, net, eid, type, tag);
++    memset(&mctp_addr, 0, sizeof(mctp_addr));
++    mctp_addr.smctp_family = AF_MCTP;
++    mctp_addr.smctp_network = net;
++    mctp_addr.smctp_addr.s_addr = eid;
++    mctp_addr.smctp_type = type;
++    mctp_addr.smctp_tag = tag;
++
++    return 0;
++}
++
++void mctp_clear_tag_owner(void)
++{
++    mctp_addr.smctp_tag &= ~MCTP_TAG_OWNER;
++}
++
++int mctp_create_socket(uint8_t eid)
++{
++    int mctp_socket;
++    struct sockaddr_mctp my_addr;
++    int32_t res;
++
++    mctp_socket = socket(AF_MCTP, SOCK_DGRAM, 0);
++    if (mctp_socket < 0) {
++        printf("Cannot create mctp socket.  Error is 0x%x\n", errno);
++        return -1;
++    }
++
++    memset(&my_addr, 0, sizeof(my_addr));
++    my_addr.smctp_family = AF_MCTP;
++    my_addr.smctp_addr.s_addr = eid;
++    my_addr.smctp_type = 5;
++    my_addr.smctp_tag = MCTP_TAG_OWNER;
++
++    res = bind(mctp_socket, (struct sockaddr *)&my_addr,
++               sizeof(my_addr));
++    if (res < 0) {
++        printf("Bind error.  Error is 0x%x\n", errno );
++        close(mctp_socket);
++        return -1;
++    }
++    printf("bind socket at eid %d\n", eid);
++
++    return mctp_socket;
++}
++
++bool mctp_read_bytes(const SOCKET socket, uint8_t *buffer,
++                size_t *number_of_bytes)
++{
++    int32_t result;
++    socklen_t addrlen = sizeof(mctp_addr);
++
++    result = recvfrom(socket, (char *)buffer, *number_of_bytes, 0,
++          (struct sockaddr *)&mctp_addr, &addrlen);
++    if (result == -1) {
++         printf("Receive error - 0x%x\n", errno);
++         return false;
++    }
++    *number_of_bytes = result;
++
++    return true;
++}
++
++bool mctp_write_bytes(const SOCKET socket, const uint8_t *buffer,
++                      uint32_t number_of_bytes)
++{
++    int32_t result;
++    uint32_t number_sent;
++
++    number_sent = 0;
++    while (number_sent < number_of_bytes) {
++        result = sendto(socket, (char *)(buffer + number_sent),
++                number_of_bytes - number_sent, 0,
++                (struct sockaddr *)&mctp_addr, sizeof(mctp_addr));
++        if (result == -1) {
++            perror("sendto error");
++            return false;
++        }
++        number_sent += result;
++    }
++    return true;
++}
++
+ /**
+  * Read number of bytes data in blocking mode.
+  *
+@@ -118,6 +206,27 @@ bool receive_platform_data(const SOCKET socket, uint32_t *command,
+     uint32_t transport_type;
+     uint32_t bytes_received;
+ 
++    if (m_use_transport_layer == SOCKET_TRANSPORT_TYPE_MCTP) {
++        *command = SOCKET_SPDM_COMMAND_NORMAL;
++        result = mctp_read_bytes(socket, receive_buffer, bytes_to_receive);
++        if (!result)
++            return result;
++        printf("Platform port Receive buffer: %ld bytes\n    ", *bytes_to_receive);
++        dump_data(receive_buffer, *bytes_to_receive);
++        printf("\n");
++
++        /* Append mctp_header_t for PCAP*/
++        mctp_header_t mctp_header;
++        mctp_header.header_version = 0;
++        mctp_header.destination_id = 0;
++        mctp_header.source_id = 0;
++        mctp_header.message_tag = 0xC0;
++        append_pcap_packet_data(&mctp_header,
++                                sizeof(mctp_header),
++                                receive_buffer, *bytes_to_receive);
++        return result;
++    }
++
+     result = read_data32(socket, &response);
+     if (!result) {
+         return result;
+@@ -262,6 +371,24 @@ bool send_platform_data(const SOCKET socket, uint32_t command,
+     uint32_t request;
+     uint32_t transport_type;
+ 
++    if (m_use_transport_layer == SOCKET_TRANSPORT_TYPE_MCTP) {
++        result = mctp_write_bytes(socket, send_buffer, bytes_to_send);
++        printf("Platform port Transmit buffer:\n    ");
++        dump_data(send_buffer, bytes_to_send);
++        printf("\n");
++
++        /* Append mctp_header_t for PCAP*/
++        mctp_header_t mctp_header;
++        mctp_header.header_version = 0;
++        mctp_header.destination_id = 0;
++        mctp_header.source_id = 0;
++        mctp_header.message_tag = 0xC0;
++        append_pcap_packet_data(&mctp_header,
++                                sizeof(mctp_header),
++                                send_buffer, bytes_to_send);
++        return result;
++    }
++
+     request = command;
+     result = write_data32(socket, request);
+     if (!result) {
+diff --git a/spdm_emu/spdm_emu_common/command.h b/spdm_emu/spdm_emu_common/command.h
+index e90379d..020f5f5 100644
+--- a/spdm_emu/spdm_emu_common/command.h
++++ b/spdm_emu/spdm_emu_common/command.h
+@@ -7,9 +7,33 @@
+ #ifndef __SPDM_TEST_COMMAND_H__
+ #define __SPDM_TEST_COMMAND_H__
+ 
++#include <linux/mctp.h>
+ #define DEFAULT_SPDM_PLATFORM_PORT 2323
+ #define TCP_SPDM_PLATFORM_PORT 4194
+-
++#define SPDM_EMU_MCTP_SERVER_EID 160
++#define SPDM_EMU_MCTP_CLIENT_EID 161
++#define SPDM_EMU_MCTP_SERVER_NET 10
++#define SPDM_EMU_MCTP_CLIENT_NET 11
++
++#define MCTP_TAG_OWNER 0x08
++
++#ifndef AF_MCTP
++#define AF_MCTP 45
++
++struct mctp_addr {
++        uint8_t              s_addr;
++};
++
++struct sockaddr_mctp {
++        unsigned short int      smctp_family;
++        unsigned short          __smctp_pad0;
++        int                     smctp_network;
++        struct mctp_addr        smctp_addr;
++        uint8_t                 smctp_type;
++        uint8_t                 smctp_tag;
++        uint8_t                 __smctp_pad1;
++};
++#endif
+ 
+ /* Client->Server/Server->Client
+  *   command/response: 4 bytes (big endian)
+diff --git a/spdm_emu/spdm_emu_common/spdm_emu.h b/spdm_emu/spdm_emu_common/spdm_emu.h
+index 1fccd04..d20ba99 100644
+--- a/spdm_emu/spdm_emu_common/spdm_emu.h
++++ b/spdm_emu/spdm_emu_common/spdm_emu.h
+@@ -84,6 +84,10 @@ extern uint32_t m_exe_connection;
+ #define EXE_SESSION_GET_CSR 0x80
+ extern uint32_t m_exe_session;
+ 
++int mctp_create_socket(uint8_t eid);
++void mctp_clear_tag_owner(void);
++int mctp_set_sockaddr(uint32_t net, uint8_t eid, uint8_t type, uint8_t tag);
++
+ void libspdm_dump_hex_str(const uint8_t *buffer, size_t buffer_size);
+ 
+ void dump_data(const uint8_t *buffer, size_t buffer_size);
+diff --git a/spdm_emu/spdm_requester_emu/spdm_requester_emu.c b/spdm_emu/spdm_requester_emu/spdm_requester_emu.c
+index 96060d2..f59422d 100644
+--- a/spdm_emu/spdm_requester_emu/spdm_requester_emu.c
++++ b/spdm_emu/spdm_requester_emu/spdm_requester_emu.c
+@@ -56,8 +56,16 @@ bool platform_client_routine(uint16_t port_number)
+         }
+ 
+         printf("Continuing with SPDM flow...\n");
+-    }
+-    else {
++    } else if (m_use_transport_layer == SOCKET_TRANSPORT_TYPE_MCTP) {
++        platform_socket = mctp_create_socket((uint8_t)port_number);
++        if (platform_socket < 0) {
++            printf("Create platform service socket fail\n");
++            return false;
++        }
++        m_socket = platform_socket;
++        mctp_set_sockaddr(SPDM_EMU_MCTP_CLIENT_NET, SPDM_EMU_MCTP_SERVER_EID,
++                          5, MCTP_TAG_OWNER);
++    } else {
+         result = init_client(&platform_socket, port_number);
+         if (!result) {
+ #ifdef _MSC_VER
+@@ -69,7 +77,8 @@ bool platform_client_routine(uint16_t port_number)
+         m_socket = platform_socket;
+     }
+ 
+-    if (m_use_transport_layer != SOCKET_TRANSPORT_TYPE_NONE) {
++    if ((m_use_transport_layer != SOCKET_TRANSPORT_TYPE_NONE) &&
++        (m_use_transport_layer != SOCKET_TRANSPORT_TYPE_MCTP)) {
+         response_size = sizeof(m_receive_buffer);
+         result = communicate_platform_data(
+             m_socket,
+@@ -194,11 +203,17 @@ int main(int argc, char *argv[])
+ 
+     process_args("spdm_requester_emu", argc, argv);
+ 
++    if (chdir("/usr/share/spdm-emu/") < 0) {
++        printf("chdir to /usr/share/spdm-emu failed\n");
++        return 0;
++    }
++
+     if (m_use_transport_layer == SOCKET_TRANSPORT_TYPE_TCP) {
+         /* Port number 4194 for SPDM */
+         platform_client_routine(TCP_SPDM_PLATFORM_PORT);
+-    }
+-    else {
++    } else if (m_use_transport_layer == SOCKET_TRANSPORT_TYPE_MCTP) {
++        platform_client_routine(SPDM_EMU_MCTP_CLIENT_EID);
++    } else {
+         platform_client_routine(DEFAULT_SPDM_PLATFORM_PORT);
+     }
+ 
+diff --git a/spdm_emu/spdm_requester_emu/spdm_requester_spdm.c b/spdm_emu/spdm_requester_emu/spdm_requester_spdm.c
+index 9386b56..342e525 100644
+--- a/spdm_emu/spdm_requester_emu/spdm_requester_spdm.c
++++ b/spdm_emu/spdm_requester_emu/spdm_requester_spdm.c
+@@ -52,6 +52,9 @@ libspdm_return_t spdm_device_send_message(void *spdm_context,
+ {
+     bool result;
+ 
++    if (m_use_transport_layer == SOCKET_TRANSPORT_TYPE_MCTP)
++        mctp_set_sockaddr(SPDM_EMU_MCTP_CLIENT_NET, SPDM_EMU_MCTP_SERVER_EID,
++                          5, MCTP_TAG_OWNER);
+     result = send_platform_data(m_socket, SOCKET_SPDM_COMMAND_NORMAL,
+                                 request, (uint32_t)request_size);
+     if (!result) {
+diff --git a/spdm_emu/spdm_responder_emu/spdm_responder_emu.c b/spdm_emu/spdm_responder_emu/spdm_responder_emu.c
+index 0c6c356..8aada48 100644
+--- a/spdm_emu/spdm_responder_emu/spdm_responder_emu.c
++++ b/spdm_emu/spdm_responder_emu/spdm_responder_emu.c
+@@ -223,6 +223,29 @@ bool platform_server_routine(uint16_t port_number)
+     return true;
+ }
+ 
++bool platform_mctp_server_routine(uint8_t eid)
++{
++    SOCKET mctp_socket;
++    bool continue_serving;
++
++    mctp_socket = mctp_create_socket(eid);
++    if (mctp_socket < 0) {
++        printf("Cannot create mctp server socket.  Error is 0x%x\n",
++               errno
++               );
++        return false;
++    }
++
++    m_server_socket = mctp_socket;
++    do {
++        continue_serving = platform_server(m_server_socket);
++        closesocket(m_server_socket);
++
++    } while (continue_serving);
++
++    return true;
++}
++
+ int main(int argc, char *argv[])
+ {
+     libspdm_return_t status;
+@@ -232,6 +255,11 @@ int main(int argc, char *argv[])
+ 
+     process_args("spdm_responder_emu", argc, argv);
+ 
++    if (chdir("/usr/share/spdm-emu/") < 0) {
++        printf("chdir to /usr/share/spdm-emu failed\n");
++        return 0;
++    }
++
+     m_spdm_context = spdm_server_init();
+     if (m_spdm_context == NULL) {
+         return 0;
+@@ -248,8 +276,9 @@ int main(int argc, char *argv[])
+     if (m_use_transport_layer == SOCKET_TRANSPORT_TYPE_TCP) {
+         /* The IANA has assigned port number 4194 for SPDM */
+         platform_server_routine(TCP_SPDM_PLATFORM_PORT);
+-    }
+-    else {
++    } else if (m_use_transport_layer == SOCKET_TRANSPORT_TYPE_MCTP) {
++        platform_mctp_server_routine(SPDM_EMU_MCTP_SERVER_EID);
++    } else {
+         platform_server_routine(DEFAULT_SPDM_PLATFORM_PORT);
+     }
+ 
+diff --git a/spdm_emu/spdm_responder_emu/spdm_responder_spdm.c b/spdm_emu/spdm_responder_emu/spdm_responder_spdm.c
+index cb0915b..5a88bc7 100644
+--- a/spdm_emu/spdm_responder_emu/spdm_responder_spdm.c
++++ b/spdm_emu/spdm_responder_emu/spdm_responder_spdm.c
+@@ -44,6 +44,8 @@ libspdm_return_t spdm_device_send_message(void *spdm_context,
+ {
+     bool result;
+ 
++    if (m_use_transport_layer == SOCKET_TRANSPORT_TYPE_MCTP)
++        mctp_clear_tag_owner();
+     result = send_platform_data(m_server_socket, SOCKET_SPDM_COMMAND_NORMAL,
+                                 response, (uint32_t)response_size);
+     if (!result) {
+@@ -68,9 +70,11 @@ libspdm_return_t spdm_device_receive_message(void *spdm_context,
+ 
+     assert (*request == m_send_receive_buffer);
+     m_send_receive_buffer_size = sizeof(m_send_receive_buffer);
++    printf("%s++\n", __func__);
+     result =
+         receive_platform_data(m_server_socket, &m_command,
+                               m_send_receive_buffer, &m_send_receive_buffer_size);
++    printf("%s--\n", __func__);
+     if (!result) {
+         printf("receive_platform_data Error - %x\n",
+ #ifdef _MSC_VER
+-- 
+2.17.1
+

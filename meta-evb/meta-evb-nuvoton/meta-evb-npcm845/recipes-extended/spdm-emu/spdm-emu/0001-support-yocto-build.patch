@@ -1,0 +1,69 @@
+From 0f820d49ca9fc3257e25316901b0d302bcf86011 Mon Sep 17 00:00:00 2001
+From: Stanley Chu <yschu@nuvoton.com>
+Date: Fri, 5 May 2023 15:29:15 +0800
+Subject: [PATCH 1/2] support yocto build
+
+Signed-off-by: Stanley Chu <yschu@nuvoton.com>
+---
+ CMakeLists.txt                             | 9 ++++++++-
+ spdm_emu/spdm_requester_emu/CMakeLists.txt | 2 ++
+ spdm_emu/spdm_responder_emu/CMakeLists.txt | 2 ++
+ 3 files changed, 12 insertions(+), 1 deletion(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 3f4fbf0..7eef868 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -11,7 +11,7 @@ MESSAGE("#########################")
+ 
+ SET(CMAKE_GENERATOR ${CMAKE_GENERATOR} CACHE STRING "Choose the generator of cmake")
+ SET(ARCH ${ARCH} CACHE STRING "Choose the arch of build: ia32 x64 arm aarch64 riscv32 riscv64 arc" FORCE)
+-SET(TOOLCHAIN ${TOOLCHAIN} CACHE STRING "Choose the toolchain of build: Windows: VS2015 VS2019 VS2022 CLANG ARM_DS2022 LIBFUZZER Linux: GCC ARM_GCC AARCH64_GCC RISCV32_GCC RISCV64_GCC ARC_GCC ARM_DS2022 CLANG CBMC AFL KLEE LIBFUZZER" FORCE)
++SET(TOOLCHAIN ${TOOLCHAIN} CACHE STRING "Choose the toolchain of build: Windows: VS2015 VS2019 VS2022 CLANG ARM_DS2022 LIBFUZZER Linux: GCC ARM_GCC AARCH64_GCC RISCV32_GCC RISCV64_GCC ARC_GCC ARM_DS2022 CLANG CBMC AFL KLEE LIBFUZZER YOCTO" FORCE)
+ SET(CMAKE_BUILD_TYPE ${TARGET} CACHE STRING "Choose the target of build: Debug Release" FORCE)
+ SET(CRYPTO ${CRYPTO} CACHE STRING "Choose the crypto of build: mbedtls openssl" FORCE)
+ SET(GCOV ${GCOV} CACHE STRING "Choose the target of Gcov: ON  OFF, and default is OFF" FORCE)
+@@ -66,6 +66,8 @@ if(CMAKE_SYSTEM_NAME MATCHES "Linux")
+         MESSAGE("TOOLCHAIN = KLEE")
+     elseif(TOOLCHAIN STREQUAL "LIBFUZZER")
+         MESSAGE("TOOLCHAIN = LIBFUZZER")
++    elseif(TOOLCHAIN STREQUAL "YOCTO")
++        MESSAGE("TOOLCHAIN = YOCTO")
+     elseif(TOOLCHAIN STREQUAL "ARM_GCC")
+         MESSAGE("TOOLCHAIN = ARM_GCC")
+     elseif(TOOLCHAIN STREQUAL "AARCH64_GCC")
+@@ -216,6 +218,11 @@ if(CMAKE_SYSTEM_NAME MATCHES "Linux")
+         SET(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+         SET(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
+ 
++    elseif(TOOLCHAIN STREQUAL "YOCTO")
++        ADD_COMPILE_OPTIONS(-O2)
++        SET(CMAKE_EXE_LINKER_FLAGS "-flto -Wno-error -no-pie" )
++        SET(CMAKE_C_LINK_EXECUTABLE   "<CMAKE_C_COMPILER> <FLAGS> <CMAKE_C_LINK_FLAGS> <LINK_FLAGS> <OBJECTS> -o <TARGET> -Wl,--start-group <LINK_LIBRARIES> -Wl,--end-group")
++
+     elseif(TOOLCHAIN STREQUAL "ARM_GCC")
+         SET(CMAKE_C_COMPILER arm-linux-gnueabi-gcc)
+         ADD_COMPILE_OPTIONS(-g -fshort-wchar -fno-strict-aliasing -Wall -Werror -Wno-array-bounds -ffunction-sections -fdata-sections -fno-common -Wno-address -fpie -fno-asynchronous-unwind-tables -flto -DUSING_LTO  -Wno-maybe-uninitialized -Wno-uninitialized  -Wno-builtin-declaration-mismatch -Wno-nonnull-compare)
+diff --git a/spdm_emu/spdm_requester_emu/CMakeLists.txt b/spdm_emu/spdm_requester_emu/CMakeLists.txt
+index 2d330be..92484c2 100644
+--- a/spdm_emu/spdm_requester_emu/CMakeLists.txt
++++ b/spdm_emu/spdm_requester_emu/CMakeLists.txt
+@@ -79,3 +79,5 @@ else()
+     ADD_EXECUTABLE(spdm_requester_emu ${src_spdm_requester_emu})
+     TARGET_LINK_LIBRARIES(spdm_requester_emu ${spdm_requester_emu_LIBRARY})
+ endif()
++
++install(TARGETS spdm_requester_emu DESTINATION bin)
+diff --git a/spdm_emu/spdm_responder_emu/CMakeLists.txt b/spdm_emu/spdm_responder_emu/CMakeLists.txt
+index 06ad9f1..c64cbd9 100644
+--- a/spdm_emu/spdm_responder_emu/CMakeLists.txt
++++ b/spdm_emu/spdm_responder_emu/CMakeLists.txt
+@@ -83,3 +83,5 @@ else()
+     ADD_EXECUTABLE(spdm_responder_emu ${src_spdm_responder_emu})
+     TARGET_LINK_LIBRARIES(spdm_responder_emu ${spdm_responder_emu_LIBRARY})
+ endif()
++
++install(TARGETS spdm_responder_emu DESTINATION bin)
+-- 
+2.17.1
+
