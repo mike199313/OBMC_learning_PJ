@@ -1,6 +1,6 @@
-From 987be7dfb63ac1456f4f824cdc3a758e1748e378 Mon Sep 17 00:00:00 2001
-From: Matt Cheng <cheng.matt@inventec.com>
-Date: Mon, 24 Jul 2023 14:53:33 +0800
+From fbf9077daf459349a7efa33f38b05d4dd9289938 Mon Sep 17 00:00:00 2001
+From: link <link@inventec.com>
+Date: Tue, 1 Aug 2023 13:54:23 +0800
 Subject: [PATCH] driver: misc: seven segment display/gpio driver
 
 ---
@@ -10,21 +10,17 @@ Subject: [PATCH] driver: misc: seven segment display/gpio driver
  drivers/misc/seven_seg_disp.h |  35 +++++++
  drivers/misc/seven_seg_gpio.c | 155 +++++++++++++++++++++++++++
  5 files changed, 400 insertions(+)
- mode change 100644 => 100755 drivers/misc/Kconfig
- mode change 100644 => 100755 drivers/misc/Makefile
  create mode 100755 drivers/misc/seven_seg_disp.c
  create mode 100755 drivers/misc/seven_seg_disp.h
  create mode 100755 drivers/misc/seven_seg_gpio.c
 
 diff --git a/drivers/misc/Kconfig b/drivers/misc/Kconfig
-old mode 100644
-new mode 100755
-index 13e3afdbcc40..7e1863a5ba6c
+index 90d113c3f6fe..2679fab6f05a 100644
 --- a/drivers/misc/Kconfig
 +++ b/drivers/misc/Kconfig
-@@ -491,6 +491,22 @@ config NPCM7XX_JTAG_MASTER
+@@ -545,6 +545,22 @@ config NPCM8XX_JTAG_MASTER
  	help
- 	  Control PSPI/GPIO to transmit jtag signals to support jtag master function.
+ 	  NPCM8xx JTAG Master Interfaces.
  
 +config SEVEN_SEGMENT_DISPLAY
 +        tristate "Character driver for seven segment display support"
@@ -42,21 +38,21 @@ index 13e3afdbcc40..7e1863a5ba6c
 +          7-segment displays, and implements the required bit-banging.
 +          The hardware assumed is 74HC164 wired to two 7-segment displays.
 +
- source "drivers/misc/c2port/Kconfig"
- source "drivers/misc/eeprom/Kconfig"
- source "drivers/misc/cb710/Kconfig"
+ config NPCM750_VCD
+ 	tristate "Nuvoton VCD support"
+         help
 diff --git a/drivers/misc/Makefile b/drivers/misc/Makefile
-old mode 100644
-new mode 100755
-index 53726c86460c..9ff7ebfe6ee8
+index 1cc4c1c90860..bee072f42ac6 100644
 --- a/drivers/misc/Makefile
 +++ b/drivers/misc/Makefile
-@@ -62,3 +62,5 @@ obj-$(CONFIG_HI6421V600_IRQ)	+= hi6421v600-irq.o
- obj-$(CONFIG_NPCM7XX_LPC_BPC)	+= npcm7xx-lpc-bpc.o
- obj-$(CONFIG_NPCM7XX_PCI_MBOX)	+= npcm7xx-pci-mbox.o
- obj-$(CONFIG_NPCM7XX_JTAG_MASTER)	+= npcm7xx-jtag-master.o
+@@ -68,5 +68,7 @@ obj-$(CONFIG_NPCM_LPC_BPC)	+= npcm7xx-lpc-bpc.o
+ obj-$(CONFIG_NPCM_PCI_MBOX)	+= npcm7xx-pci-mbox.o
+ obj-$(CONFIG_NPCM7XX_JTAG_MASTER) += npcm7xx-jtag-master.o
+ obj-$(CONFIG_NPCM8XX_JTAG_MASTER) += npcm8xx-jtag-master.o
 +obj-$(CONFIG_SEVEN_SEGMENT_DISPLAY)    += seven_seg_disp.o
 +obj-$(CONFIG_SEVEN_SEGMENT_GPIO) += seven_seg_gpio.o
+ obj-$(CONFIG_NPCM750_VCD)	+= npcm750_vcd.o
+ obj-$(CONFIG_NPCM750_ECE)	+= npcm750_ece.o
 diff --git a/drivers/misc/seven_seg_disp.c b/drivers/misc/seven_seg_disp.c
 new file mode 100755
 index 000000000000..eedcfed592f4

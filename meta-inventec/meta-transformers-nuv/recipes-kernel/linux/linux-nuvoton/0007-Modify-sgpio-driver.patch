@@ -1,0 +1,26 @@
+From f5c43ed80156e6b362c103f08ee5330a0bf5bf53 Mon Sep 17 00:00:00 2001
+From: link <link@inventec.com>
+Date: Tue, 1 Aug 2023 15:05:48 +0800
+Subject: [PATCH] Modify-sgpio-driver - Modify frequency to 780k(0x04) for MB
+ CPLD
+
+---
+ drivers/gpio/gpio-npcm-sgpio.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/gpio/gpio-npcm-sgpio.c b/drivers/gpio/gpio-npcm-sgpio.c
+index 85915b759bd1..df76d53d5e87 100644
+--- a/drivers/gpio/gpio-npcm-sgpio.c
++++ b/drivers/gpio/gpio-npcm-sgpio.c
+@@ -509,7 +509,7 @@ static const int npcm750_SFT_CLK[] = {
+ };
+ 
+ static const u8 npcm750_CLK_SEL[] = {
+-		0x00, 0x05, 0x07, 0x0C, 0x0D, 0x0E,
++		0x00, 0x04, 0x07, 0x0C, 0x0D, 0x0E,
+ };
+ 
+ static const int npcm845_SFT_CLK[] = {
+-- 
+2.25.1
+

@@ -930,7 +930,7 @@ static const struct hwmon_chip_info virtual_hwmon_fan_chip_info = {
   Remove
 *******/
 
-static int virtual_hwmon_remove(struct i2c_client *client)
+static void virtual_hwmon_remove(struct i2c_client *client)
 {
 	struct device *dev = &client->dev;
 	virtual_hwmon_data_t *data = dev_get_drvdata(dev);
@@ -954,8 +954,6 @@ static int virtual_hwmon_remove(struct i2c_client *client)
 	}
 
 	dev_info(dev, "sensor '%s'\n", client->name);
-
-	return err;
 }
 
 

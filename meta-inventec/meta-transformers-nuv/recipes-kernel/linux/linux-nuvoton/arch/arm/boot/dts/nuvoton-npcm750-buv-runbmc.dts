@@ -735,7 +735,6 @@
 	"","","","","","","","";
 };
 
-/*
 &sgpio2 {
 	status = "okay";
 	bus-frequency = <1000000>;
@@ -752,4 +751,4 @@
 	"","","NMI_SW","INTRUDER","","","","MEM_CONTROLLER_PWR_FAIL",
 	"","","","","","","","";
 };
-*/
+

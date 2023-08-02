@@ -1,6 +1,6 @@
-From 060cfe14a1676c5801779b284691aba20374a7b6 Mon Sep 17 00:00:00 2001
-From: Matt Cheng <cheng.matt@inventec.com>
-Date: Mon, 24 Jul 2023 15:51:51 +0800
+From 8117535b198700b453d0fc8296dcfa1e83b8847b Mon Sep 17 00:00:00 2001
+From: link <link@inventec.com>
+Date: Tue, 1 Aug 2023 14:47:39 +0800
 Subject: [PATCH] Add tmp468 driver
 
 ---
@@ -11,10 +11,10 @@ Subject: [PATCH] Add tmp468 driver
  create mode 100644 drivers/hwmon/tmp468.c
 
 diff --git a/drivers/hwmon/Kconfig b/drivers/hwmon/Kconfig
-index e5866419261c..f4066b8a3b14 100755
+index a5253abb7ea7..0f54db3a04f4 100644
 --- a/drivers/hwmon/Kconfig
 +++ b/drivers/hwmon/Kconfig
-@@ -1987,6 +1987,16 @@ config SENSORS_TMP513
+@@ -2116,6 +2116,16 @@ config SENSORS_TMP513
  	  This driver can also be built as a module. If so, the module
  	  will be called tmp513.
  
@@ -32,12 +32,12 @@ index e5866419261c..f4066b8a3b14 100755
  	tristate "Versatile Express"
  	depends on VEXPRESS_CONFIG
 diff --git a/drivers/hwmon/Makefile b/drivers/hwmon/Makefile
-index b7054f7d8587..94a47fadf176 100755
+index 8e04be78e683..d782d4b4292b 100644
 --- a/drivers/hwmon/Makefile
 +++ b/drivers/hwmon/Makefile
-@@ -193,6 +193,7 @@ obj-$(CONFIG_SENSORS_TMP108)	+= tmp108.o
- obj-$(CONFIG_SENSORS_TMP401)	+= tmp401.o
+@@ -204,6 +204,7 @@ obj-$(CONFIG_SENSORS_TMP401)	+= tmp401.o
  obj-$(CONFIG_SENSORS_TMP421)	+= tmp421.o
+ obj-$(CONFIG_SENSORS_TMP464)	+= tmp464.o
  obj-$(CONFIG_SENSORS_TMP513)	+= tmp513.o
 +obj-$(CONFIG_SENSORS_TMP468)	+= tmp468.o
  obj-$(CONFIG_SENSORS_VEXPRESS)	+= vexpress-hwmon.o

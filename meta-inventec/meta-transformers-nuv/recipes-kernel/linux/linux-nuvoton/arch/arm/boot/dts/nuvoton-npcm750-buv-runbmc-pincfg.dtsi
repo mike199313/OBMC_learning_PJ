@@ -156,11 +156,9 @@
 			pins = "GPIO6/IOX2CK/SMB2DSDA";
 			slew-rate = <1>;
 		};
-		/*
 		gpio7_pins: gpio7o-pins {
 			pins = "GPIO7/IOX2D0/SMB2DSCL";
 			slew-rate = <1>;
 		};
-		*/
 	};
 };
