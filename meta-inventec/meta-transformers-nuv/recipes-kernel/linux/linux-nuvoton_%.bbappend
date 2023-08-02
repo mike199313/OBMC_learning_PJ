@@ -13,6 +13,7 @@ SRC_URI:append:transformers-nuv = " \
   file://0007-Modify-sgpio-driver.patch \
   file://0008-Add-watchdog-time.patch \
   file://0009-reset-DMA-again-if-stmmac_reset-failed.patch \
+  file://0010-Bug-1028-SW-Transformers-nuv-kernel-Add-SAPPHIRERAPI.patch \
   "
 
 # Merge source tree by original project with our layer of additional files
