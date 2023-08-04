@@ -1,0 +1,141 @@
+From fdcf574dc1c6aaaa35b8efc243db6affbdd93f85 Mon Sep 17 00:00:00 2001
+From: link <link@inventec.com>
+Date: Thu, 3 Aug 2023 10:07:09 +0800
+Subject: [PATCH] Kernel-sync - [Aspeed] tag 00.05.06 espi modification
+
+Symptom/Reason:
+    Sync codebase with AspeedTech-BMC/linux tag 00.05.06
+    But espi slave structure has been changed
+
+Root Cause:
+    Cannot turn on host
+
+Solution/Change:
+    soc drivers
+        - ast2600-espi
+---
+ drivers/soc/aspeed/ast2600-espi.c | 82 ++++++++++++++++++++++++++++++-
+ 1 file changed, 81 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/soc/aspeed/ast2600-espi.c b/drivers/soc/aspeed/ast2600-espi.c
+index 62c1e8cab4d2..7bba4b8e5b93 100644
+--- a/drivers/soc/aspeed/ast2600-espi.c
++++ b/drivers/soc/aspeed/ast2600-espi.c
+@@ -1,3 +1,4 @@
++
+ // SPDX-License-Identifier: GPL-2.0+
+ /*
+  * Copyright 2023 Aspeed Technology Inc.
+@@ -890,6 +891,7 @@ static void ast2600_espi_vw_isr(struct ast2600_espi *espi)
+ {
+ 	struct ast2600_espi_vw *vw;
+ 	uint32_t sts;
++	uint32_t vw_sts, evt;
+ 
+ 	vw = &espi->vw;
+ 
+@@ -899,6 +901,66 @@ static void ast2600_espi_vw_isr(struct ast2600_espi *espi)
+ 		vw->gpio.val = readl(espi->regs + ESPI_VW_GPIO_VAL);
+ 		writel(ESPI_INT_STS_VW_GPIO, espi->regs + ESPI_INT_STS);
+ 	}
++
++	/* Inventec - Add handle for Intel handshake.*/
++	if (sts & ESPI_INT_STS_VW_SYSEVT) {
++		vw_sts = readl(espi->regs + ESPI_VW_SYSEVT_INT_STS);
++		evt = readl(espi->regs + ESPI_VW_SYSEVT);
++
++		if (!(evt & ESPI_VW_SYSEVT_SLV_BOOT_STS)) {
++			writel(evt |
++			       ESPI_VW_SYSEVT_SLV_BOOT_STS |
++			       ESPI_VW_SYSEVT_SLV_BOOT_DONE,
++			       espi->regs + ESPI_VW_SYSEVT);
++		}
++		if (vw_sts & ESPI_VW_SYSEVT_HOST_RST_WARN) {
++			if (evt & ESPI_VW_SYSEVT_HOST_RST_WARN)
++			{
++				writel(evt | ESPI_VW_SYSEVT_HOST_RST_ACK,
++				       espi->regs + ESPI_VW_SYSEVT);
++			}
++			else
++			{
++				writel(evt & ~ESPI_VW_SYSEVT_HOST_RST_ACK,
++				       espi->regs + ESPI_VW_SYSEVT);
++			}
++		}
++		if (vw_sts & ESPI_VW_SYSEVT_OOB_RST_WARN) {
++			if (evt & ESPI_VW_SYSEVT_OOB_RST_WARN)
++			{
++				writel(evt | ESPI_VW_SYSEVT_OOB_RST_ACK,
++				       espi->regs + ESPI_VW_SYSEVT);
++			}
++			else
++			{
++				writel(evt & ~ESPI_VW_SYSEVT_OOB_RST_ACK,
++				       espi->regs + ESPI_VW_SYSEVT);
++			}
++		}
++
++		writel(vw_sts, espi->regs + ESPI_VW_SYSEVT_INT_STS );
++	}
++
++	if (sts & ESPI_INT_STS_VW_SYSEVT1) {
++		vw_sts = readl(espi->regs + ESPI_VW_SYSEVT1_INT_STS);
++		evt = readl(espi->regs + ESPI_VW_SYSEVT1);
++
++		if (vw_sts & ESPI_VW_SYSEVT1_SUSPEND_WARN) {
++			if  (evt & ESPI_VW_SYSEVT1_SUSPEND_WARN)
++			{
++				writel(evt | ESPI_VW_SYSEVT1_SUSPEND_ACK,
++				       espi->regs + ESPI_VW_SYSEVT1);
++			}
++			else
++			{
++				writel(evt & ~ESPI_VW_SYSEVT1_SUSPEND_ACK,
++				       espi->regs + ESPI_VW_SYSEVT1);
++			}
++		}
++		writel(vw_sts, espi->regs + ESPI_VW_SYSEVT1_INT_STS );
++	}
++
++	writel(ESPI_INT_STS_VW, espi->regs + ESPI_INT_STS);
+ }
+ 
+ static void ast2600_espi_vw_reset(struct ast2600_espi *espi)
+@@ -919,7 +981,24 @@ static void ast2600_espi_vw_reset(struct ast2600_espi *espi)
+ 	reg = readl(espi->regs + ESPI_CTRL)
+ 	      | ((vw->gpio.hw_mode) ? 0 : ESPI_CTRL_VW_GPIO_SW)
+ 	      | ESPI_CTRL_VW_SW_RDY;
++
+ 	writel(reg, espi->regs + ESPI_CTRL);
++
++
++	/* Inventec - Modify for Intel ESPI handshake*/
++	reg = readl(espi->regs + ESPI_VW_SYSEVT);
++	if (!(reg & ESPI_VW_SYSEVT_SLV_BOOT_STS)) {
++		writel(reg | ESPI_VW_SYSEVT_SLV_BOOT_STS |
++		       ESPI_VW_SYSEVT_SLV_BOOT_DONE,
++		       espi->regs + ESPI_VW_SYSEVT);
++	}
++
++	reg = readl(espi->regs + ESPI_VW_SYSEVT1);
++	if (reg & ESPI_VW_SYSEVT1_SUSPEND_WARN &&
++	    !(reg & ESPI_VW_SYSEVT1_SUSPEND_ACK)) {
++		writel(reg | ESPI_VW_SYSEVT1_SUSPEND_ACK,
++		       espi->regs + ESPI_VW_SYSEVT1);
++	}
+ }
+ 
+ static int ast2600_espi_vw_probe(struct ast2600_espi *espi)
+@@ -1853,7 +1932,8 @@ static int ast2600_espi_probe(struct platform_device *pdev)
+ 		return rc;
+ 	}
+ 
+-	reg = readl(espi->regs + ESPI_INT_EN) | ESPI_INT_EN_RST_DEASSERT;
++	/* For Intel espi hand shake */
++	reg = readl(espi->regs + ESPI_INT_EN) | ESPI_INT_EN_RST_DEASSERT | ESPI_INT_EN_VW_SYSEVT1 | ESPI_INT_EN_VW_SYSEVT;
+ 	writel(reg, espi->regs + ESPI_INT_EN);
+ 
+ 	dev_set_drvdata(dev, espi);
+-- 
+2.25.1
+
