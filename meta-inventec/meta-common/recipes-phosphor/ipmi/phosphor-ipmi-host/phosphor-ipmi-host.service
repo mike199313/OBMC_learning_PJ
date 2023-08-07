@@ -1,7 +1,8 @@
 [Unit]
 Description=Phosphor Inband IPMI
-Wants=clear-once.service
+Wants=clear-once.service xyz.openbmc_project.Settings.service
 DefaultDependencies=no
+After=xyz.openbmc_project.Settings.service
 
 [Service]
 Restart=always
