@@ -1,0 +1,2269 @@
+From ee2a1053a8e333a32e439f30cdca096a12ba5fe3 Mon Sep 17 00:00:00 2001
+From: PJ Chen <chen.pj@inventec.com>
+Date: Wed, 9 Aug 2023 21:50:37 +0800
+Subject: [PATCH] Bug 1747 - [SW][pldmd] - Change to use Openbmc libpldm
+
+Symptom/Reason:
+  Original Intel-bmc libpldm was archived and would develop on Openbmc libpldm.
+  For several declaration changes, pldmd should modify the usage.
+
+Root Cause:
+  N/A
+
+Solution/Change:
+  [pldmd]
+    Modify the declaration changes.
+
+Entry Test:
+  N/A
+---
+ CMakeLists.txt                       |   3 +-
+ include/base.hpp                     |   2 +-
+ include/firmware_update.hpp          |  22 +-
+ include/fru.hpp                      | 657 ++++++++++++++-------------
+ include/fru_support.hpp              |   2 +-
+ include/fwu_inventory.hpp            |   6 +-
+ include/fwu_utils.hpp                |   2 +-
+ include/numeric_effecter_handler.hpp |   2 +-
+ include/numeric_sensor_handler.hpp   |   2 +-
+ include/pdr_manager.hpp              |  12 +-
+ include/pdr_utils.hpp                |   2 +-
+ include/platform.hpp                 |   2 +-
+ include/pldm.hpp                     |   2 +-
+ include/state_effecter_handler.hpp   |   2 +-
+ include/state_sensor_handler.hpp     |   2 +-
+ include/state_set.hpp                |  10 +-
+ src/base.cpp                         |  16 +-
+ src/firmware_update.cpp              | 237 +++++-----
+ src/fwu_inventory.cpp                |  40 +-
+ src/numeric_effecter.cpp             |   2 +-
+ src/numeric_effecter_handler.cpp     |   4 +-
+ src/numeric_sensor_handler.cpp       |  12 +-
+ src/pdr_manager.cpp                  |  66 ++-
+ src/pdr_utils.cpp                    |   2 +-
+ src/pldm_fwu_image.cpp               |   2 +-
+ src/pldmd.cpp                        |  26 +-
+ src/state_sensor_handler.cpp         |  10 +-
+ 27 files changed, 625 insertions(+), 522 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index fac5a24..ae82635 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -34,6 +34,7 @@ set (
+     -Wno-cast-align \
+     -Wformat=2 \
+     -Wno-reorder \
++    -Wno-psabi \
+ "
+ )
+ 
+@@ -85,7 +86,7 @@ set (SERVICE_FILES
+ 
+ add_executable(${PROJECT_NAME} ${SRC_FILES} ${HEADER_FILES})
+ 
+-target_link_libraries (${PROJECT_NAME} mctpwplus sdbusplus -lsystemd -lpldm_intel
++target_link_libraries (${PROJECT_NAME} mctpwplus sdbusplus -lsystemd -lpldm
+                         -lpthread -lstdc++fs -lphosphor_dbus -lboost_coroutine)
+ 
+ install (TARGETS ${PROJECT_NAME} DESTINATION bin)
+diff --git a/include/base.hpp b/include/base.hpp
+index 8c682c3..c19da9c 100644
+--- a/include/base.hpp
++++ b/include/base.hpp
+@@ -19,7 +19,7 @@
+ #include <boost/asio/spawn.hpp>
+ #include <functional>
+ 
+-#include "base.h"
++#include "libpldm/base.h"
+ 
+ namespace std
+ {
+diff --git a/include/firmware_update.hpp b/include/firmware_update.hpp
+index e61aa03..274c355 100644
+--- a/include/firmware_update.hpp
++++ b/include/firmware_update.hpp
+@@ -21,7 +21,7 @@
+ #include <sdbusplus/asio/object_server.hpp>
+ #include <set>
+ 
+-#include "firmware_update.h"
++#include "libpldm/firmware_update.h"
+ 
+ namespace pldm
+ {
+@@ -49,7 +49,7 @@ class FWUpdate
+                                          const uint32_t interval);
+     uint32_t findMaxNumReq(const uint32_t size)
+     {
+-        return (1 + (size / PLDM_FWU_BASELINE_TRANSFER_SIZE)) * 3;
++        return (1 + (size / PLDM_FWUP_BASELINE_TRANSFER_SIZE)) * 3;
+     }
+     uint64_t getApplicableComponents();
+     uint16_t getReserveEidTimeOut();
+@@ -74,7 +74,7 @@ class FWUpdate
+     int processPassComponentTable(const boost::asio::yield_context yield);
+     int passComponentTable(
+         const boost::asio::yield_context yield,
+-        const struct pass_component_table_req& componentTable,
++        const struct pldm_pass_component_table_req& componentTable,
+         struct variable_field& compImgSetVerStr, uint8_t& compResp,
+         uint8_t& compRespCode);
+     int processUpdateComponent(const boost::asio::yield_context yield,
+@@ -83,7 +83,7 @@ class FWUpdate
+                                bitfield32_t& updateOptFlagsEnabled,
+                                uint16_t& estimatedTimeReqFd);
+     int updateComponent(const boost::asio::yield_context yield,
+-                        const struct update_component_req& component,
++                        const struct pldm_update_component_req& component,
+                         variable_field& compVerStr,
+                         uint8_t& compCompatabilityResp,
+                         uint8_t& compCompatabilityRespCode,
+@@ -141,11 +141,11 @@ class FWUpdate
+                                  const uint8_t command);
+     bool prepareRequestUpdateCommand();
+     bool preparePassComponentRequest(
+-        struct pass_component_table_req& componentTable,
++        struct pldm_pass_component_table_req& componentTable,
+         std::string& compVersionString, const uint16_t compCnt);
+     bool initPassComponentTableTransferFlag(uint8_t& flag);
+     bool prepareUpdateComponentRequest(std::string& compVersionString,
+-                                       struct update_component_req& component);
++                                       struct pldm_update_component_req& component);
+ 
+     void compUpdateProgress(const boost::asio::yield_context yield);
+ 
+@@ -163,8 +163,8 @@ class FWUpdate
+     bool isComponentAvailableForUpdate = false;
+     uint8_t currentDeviceIDRecord;
+     bool updateMode = false;
+-    uint8_t fdState = FD_IDLE;
+-    pldm_firmware_update_state state;
++    uint8_t fdState = PLDM_FD_STATE_IDLE;
++    pldm_firmware_device_states state;
+     uint16_t packageDataLength = 0;
+     uint16_t fwDeviceMetaDataLen = 0;
+     uint16_t currentComp = 0;
+@@ -181,10 +181,10 @@ class FWUpdate
+     std::string componentImageSetVersionString;
+     bitfield32_t updateOptionFlagsEnabled = {0};
+     uint8_t completionCode = PLDM_SUCCESS;
+-    struct request_update_req updateProperties = {};
++    struct pldm_request_update_req updateProperties = {};
+     FDProperties targetFDProperties;
+-    std::set<uint8_t> cancelUpdateComponentState = {FD_DOWNLOAD, FD_VERIFY,
+-                                                    FD_APPLY};
++    std::set<uint8_t> cancelUpdateComponentState = {PLDM_FD_STATE_DOWNLOAD, PLDM_FD_STATE_VERIFY,
++                                                    PLDM_FD_STATE_APPLY};
+     uint8_t transferHandle = 0;
+     std::vector<uint8_t> packageData;
+     std::vector<uint8_t> fwDeviceMetaData;
+diff --git a/include/fru.hpp b/include/fru.hpp
+index ff01c2c..f9fbd41 100644
+--- a/include/fru.hpp
++++ b/include/fru.hpp
+@@ -1,321 +1,336 @@
+-/**
+- * Copyright © 2020 Intel Corporation
+- *
+- * Licensed under the Apache License, Version 2.0 (the "License");
+- * you may not use this file except in compliance with the License.
+- * You may obtain a copy of the License at
+- *
+- *     http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- */
+-
+-#pragma once
+-
+-#include "pldm.hpp"
+-
+-#include <phosphor-logging/log.hpp>
+-
+-#include "fru.h"
+-#include "pldm_types.h"
+-
+-namespace pldm
+-{
+-namespace fru
+-{
+-
+-using FRUMetadata = std::map<std::string, uint32_t>;
+-using FRUVariantType = std::variant<uint8_t, uint32_t, std::string>;
+-using FRUProperties = std::map<std::string, FRUVariantType>;
+-
+-static constexpr uint16_t timeout = 100;
+-static constexpr size_t retryCount = 3;
+-constexpr uint8_t timeStamp104Size = 13;
+-
+-static inline const std::map<uint8_t, const char*> fruEncodingType{
+-    {PLDM_FRU_ENCODING_UNSPECIFIED, "Unspecified"},
+-    {PLDM_FRU_ENCODING_ASCII, "ASCII"},
+-    {PLDM_FRU_ENCODING_UTF8, "UTF8"},
+-    {PLDM_FRU_ENCODING_UTF16, "UTF16"},
+-    {PLDM_FRU_ENCODING_UTF16LE, "UTF16LE"},
+-    {PLDM_FRU_ENCODING_UTF16BE, "UTF16BE"}};
+-
+-static inline const std::map<uint8_t, const char*> fruRecordTypes{
+-    {PLDM_FRU_RECORD_TYPE_GENERAL, "General"},
+-    {PLDM_FRU_RECORD_TYPE_OEM, "OEM"}};
+-
+-/** @brief return properties of the Fru
+- *
+- * @return FRUProperties on success and nullopt on failure
+- */
+-std::optional<FRUProperties> getProperties(const pldm_tid_t tid);
+-
+-class GetPLDMFRU
+-{
+-  public:
+-    GetPLDMFRU() = delete;
+-    GetPLDMFRU(boost::asio::yield_context yieldVal, const pldm_tid_t tidVal);
+-    ~GetPLDMFRU();
+-
+-    /** @brief runs supported FRU commands
+-     *
+-     * @return true on success; false otherwise
+-     * on failure
+-     */
+-    bool runGetFRUCommands();
+-
+-    /** @brief returns the FruRecord table
+-     *
+-     * @return FruRecord table on success; empty table otherwise
+-     * on failure
+-     * This is used for validation.
+-     */
+-    std::optional<std::vector<uint8_t>> getPLDMFruRecordData();
+-
+-  private:
+-    /** @brief run GetFRURecordTableMetadata command
+-     *
+-     * @return PLDM_SUCCESS on success and corresponding error completion code
+-     * on failure
+-     */
+-    int getFRURecordTableMetadataCmd();
+-
+-    /** @brief run GetFRURecordTable command
+-     *
+-     * @return PLDM_SUCCESS on success and corresponding error completion code
+-     * on failure
+-     */
+-    int getFRURecordTableCmd(FRUProperties& fruProperties);
+-
+-    /** @brief verify Integrity checksum on the FRU Table Data with metadata
+-     * checksum value
+-     *
+-     * @return true on success and false on checksum match failure
+-     */
+-    bool verifyCRC(std::vector<uint8_t>& fruTable);
+-
+-    boost::asio::yield_context yield;
+-    pldm_tid_t tid;
+-    FRUMetadata fruMetadata;
+-};
+-
+-class SetPLDMFRU
+-{
+-  public:
+-    SetPLDMFRU() = delete;
+-    explicit SetPLDMFRU(const pldm_tid_t tidVal);
+-
+-    int setFruRecordTableCmd(boost::asio::yield_context yield,
+-                             const std::vector<uint8_t>& setFruData);
+-
+-  private:
+-    pldm_tid_t tid;
+-
+-    uint8_t getTransferFlag(const size_t offset, const size_t length,
+-                            const size_t dataSize);
+-    int formatSetFruReq(std::vector<uint8_t>& requestMsg,
+-                        const uint32_t dataTransferHandle, const size_t offset,
+-                        const size_t length,
+-                        const std::vector<uint8_t>& setFruData);
+-    int sendFruData(boost::asio::yield_context yield,
+-                    const std::vector<uint8_t>& setFruData);
+-};
+-
+-class PLDMFRUTable
+-{
+-  public:
+-    PLDMFRUTable() = delete;
+-    PLDMFRUTable(const std::vector<uint8_t> tableVal, const pldm_tid_t tidVal);
+-    ~PLDMFRUTable();
+-
+-    std::optional<FRUProperties> parseTable();
+-
+-  private:
+-    using FRUFieldParser =
+-        std::function<std::string(const uint8_t* value, uint8_t length)>;
+-
+-    using FieldType = uint8_t;
+-    using RecordType = uint8_t;
+-    using FieldName = std::string;
+-    using FRUFieldTypes =
+-        std::map<FieldType, std::pair<FieldName, FRUFieldParser>>;
+-
+-    bool isTableEnd(const uint8_t* pTable);
+-
+-    std::string typeToString(std::map<uint8_t, const char*> typeMap,
+-                             uint8_t type)
+-    {
+-        auto typeString = std::to_string(type);
+-        auto typeFound = typeMap.find(type);
+-        if (typeFound != typeMap.end())
+-        {
+-            return typeString + "(" + typeFound->second + ")";
+-        }
+-        return typeString;
+-    }
+-
+-    static std::string fruFieldParserString(const uint8_t* value,
+-                                            uint8_t length)
+-    {
+-        assert(value != NULL);
+-        if (length < 1)
+-        {
+-            phosphor::logging::log<phosphor::logging::level::ERR>(
+-                "Invalid FRU field length");
+-            return std::string("");
+-        }
+-        std::string strVal(reinterpret_cast<const char*>(value), length);
+-        // non printable characters cause sdbusplus exceptions, so better to
+-        // handle it by replacing with space
+-        std::replace_if(
+-            strVal.begin(), strVal.end(),
+-            [](const char& c) { return !isprint(c); }, ' ');
+-        return strVal;
+-    }
+-
+-    static std::string
+-        convertTStamp104ToCIMFormat(const timestamp104_t& fruStamp)
+-    {
+-        std::stringstream timeStampStr;
+-
+-        enum CIMTimeStampVarLength
+-        {
+-            width2 = 2,
+-            width3 = 3,
+-            width4 = 4,
+-            width6 = 6,
+-        };
+-
+-        if (!((fruStamp.year >= 1980 && fruStamp.year <= 9999) &&
+-              (fruStamp.month >= 1 && fruStamp.month <= 12) &&
+-              (fruStamp.day >= 1 && fruStamp.day <= 31) &&
+-              (fruStamp.hour < 24) && (fruStamp.minute < 60) &&
+-              (fruStamp.second < 60) &&
+-              ((fruStamp.microsecond >= 0) &&
+-               (fruStamp.microsecond <= 999999)) &&
+-              (fruStamp.utc_offset >= -999 && fruStamp.utc_offset <= 999)))
+-        {
+-            phosphor::logging::log<phosphor::logging::level::ERR>(
+-                "TimeStamp is not valid");
+-            return timeStampStr.str();
+-        }
+-        // handle CIM conversions and UTC offset
+-        timeStampStr << std::setfill('0') << std::setw(width4) << fruStamp.year
+-                     << std::setfill('0') << std::setw(width2)
+-                     << static_cast<int>(fruStamp.month) << std::setfill('0')
+-                     << std::setw(width2) << static_cast<int>(fruStamp.day)
+-                     << std::setfill('0') << std::setw(width2)
+-                     << static_cast<int>(fruStamp.hour) << std::setfill('0')
+-                     << std::setw(width2) << static_cast<int>(fruStamp.minute)
+-                     << std::setfill('0') << std::setw(width2)
+-                     << static_cast<int>(fruStamp.second) << "."
+-                     << std::setfill('0') << std::setw(width6)
+-                     << fruStamp.microsecond;
+-        if (fruStamp.utc_offset >= 0)
+-        {
+-            timeStampStr << "+";
+-        }
+-        else
+-        {
+-            timeStampStr << "-";
+-        }
+-        timeStampStr << std::setfill('0') << std::setw(width3)
+-                     << std::to_string(fruStamp.utc_offset);
+-
+-        return timeStampStr.str();
+-    }
+-
+-    static std::string fruFieldParserTimestamp(const uint8_t* value,
+-                                               uint8_t length)
+-    {
+-        assert(value != NULL);
+-        timestamp104_t fruStamp;
+-
+-        if (length != timeStamp104Size)
+-        {
+-            phosphor::logging::log<phosphor::logging::level::ERR>(
+-                "Invalid time stamp length");
+-            return std::string("");
+-        }
+-
+-        try
+-        {
+-            std::copy_n(value, timeStamp104Size,
+-                        reinterpret_cast<uint8_t*>(&fruStamp));
+-        }
+-        catch (std::exception& e)
+-        {
+-            phosphor::logging::log<phosphor::logging::level::ERR>(
+-                ("Exception Received FRU timestamp parsing error" +
+-                 std::string(e.what()))
+-                    .c_str());
+-            return std::string("");
+-        }
+-        catch (...)
+-        {
+-            phosphor::logging::log<phosphor::logging::level::ERR>(
+-                "Exception Occured FRU timestamp parsing error");
+-            return std::string("");
+-        }
+-
+-        return (convertTStamp104ToCIMFormat(fruStamp));
+-    }
+-
+-    static std::string fruFieldParserU32(const uint8_t* value, uint8_t length)
+-    {
+-        assert(value != NULL);
+-        if (length == 4)
+-        {
+-            uint32_t v;
+-            std::memcpy(&v, value, length);
+-            return std::to_string(le32toh(*reinterpret_cast<uint32_t*>(v)));
+-        }
+-        else
+-        {
+-            phosphor::logging::log<phosphor::logging::level::ERR>(
+-                "Vendor IANA should be of length 4");
+-            return std::string("");
+-        }
+-    }
+-
+-    static inline const FRUFieldTypes fruGeneralFieldTypes = {
+-        {PLDM_FRU_FIELD_TYPE_CHASSIS, {"ChassisType", fruFieldParserString}},
+-        {PLDM_FRU_FIELD_TYPE_MODEL, {"Model", fruFieldParserString}},
+-        {PLDM_FRU_FIELD_TYPE_PN, {"PN", fruFieldParserString}},
+-        {PLDM_FRU_FIELD_TYPE_SN, {"SN", fruFieldParserString}},
+-        {PLDM_FRU_FIELD_TYPE_MANUFAC, {"Manufacturer", fruFieldParserString}},
+-        {PLDM_FRU_FIELD_TYPE_MANUFAC_DATE,
+-         {"ManufacturerDate", fruFieldParserTimestamp}},
+-        {PLDM_FRU_FIELD_TYPE_VENDOR, {"Vendor", fruFieldParserString}},
+-        {PLDM_FRU_FIELD_TYPE_NAME, {"Name", fruFieldParserString}},
+-        {PLDM_FRU_FIELD_TYPE_SKU, {"SKU", fruFieldParserString}},
+-        {PLDM_FRU_FIELD_TYPE_VERSION, {"Version", fruFieldParserString}},
+-        {PLDM_FRU_FIELD_TYPE_ASSET_TAG, {"AssetTag", fruFieldParserString}},
+-        {PLDM_FRU_FIELD_TYPE_DESC, {"Description", fruFieldParserString}},
+-        {PLDM_FRU_FIELD_TYPE_EC_LVL, {"ECLevel", fruFieldParserString}},
+-        {PLDM_FRU_FIELD_TYPE_IANA, {"IANA", fruFieldParserU32}},
+-    };
+-
+-    static inline const FRUFieldTypes fruOEMFieldTypes = {
+-        {1, {"Vendor IANA", fruFieldParserU32}},
+-
+-    };
+-
+-    static inline const std::map<RecordType, FRUFieldTypes> fruFieldTypes{
+-        {PLDM_FRU_RECORD_TYPE_GENERAL, fruGeneralFieldTypes},
+-        {PLDM_FRU_RECORD_TYPE_OEM, fruOEMFieldTypes}};
+-
+-    bool parseFRUField(uint8_t recordType, uint8_t type, uint8_t length,
+-                       const uint8_t* value);
+-
+-    const std::vector<uint8_t> table;
+-    pldm_tid_t tid;
+-    FRUProperties fruProperties;
+-};
+-
+-} // namespace fru
+-} // namespace pldm
++/**
++ * Copyright © 2020 Intel Corporation
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++#pragma once
++
++#include "pldm.hpp"
++
++#include <phosphor-logging/log.hpp>
++
++#include "libpldm/fru.h"
++#include "libpldm/pldm_types.h"
++
++namespace pldm
++{
++namespace fru
++{
++
++using FRUMetadata = std::map<std::string, uint32_t>;
++using FRUVariantType = std::variant<uint8_t, uint32_t, std::string>;
++using FRUProperties = std::map<std::string, FRUVariantType>;
++
++static constexpr uint16_t timeout = 100;
++static constexpr size_t retryCount = 3;
++constexpr uint8_t timeStamp104Size = 13;
++
++
++struct timestamp104_t {
++	uint8_t utc_resolution : 4;  /* bit 7:4 UTC & time resolution */
++	uint8_t time_resolution : 4; /* bit 3:0 UTC & time resolution */
++	uint16_t year;		   /* year without any offset */
++	uint8_t month;		   /* 1..12 */
++	uint8_t day;		   /* 1..31 */
++	uint8_t hour;		   /* 0..23 */
++	uint8_t minute;		   /* 0..59 */
++	uint8_t second;		   /* 0..59 */
++	uint32_t microsecond : 24; /* 24 bit value starting from 0*/
++	int16_t utc_offset;	   /* offset in minutes signed int16 */
++};
++
++
++static inline const std::map<uint8_t, const char*> fruEncodingType{
++    {PLDM_FRU_ENCODING_UNSPECIFIED, "Unspecified"},
++    {PLDM_FRU_ENCODING_ASCII, "ASCII"},
++    {PLDM_FRU_ENCODING_UTF8, "UTF8"},
++    {PLDM_FRU_ENCODING_UTF16, "UTF16"},
++    {PLDM_FRU_ENCODING_UTF16LE, "UTF16LE"},
++    {PLDM_FRU_ENCODING_UTF16BE, "UTF16BE"}};
++
++static inline const std::map<uint8_t, const char*> fruRecordTypes{
++    {PLDM_FRU_RECORD_TYPE_GENERAL, "General"},
++    {PLDM_FRU_RECORD_TYPE_OEM, "OEM"}};
++
++/** @brief return properties of the Fru
++ *
++ * @return FRUProperties on success and nullopt on failure
++ */
++std::optional<FRUProperties> getProperties(const pldm_tid_t tid);
++
++class GetPLDMFRU
++{
++  public:
++    GetPLDMFRU() = delete;
++    GetPLDMFRU(boost::asio::yield_context yieldVal, const pldm_tid_t tidVal);
++    ~GetPLDMFRU();
++
++    /** @brief runs supported FRU commands
++     *
++     * @return true on success; false otherwise
++     * on failure
++     */
++    bool runGetFRUCommands();
++
++    /** @brief returns the FruRecord table
++     *
++     * @return FruRecord table on success; empty table otherwise
++     * on failure
++     * This is used for validation.
++     */
++    std::optional<std::vector<uint8_t>> getPLDMFruRecordData();
++
++  private:
++    /** @brief run GetFRURecordTableMetadata command
++     *
++     * @return PLDM_SUCCESS on success and corresponding error completion code
++     * on failure
++     */
++    int getFRURecordTableMetadataCmd();
++
++    /** @brief run GetFRURecordTable command
++     *
++     * @return PLDM_SUCCESS on success and corresponding error completion code
++     * on failure
++     */
++    int getFRURecordTableCmd(FRUProperties& fruProperties);
++
++    /** @brief verify Integrity checksum on the FRU Table Data with metadata
++     * checksum value
++     *
++     * @return true on success and false on checksum match failure
++     */
++    bool verifyCRC(std::vector<uint8_t>& fruTable);
++
++    boost::asio::yield_context yield;
++    pldm_tid_t tid;
++    FRUMetadata fruMetadata;
++};
++
++class SetPLDMFRU
++{
++  public:
++    SetPLDMFRU() = delete;
++    explicit SetPLDMFRU(const pldm_tid_t tidVal);
++
++    int setFruRecordTableCmd(boost::asio::yield_context yield,
++                             const std::vector<uint8_t>& setFruData);
++
++  private:
++    pldm_tid_t tid;
++
++    uint8_t getTransferFlag(const size_t offset, const size_t length,
++                            const size_t dataSize);
++    int formatSetFruReq(std::vector<uint8_t>& requestMsg,
++                        const uint32_t dataTransferHandle, const size_t offset,
++                        const size_t length,
++                        const std::vector<uint8_t>& setFruData);
++    int sendFruData(boost::asio::yield_context yield,
++                    const std::vector<uint8_t>& setFruData);
++};
++
++class PLDMFRUTable
++{
++  public:
++    PLDMFRUTable() = delete;
++    PLDMFRUTable(const std::vector<uint8_t> tableVal, const pldm_tid_t tidVal);
++    ~PLDMFRUTable();
++
++    std::optional<FRUProperties> parseTable();
++
++  private:
++    using FRUFieldParser =
++        std::function<std::string(const uint8_t* value, uint8_t length)>;
++
++    using FieldType = uint8_t;
++    using RecordType = uint8_t;
++    using FieldName = std::string;
++    using FRUFieldTypes =
++        std::map<FieldType, std::pair<FieldName, FRUFieldParser>>;
++
++    bool isTableEnd(const uint8_t* pTable);
++
++    std::string typeToString(std::map<uint8_t, const char*> typeMap,
++                             uint8_t type)
++    {
++        auto typeString = std::to_string(type);
++        auto typeFound = typeMap.find(type);
++        if (typeFound != typeMap.end())
++        {
++            return typeString + "(" + typeFound->second + ")";
++        }
++        return typeString;
++    }
++
++    static std::string fruFieldParserString(const uint8_t* value,
++                                            uint8_t length)
++    {
++        assert(value != NULL);
++        if (length < 1)
++        {
++            phosphor::logging::log<phosphor::logging::level::ERR>(
++                "Invalid FRU field length");
++            return std::string("");
++        }
++        std::string strVal(reinterpret_cast<const char*>(value), length);
++        // non printable characters cause sdbusplus exceptions, so better to
++        // handle it by replacing with space
++        std::replace_if(
++            strVal.begin(), strVal.end(),
++            [](const char& c) { return !isprint(c); }, ' ');
++        return strVal;
++    }
++
++    static std::string
++        convertTStamp104ToCIMFormat(const struct timestamp104_t& fruStamp)
++    {
++        std::stringstream timeStampStr;
++
++        enum CIMTimeStampVarLength
++        {
++            width2 = 2,
++            width3 = 3,
++            width4 = 4,
++            width6 = 6,
++        };
++
++        if (!((fruStamp.year >= 1980 && fruStamp.year <= 9999) &&
++              (fruStamp.month >= 1 && fruStamp.month <= 12) &&
++              (fruStamp.day >= 1 && fruStamp.day <= 31) &&
++              (fruStamp.hour < 24) && (fruStamp.minute < 60) &&
++              (fruStamp.second < 60) &&
++              ((fruStamp.microsecond >= 0) &&
++               (fruStamp.microsecond <= 999999)) &&
++              (fruStamp.utc_offset >= -999 && fruStamp.utc_offset <= 999)))
++        {
++            phosphor::logging::log<phosphor::logging::level::ERR>(
++                "TimeStamp is not valid");
++            return timeStampStr.str();
++        }
++        // handle CIM conversions and UTC offset
++        timeStampStr << std::setfill('0') << std::setw(width4) << fruStamp.year
++                     << std::setfill('0') << std::setw(width2)
++                     << static_cast<int>(fruStamp.month) << std::setfill('0')
++                     << std::setw(width2) << static_cast<int>(fruStamp.day)
++                     << std::setfill('0') << std::setw(width2)
++                     << static_cast<int>(fruStamp.hour) << std::setfill('0')
++                     << std::setw(width2) << static_cast<int>(fruStamp.minute)
++                     << std::setfill('0') << std::setw(width2)
++                     << static_cast<int>(fruStamp.second) << "."
++                     << std::setfill('0') << std::setw(width6)
++                     << fruStamp.microsecond;
++        if (fruStamp.utc_offset >= 0)
++        {
++            timeStampStr << "+";
++        }
++        else
++        {
++            timeStampStr << "-";
++        }
++        timeStampStr << std::setfill('0') << std::setw(width3)
++                     << std::to_string(fruStamp.utc_offset);
++
++        return timeStampStr.str();
++    }
++
++    static std::string fruFieldParserTimestamp(const uint8_t* value,
++                                               uint8_t length)
++    {
++        assert(value != NULL);
++        struct timestamp104_t fruStamp;
++
++        if (length != PLDM_TIMESTAMP104_SIZE)
++        {
++            phosphor::logging::log<phosphor::logging::level::ERR>(
++                "Invalid time stamp length");
++            return std::string("");
++        }
++
++        try
++        {
++            std::copy_n(value, PLDM_TIMESTAMP104_SIZE,
++                        reinterpret_cast<uint8_t*>(&fruStamp));
++        }
++        catch (std::exception& e)
++        {
++            phosphor::logging::log<phosphor::logging::level::ERR>(
++                ("Exception Received FRU timestamp parsing error" +
++                 std::string(e.what()))
++                    .c_str());
++            return std::string("");
++        }
++        catch (...)
++        {
++            phosphor::logging::log<phosphor::logging::level::ERR>(
++                "Exception Occured FRU timestamp parsing error");
++            return std::string("");
++        }
++
++        return (convertTStamp104ToCIMFormat(fruStamp));
++    }
++
++    static std::string fruFieldParserU32(const uint8_t* value, uint8_t length)
++    {
++        assert(value != NULL);
++        if (length == 4)
++        {
++            uint32_t v;
++            std::memcpy(&v, value, length);
++            return std::to_string(le32toh(*reinterpret_cast<uint32_t*>(v)));
++        }
++        else
++        {
++            phosphor::logging::log<phosphor::logging::level::ERR>(
++                "Vendor IANA should be of length 4");
++            return std::string("");
++        }
++    }
++
++    static inline const FRUFieldTypes fruGeneralFieldTypes = {
++        {PLDM_FRU_FIELD_TYPE_CHASSIS, {"ChassisType", fruFieldParserString}},
++        {PLDM_FRU_FIELD_TYPE_MODEL, {"Model", fruFieldParserString}},
++        {PLDM_FRU_FIELD_TYPE_PN, {"PN", fruFieldParserString}},
++        {PLDM_FRU_FIELD_TYPE_SN, {"SN", fruFieldParserString}},
++        {PLDM_FRU_FIELD_TYPE_MANUFAC, {"Manufacturer", fruFieldParserString}},
++        {PLDM_FRU_FIELD_TYPE_MANUFAC_DATE,
++         {"ManufacturerDate", fruFieldParserTimestamp}},
++        {PLDM_FRU_FIELD_TYPE_VENDOR, {"Vendor", fruFieldParserString}},
++        {PLDM_FRU_FIELD_TYPE_NAME, {"Name", fruFieldParserString}},
++        {PLDM_FRU_FIELD_TYPE_SKU, {"SKU", fruFieldParserString}},
++        {PLDM_FRU_FIELD_TYPE_VERSION, {"Version", fruFieldParserString}},
++        {PLDM_FRU_FIELD_TYPE_ASSET_TAG, {"AssetTag", fruFieldParserString}},
++        {PLDM_FRU_FIELD_TYPE_DESC, {"Description", fruFieldParserString}},
++        {PLDM_FRU_FIELD_TYPE_EC_LVL, {"ECLevel", fruFieldParserString}},
++        {PLDM_FRU_FIELD_TYPE_IANA, {"IANA", fruFieldParserU32}},
++    };
++
++    static inline const FRUFieldTypes fruOEMFieldTypes = {
++        {1, {"Vendor IANA", fruFieldParserU32}},
++
++    };
++
++    static inline const std::map<RecordType, FRUFieldTypes> fruFieldTypes{
++        {PLDM_FRU_RECORD_TYPE_GENERAL, fruGeneralFieldTypes},
++        {PLDM_FRU_RECORD_TYPE_OEM, fruOEMFieldTypes}};
++
++    bool parseFRUField(uint8_t recordType, uint8_t type, uint8_t length,
++                       const uint8_t* value);
++
++    const std::vector<uint8_t> table;
++    pldm_tid_t tid;
++    FRUProperties fruProperties;
++};
++
++} // namespace fru
++} // namespace pldm
+\ No newline at end of file
+diff --git a/include/fru_support.hpp b/include/fru_support.hpp
+index 3e8a536..2717576 100644
+--- a/include/fru_support.hpp
++++ b/include/fru_support.hpp
+@@ -19,7 +19,7 @@
+ #include <map>
+ #include <sdbusplus/asio/object_server.hpp>
+ 
+-#include "fru.h"
++#include "libpldm/fru.h"
+ 
+ using FRUVariantType = std::variant<uint8_t, uint32_t, std::string>;
+ using FRUProperties = std::map<std::string, FRUVariantType>;
+diff --git a/include/fwu_inventory.hpp b/include/fwu_inventory.hpp
+index da25e4d..51af691 100644
+--- a/include/fwu_inventory.hpp
++++ b/include/fwu_inventory.hpp
+@@ -17,7 +17,7 @@
+ 
+ #include "fwu_utils.hpp"
+ 
+-#include "firmware_update.h"
++#include "libpldm/firmware_update.h"
+ 
+ namespace pldm
+ {
+@@ -73,7 +73,7 @@ class FWInventoryInfo
+      * to fwuProperties map.
+      */
+     void copyCompImgSetData(
+-        const struct get_firmware_parameters_resp& respData,
++        const struct pldm_get_firmware_parameters_resp& respData,
+         const struct variable_field& activeCompImgSetVerStr,
+         const struct variable_field& pendingCompImgSetVerStr);
+ 
+@@ -81,7 +81,7 @@ class FWInventoryInfo
+      * fwuProperties map.
+      */
+     void copyCompData(const uint16_t count,
+-                      const struct component_parameter_table* componentData,
++                      const pldm_component_parameter_entry* componentData,
+                       struct variable_field* activeCompVerStr,
+                       struct variable_field* pendingCompVerStr);
+     /** @brief API that adds component image set info to D-Bus
+diff --git a/include/fwu_utils.hpp b/include/fwu_utils.hpp
+index 57c0392..58f0d96 100644
+--- a/include/fwu_utils.hpp
++++ b/include/fwu_utils.hpp
+@@ -19,7 +19,7 @@
+ 
+ #include <vector>
+ 
+-#include "utils.h"
++#include "libpldm/utils.h"
+ 
+ namespace pldm
+ {
+diff --git a/include/numeric_effecter_handler.hpp b/include/numeric_effecter_handler.hpp
+index 04f7730..d293eb4 100644
+--- a/include/numeric_effecter_handler.hpp
++++ b/include/numeric_effecter_handler.hpp
+@@ -21,7 +21,7 @@
+ 
+ #include <boost/asio.hpp>
+ 
+-#include "platform.h"
++#include "libpldm/platform.h"
+ 
+ namespace pldm
+ {
+diff --git a/include/numeric_sensor_handler.hpp b/include/numeric_sensor_handler.hpp
+index d3685bd..4ad7dd5 100644
+--- a/include/numeric_sensor_handler.hpp
++++ b/include/numeric_sensor_handler.hpp
+@@ -21,7 +21,7 @@
+ 
+ #include <boost/asio.hpp>
+ 
+-#include "platform.h"
++#include "libpldm/platform.h"
+ 
+ namespace pldm
+ {
+diff --git a/include/pdr_manager.hpp b/include/pdr_manager.hpp
+index f5af879..ab74929 100644
+--- a/include/pdr_manager.hpp
++++ b/include/pdr_manager.hpp
+@@ -19,7 +19,7 @@
+ 
+ #include <boost/asio.hpp>
+ 
+-#include "platform.h"
++#include "libpldm/platform.h"
+ 
+ namespace pldm
+ {
+@@ -36,6 +36,16 @@ using SensorID = uint16_t;
+ using EffecterID = uint16_t;
+ using FRURecordSetIdentifier = uint16_t;
+ 
++struct pldm_pdr_repository_info {
++	uint8_t repository_state;
++	uint8_t update_time[PLDM_TIMESTAMP104_SIZE];
++	uint8_t oem_update_time[PLDM_TIMESTAMP104_SIZE];
++	uint32_t record_count;
++	uint32_t repository_size;
++	uint32_t largest_record_size;
++	uint8_t data_transfer_handle_timeout;
++};
++
+ struct EntityComparator
+ {
+     bool operator()(const pldm_entity& lhsEntity,
+diff --git a/include/pdr_utils.hpp b/include/pdr_utils.hpp
+index a798bb0..05d4a4f 100644
+--- a/include/pdr_utils.hpp
++++ b/include/pdr_utils.hpp
+@@ -18,7 +18,7 @@
+ 
+ #include "numeric_sensor.hpp"
+ 
+-#include "platform.h"
++#include "libpldm/platform.h"
+ 
+ namespace pdr
+ {
+diff --git a/include/platform.hpp b/include/platform.hpp
+index ace9bf7..2128105 100644
+--- a/include/platform.hpp
++++ b/include/platform.hpp
+@@ -20,7 +20,7 @@
+ 
+ #include <boost/asio/steady_timer.hpp>
+ 
+-#include "platform.h"
++#include "libpldm/platform.h"
+ 
+ namespace pldm
+ {
+diff --git a/include/pldm.hpp b/include/pldm.hpp
+index df4bd2a..7812b8c 100644
+--- a/include/pldm.hpp
++++ b/include/pldm.hpp
+@@ -27,7 +27,7 @@
+ #include <unordered_map>
+ #include <vector>
+ 
+-#include "base.h"
++#include "libpldm/base.h"
+ 
+ using mctpw_eid_t = mctpw::eid_t;
+ 
+diff --git a/include/state_effecter_handler.hpp b/include/state_effecter_handler.hpp
+index 8863192..355f322 100644
+--- a/include/state_effecter_handler.hpp
++++ b/include/state_effecter_handler.hpp
+@@ -19,7 +19,7 @@
+ 
+ #include <boost/asio.hpp>
+ 
+-#include "platform.h"
++#include "libpldm/platform.h"
+ 
+ namespace pldm
+ {
+diff --git a/include/state_sensor_handler.hpp b/include/state_sensor_handler.hpp
+index d08f931..dc20c4e 100644
+--- a/include/state_sensor_handler.hpp
++++ b/include/state_sensor_handler.hpp
+@@ -19,7 +19,7 @@
+ 
+ #include <boost/asio.hpp>
+ 
+-#include "platform.h"
++#include "libpldm/platform.h"
+ 
+ namespace pldm
+ {
+diff --git a/include/state_set.hpp b/include/state_set.hpp
+index 3d42ca2..095969c 100644
+--- a/include/state_set.hpp
++++ b/include/state_set.hpp
+@@ -17,7 +17,7 @@
+ 
+ #include <phosphor-logging/log.hpp>
+ 
+-#include "state_set.h"
++#include "libpldm/state_set.h"
+ 
+ struct StateSetValueInfo
+ {
+@@ -40,8 +40,6 @@ const std::unordered_map<uint16_t,                             // State Set ID
+          {"Operational Fault Status",
+           {{PLDM_STATE_SET_OPERATIONAL_FAULT_STATUS_NORMAL,
+             StateSetValueInfo{"Normal", "StateSensorNormal"}},
+-           {PLDM_STATE_SET_OPERATIONAL_FAULT_STATUS_ERROR,
+-            StateSetValueInfo{"Error", "StateSensorWarning"}},
+-           {PLDM_STATE_SET_OPERATIONAL_FAULT_STATUS_NON_RECOVERABLE_ERROR,
+-            StateSetValueInfo{"Non-Recoverable Error",
+-                              "StateSensorCritical"}}}}}};
++           {PLDM_STATE_SET_OPERATIONAL_FAULT_STATUS_STRESSED ,
++            StateSetValueInfo{"Error", "StateSensorStressed"}},
++          }}}};
+diff --git a/src/base.cpp b/src/base.cpp
+index 9ac35fb..43af1d4 100644
+--- a/src/base.cpp
++++ b/src/base.cpp
+@@ -23,8 +23,8 @@
+ #include <unordered_map>
+ #include <unordered_set>
+ 
+-#include "platform.h"
+-#include "utils.h"
++#include "libpldm/platform.h"
++#include "libpldm/utils.h"
+ 
+ namespace std
+ {
+@@ -242,7 +242,7 @@ bool getPLDMVersions(boost::asio::yield_context yield, const mctpw_eid_t eid,
+     uint8_t transferOpFlag = PLDM_GET_FIRSTPART;
+     uint8_t completionCode = PLDM_ERROR;
+     uint8_t transferFlag = PLDM_START;
+-    variable_field responseVersion;
++    ver32_t responseVersion;
+     auto msg = reinterpret_cast<pldm_msg*>(getPLDMVersionsRequest.data());
+     std::vector<uint8_t> versionDataBuffer;
+ 
+@@ -284,9 +284,11 @@ bool getPLDMVersions(boost::asio::yield_context yield, const mctpw_eid_t eid,
+         {
+             return false;
+         }
+-        versionDataBuffer.insert(versionDataBuffer.end(), responseVersion.ptr,
+-                                 responseVersion.ptr + responseVersion.length);
+-
++        versionDataBuffer.insert(versionDataBuffer.end(), responseVersion.alpha);
++        versionDataBuffer.insert(versionDataBuffer.end(), responseVersion.update);
++        versionDataBuffer.insert(versionDataBuffer.end(), responseVersion.minor);
++        versionDataBuffer.insert(versionDataBuffer.end(), responseVersion.major);
++ 
+         transferOpFlag = PLDM_GET_NEXTPART;
+     }
+ 
+@@ -538,7 +540,7 @@ CommandSupportTable
+ }
+ 
+ bool isSupported(const CommandSupportTable& cmdSupportTable,
+-                 const pldm_type_t type, const uint8_t cmd)
++                 const uint8_t type, const uint8_t cmd)
+ {
+     auto itCmd = cmdSupportTable.find(type);
+     if (cmdSupportTable.end() == itCmd)
+diff --git a/src/firmware_update.cpp b/src/firmware_update.cpp
+index b568956..8e3dd8f 100644
+--- a/src/firmware_update.cpp
++++ b/src/firmware_update.cpp
+@@ -24,7 +24,7 @@
+ #include <phosphor-logging/log.hpp>
+ #include <xyz/openbmc_project/PLDM/FWU/FWUBase/server.hpp>
+ 
+-#include "utils.h"
++#include "libpldm/utils.h"
+ namespace pldm
+ {
+ namespace fwu
+@@ -67,7 +67,7 @@ std::map<uint8_t, std::string> inventoryPaths;
+ FWUpdate::FWUpdate(const pldm_tid_t _tid, const uint8_t _deviceIDRecord) :
+     reserveBWTimer(
+         std::make_unique<boost::asio::steady_timer>(*getIoContext())),
+-    currentTid(_tid), currentDeviceIDRecord(_deviceIDRecord), state(FD_IDLE)
++    currentTid(_tid), currentDeviceIDRecord(_deviceIDRecord), state(PLDM_FD_STATE_IDLE)
+ {
+ }
+ 
+@@ -195,11 +195,11 @@ uint16_t FWUpdate::getApplicableComponentsCount(uint64_t val) const
+ bool FWUpdate::prepareRequestUpdateCommand()
+ {
+     uint16_t tempShort = 0;
+-    updateProperties.max_transfer_size = PLDM_FWU_BASELINE_TRANSFER_SIZE;
++    updateProperties.max_transfer_size = PLDM_FWUP_BASELINE_TRANSFER_SIZE;
+     applicableComponentsVal = getApplicableComponents();
+-    updateProperties.no_of_comp =
++    updateProperties.num_of_comp =
+         getApplicableComponentsCount(applicableComponentsVal);
+-    updateProperties.max_outstand_transfer_req = 1;
++    updateProperties.max_outstanding_transfer_req = 1;
+     if (!pldmImg->getDevIdRcrdProperty<uint16_t>(tempShort, "FWDevPkgDataLen",
+                                                  currentDeviceIDRecord))
+     {
+@@ -229,7 +229,7 @@ bool FWUpdate::prepareRequestUpdateCommand()
+ }
+ 
+ bool FWUpdate::preparePassComponentRequest(
+-    struct pass_component_table_req& componentTable,
++    struct pldm_pass_component_table_req& componentTable,
+     std::string& compVersionString, const uint16_t compCnt)
+ {
+     uint16_t tempShort = 0;
+@@ -275,23 +275,23 @@ bool FWUpdate::preparePassComponentRequest(
+ bool FWUpdate::initPassComponentTableTransferFlag(uint8_t& flag)
+ {
+ 
+-    if (updateProperties.no_of_comp == 1)
++    if (updateProperties.num_of_comp == 1)
+     {
+         flag = PLDM_START_AND_END;
+         return true;
+     }
+ 
+-    if (updateProperties.no_of_comp > 1)
++    if (updateProperties.num_of_comp > 1)
+     {
+         if (passCompCount == 0)
+         {
+             flag = PLDM_START;
+         }
+-        else if (passCompCount + 1 < updateProperties.no_of_comp)
++        else if (passCompCount + 1 < updateProperties.num_of_comp)
+         {
+             flag = PLDM_MIDDLE;
+         }
+-        else if (passCompCount + 1 == updateProperties.no_of_comp)
++        else if (passCompCount + 1 == updateProperties.num_of_comp)
+         {
+             flag = PLDM_END;
+         }
+@@ -303,7 +303,7 @@ bool FWUpdate::initPassComponentTableTransferFlag(uint8_t& flag)
+ }
+ 
+ bool FWUpdate::prepareUpdateComponentRequest(
+-    std::string& compVersionString, struct update_component_req& component)
++    std::string& compVersionString, struct pldm_update_component_req& component)
+ {
+     uint16_t tempShort = 0;
+     uint32_t tempLong = 0;
+@@ -356,11 +356,11 @@ int FWUpdate::processRequestUpdate(const boost::asio::yield_context yield)
+ {
+     if (updateMode)
+     {
+-        return ALREADY_IN_UPDATE_MODE;
++        return PLDM_FWUP_ALREADY_IN_UPDATE_MODE;
+     }
+-    if (fdState != FD_IDLE)
++    if (fdState != PLDM_FD_STATE_IDLE)
+     {
+-        return NOT_IN_UPDATE_MODE;
++        return PLDM_FWUP_NOT_IN_UPDATE_MODE;
+     }
+ 
+     variable_field compImgSetVerStr;
+@@ -382,14 +382,22 @@ int FWUpdate::requestUpdate(const boost::asio::yield_context yield,
+ 
+     uint8_t instanceID = createInstanceId(currentTid);
+     std::vector<uint8_t> pldmReq(sizeof(struct PLDMEmptyRequest) +
+-                                 sizeof(struct request_update_req) +
++                                 sizeof(struct pldm_request_update_req) +
+                                  compImgSetVerStrn.length);
+     struct pldm_msg* msgReq = reinterpret_cast<pldm_msg*>(pldmReq.data());
+ 
++    /* Inventec - Modify for Openbmc libpldm. */
+     int retVal = encode_request_update_req(
+-        instanceID, msgReq,
+-        sizeof(struct request_update_req) + compImgSetVerStrn.length,
+-        &updateProperties, &compImgSetVerStrn);
++        instanceID,
++        updateProperties.max_transfer_size,
++        updateProperties.num_of_comp,
++        updateProperties.max_outstanding_transfer_req,
++        updateProperties.pkg_data_len,
++        updateProperties.comp_image_set_ver_str_type,
++        updateProperties.comp_image_set_ver_str_len,
++        &compImgSetVerStrn,
++        msgReq, sizeof(struct pldm_request_update_req) + compImgSetVerStrn.length);
++
+     if (!validatePLDMReqEncode(currentTid, retVal, "RequestUpdate"))
+     {
+         return retVal;
+@@ -398,7 +406,7 @@ int FWUpdate::requestUpdate(const boost::asio::yield_context yield,
+     size_t count = 0;
+     do
+     {
+-        if (retVal == RETRY_REQUEST_UPDATE)
++        if (retVal == PLDM_FWUP_RETRY_REQUEST_UPDATE)
+         {
+             createAsyncDelay(yield, retryRequestForUpdateDelay);
+         }
+@@ -414,9 +422,9 @@ int FWUpdate::requestUpdate(const boost::asio::yield_context yield,
+         retVal = decode_request_update_resp(
+             msgResp, pldmResp.size() - hdrSize, &completionCode,
+             &fwDeviceMetaDataLen, &fdWillSendGetPkgDataCmd);
+-    } while ((completionCode == RETRY_REQUEST_UPDATE) &&
++    } while ((completionCode == PLDM_FWUP_RETRY_REQUEST_UPDATE) &&
+              (++count < retryCount));
+-    if (completionCode == RETRY_REQUEST_UPDATE)
++    if (completionCode == PLDM_FWUP_RETRY_REQUEST_UPDATE)
+     {
+         phosphor::logging::log<phosphor::logging::level::ERR>(
+             ("requestUpdate: FD is not able to enter update mode immediately, "
+@@ -438,11 +446,11 @@ int FWUpdate::processGetDeviceMetaData(const boost::asio::yield_context yield)
+ {
+     if (!updateMode)
+     {
+-        return NOT_IN_UPDATE_MODE;
++        return PLDM_FWUP_NOT_IN_UPDATE_MODE;
+     }
+-    if (fdState != FD_LEARN_COMPONENTS)
++    if (fdState != PLDM_FD_STATE_LEARN_COMPONENTS)
+     {
+-        return COMMAND_NOT_EXPECTED;
++        return PLDM_FWUP_COMMAND_NOT_EXPECTED;
+     }
+     if (!fwDeviceMetaDataLen)
+     {
+@@ -547,21 +555,21 @@ int FWUpdate::getDeviceMetaData(const boost::asio::yield_context yield,
+ int FWUpdate::processSendMetaData(const boost::asio::yield_context yield)
+ {
+ 
+-    if (fdState == FD_LEARN_COMPONENTS || fdState == FD_IDLE)
++    if (fdState == PLDM_FD_STATE_LEARN_COMPONENTS || fdState == PLDM_FD_STATE_IDLE)
+     {
+-        return COMMAND_NOT_EXPECTED;
++        return PLDM_FWUP_COMMAND_NOT_EXPECTED;
+     }
+     if ((fwDeviceMetaDataLen == 0) || (fwDeviceMetaData.size() == 0))
+     {
+         return PLDM_SUCCESS;
+     }
+     transferHandle = 0; // Resetting transferHandle
+-    expectedCmd = PLDM_GET_META_DATA;
++    expectedCmd = PLDM_GET_PACKAGE_DATA;
+ 
+     size_t offset = 0;
+     int retVal = 0;
+ 
+-    size_t length = PLDM_FWU_BASELINE_TRANSFER_SIZE; // max payload size
++    size_t length = PLDM_FWUP_BASELINE_TRANSFER_SIZE; // max payload size
+ 
+     // Calculate based on size of payload and maximum transfer size
+     // Max number of requests including the requeries
+@@ -670,14 +678,14 @@ int FWUpdate::sendMetaData(const boost::asio::yield_context yield,
+     if (transferOperationFlag == PLDM_GET_FIRSTPART)
+     {
+         offset = 0;
+-        length = PLDM_FWU_BASELINE_TRANSFER_SIZE;
++        length = PLDM_FWUP_BASELINE_TRANSFER_SIZE;
+         // Ignoring the very first dataTransferHandle received and setting it as
+         // 0.
+         recvdRequests.insert(0);
+     }
+     else
+     {
+-        offset = dataTransferHandle * PLDM_FWU_BASELINE_TRANSFER_SIZE;
++        offset = dataTransferHandle * PLDM_FWUP_BASELINE_TRANSFER_SIZE;
+         recvdRequests.insert(dataTransferHandle);
+     }
+ 
+@@ -757,16 +765,16 @@ int FWUpdate::processPassComponentTable(const boost::asio::yield_context yield)
+ {
+     if (!updateMode)
+     {
+-        return NOT_IN_UPDATE_MODE;
++        return PLDM_FWUP_NOT_IN_UPDATE_MODE;
+     }
+-    if (fdState != FD_LEARN_COMPONENTS)
++    if (fdState != PLDM_FD_STATE_LEARN_COMPONENTS)
+     {
+-        return COMMAND_NOT_EXPECTED;
++        return PLDM_FWUP_COMMAND_NOT_EXPECTED;
+     }
+     uint8_t totalCompsAcceptedByFd = 0;
+     for (uint16_t count = 0; count < compCount; ++count)
+     {
+-        struct pass_component_table_req componentTable = {};
++        struct pldm_pass_component_table_req componentTable = {};
+         struct variable_field componentVersionString = {};
+         std::string versionStr;
+         uint8_t compResp = 0;
+@@ -817,20 +825,29 @@ int FWUpdate::processPassComponentTable(const boost::asio::yield_context yield)
+ 
+ int FWUpdate::passComponentTable(
+     const boost::asio::yield_context yield,
+-    const struct pass_component_table_req& componentTable,
++    const struct pldm_pass_component_table_req& componentTable,
+     struct variable_field& compImgSetVerStr, uint8_t& compResp,
+     uint8_t& compRespCode)
+ {
+     uint8_t instanceID = createInstanceId(currentTid);
+     std::vector<uint8_t> pldmReq(sizeof(struct PLDMEmptyRequest) +
+-                                 sizeof(struct pass_component_table_req) +
++                                 sizeof(struct pldm_pass_component_table_req) +
+                                  compImgSetVerStr.length);
+     struct pldm_msg* msgReq = reinterpret_cast<pldm_msg*>(pldmReq.data());
+ 
++    /* Inventec - Modify for Openbmc libpldm. */
+     int retVal = encode_pass_component_table_req(
+-        instanceID, msgReq,
+-        sizeof(struct pass_component_table_req) + compImgSetVerStr.length,
+-        &componentTable, &compImgSetVerStr);
++        instanceID,
++        componentTable.transfer_flag,
++        componentTable.comp_classification,
++        componentTable.comp_identifier,
++        componentTable.comp_classification_index,
++        componentTable.comp_comparison_stamp,
++        componentTable.comp_ver_str_type,
++        componentTable.comp_ver_str_len,
++        &compImgSetVerStr,
++        msgReq, sizeof(pldm_pass_component_table_req) + compImgSetVerStr.length);
++
+     if (!validatePLDMReqEncode(currentTid, retVal,
+                                std::string("PassComponentTable")))
+     {
+@@ -866,14 +883,14 @@ int FWUpdate::processUpdateComponent(const boost::asio::yield_context yield,
+ {
+     if (!updateMode)
+     {
+-        return NOT_IN_UPDATE_MODE;
++        return PLDM_FWUP_NOT_IN_UPDATE_MODE;
+     }
+-    if (fdState != FD_READY_XFER)
++    if (fdState != PLDM_FD_STATE_READY_XFER)
+     {
+-        return COMMAND_NOT_EXPECTED;
++        return PLDM_FWUP_COMMAND_NOT_EXPECTED;
+     }
+     variable_field componentVersionString;
+-    struct update_component_req component;
++    struct pldm_update_component_req component;
+     std::string versionStr;
+ 
+     if (!prepareUpdateComponentRequest(versionStr, component))
+@@ -893,7 +910,7 @@ int FWUpdate::processUpdateComponent(const boost::asio::yield_context yield,
+ }
+ 
+ int FWUpdate::updateComponent(const boost::asio::yield_context yield,
+-                              const struct update_component_req& component,
++                              const struct pldm_update_component_req& component,
+                               variable_field& compVerStr,
+                               uint8_t& compCompatabilityResp,
+                               uint8_t& compCompatabilityRespCode,
+@@ -902,14 +919,21 @@ int FWUpdate::updateComponent(const boost::asio::yield_context yield,
+ {
+     uint8_t instanceID = createInstanceId(currentTid);
+     std::vector<uint8_t> pldmReq(sizeof(struct PLDMEmptyRequest) +
+-                                 sizeof(struct update_component_req) +
++                                 sizeof(pldm_update_component_req) +
+                                  compVerStr.length);
+     struct pldm_msg* msgReq = reinterpret_cast<pldm_msg*>(pldmReq.data());
+ 
++    /* Inventec - Modify for openbmc libpldm change. */
+     int retVal = encode_update_component_req(
+-        instanceID, msgReq,
+-        sizeof(struct update_component_req) + compVerStr.length, &component,
+-        &compVerStr);
++        instanceID, component.comp_classification,
++        component.comp_identifier,
++        component.comp_classification_index,
++        component.comp_comparison_stamp,
++        component.comp_image_size,
++        component.update_option_flags,
++        component.comp_ver_str_type, component.comp_ver_str_len, &compVerStr,
++        msgReq, sizeof(pldm_update_component_req) + compVerStr.length);
++
+     if (!validatePLDMReqEncode(currentTid, retVal, "UpdateComponent"))
+     {
+         return retVal;
+@@ -939,7 +963,7 @@ int FWUpdate::updateComponent(const boost::asio::yield_context yield,
+ 
+ uint8_t FWUpdate::validateTransferComplete(const uint8_t transferResult)
+ {
+-    return (transferResult == PLDM_FWU_TRASFER_SUCCESS)
++    return (transferResult == PLDM_FWUP_TRANSFER_SUCCESS)
+                ? PLDM_SUCCESS
+                : PLDM_ERROR_INVALID_DATA;
+ }
+@@ -948,18 +972,18 @@ int FWUpdate::processTransferComplete(const boost::asio::yield_context yield,
+                                       const std::vector<uint8_t>& pldmReq,
+                                       uint8_t& transferResult)
+ {
+-    if (!updateMode || fdState != FD_DOWNLOAD)
++    if (!updateMode || fdState != PLDM_FD_STATE_DOWNLOAD)
+     {
+         const struct pldm_msg* msgReq =
+             reinterpret_cast<const pldm_msg*>(pldmReq.data());
+         if (!sendErrorCompletionCode(yield, msgReq->hdr.instance_id,
+-                                     COMMAND_NOT_EXPECTED,
++                                     PLDM_FWUP_COMMAND_NOT_EXPECTED,
+                                      PLDM_TRANSFER_COMPLETE))
+         {
+             phosphor::logging::log<phosphor::logging::level::WARNING>(
+                 "TransferComplete: sendErrorCompletionCode failed");
+         }
+-        return COMMAND_NOT_EXPECTED;
++        return PLDM_FWUP_COMMAND_NOT_EXPECTED;
+     }
+     int retVal = transferComplete(yield, pldmReq, transferResult);
+     if (retVal != PLDM_SUCCESS)
+@@ -976,7 +1000,7 @@ int FWUpdate::transferComplete(const boost::asio::yield_context yield,
+ {
+     const struct pldm_msg* msgReq =
+         reinterpret_cast<const pldm_msg*>(pldmReq.data());
+-    int retVal = decode_transfer_complete_req(msgReq, &transferResult);
++    int retVal = decode_transfer_complete_req(msgReq, sizeof(uint8_t), &transferResult);
+     if (retVal != PLDM_SUCCESS)
+     {
+         phosphor::logging::log<phosphor::logging::level::WARNING>(
+@@ -1011,7 +1035,7 @@ int FWUpdate::transferComplete(const boost::asio::yield_context yield,
+     std::vector<uint8_t> pldmResp(PLDMCCOnlyResponse);
+     struct pldm_msg* msgResp = reinterpret_cast<pldm_msg*>(pldmResp.data());
+     retVal = encode_transfer_complete_resp(
+-        msgReq->hdr.instance_id, static_cast<uint8_t>(retVal), msgResp);
++        msgReq->hdr.instance_id, static_cast<uint8_t>(retVal), msgResp, sizeof(uint8_t));
+     if (retVal != PLDM_SUCCESS)
+     {
+         phosphor::logging::log<phosphor::logging::level::WARNING>(
+@@ -1033,7 +1057,7 @@ int FWUpdate::transferComplete(const boost::asio::yield_context yield,
+ 
+ uint8_t FWUpdate::validateVerifyComplete(const uint8_t verifyResult)
+ {
+-    return (verifyResult == PLDM_FWU_VERIFY_SUCCESS) ? PLDM_SUCCESS
++    return (verifyResult == PLDM_FWUP_VERIFY_SUCCESS) ? PLDM_SUCCESS
+                                                      : PLDM_ERROR_INVALID_DATA;
+ }
+ 
+@@ -1041,17 +1065,17 @@ int FWUpdate::processVerifyComplete(const boost::asio::yield_context yield,
+                                     const std::vector<uint8_t>& pldmReq,
+                                     uint8_t& verifyResult)
+ {
+-    if (!updateMode || fdState != FD_VERIFY)
++    if (!updateMode || fdState != PLDM_FD_STATE_VERIFY)
+     {
+         auto msgReq = reinterpret_cast<const pldm_msg*>(pldmReq.data());
+         if (!sendErrorCompletionCode(yield, msgReq->hdr.instance_id,
+-                                     COMMAND_NOT_EXPECTED,
++                                     PLDM_FWUP_COMMAND_NOT_EXPECTED,
+                                      PLDM_VERIFY_COMPLETE))
+         {
+             phosphor::logging::log<phosphor::logging::level::WARNING>(
+                 "VerifyComplete: sendErrorCompletionCode failed");
+         }
+-        return COMMAND_NOT_EXPECTED;
++        return PLDM_FWUP_COMMAND_NOT_EXPECTED;
+     }
+     int retVal = verifyComplete(yield, pldmReq, verifyResult);
+     if (retVal != PLDM_SUCCESS)
+@@ -1068,7 +1092,7 @@ int FWUpdate::verifyComplete(const boost::asio::yield_context yield,
+ {
+ 
+     auto msgReq = reinterpret_cast<const pldm_msg*>(pldmReq.data());
+-    int retVal = decode_verify_complete_req(msgReq, &verifyResult);
++    int retVal = decode_verify_complete_req(msgReq, sizeof(uint8_t),&verifyResult);
+     if (retVal != PLDM_SUCCESS)
+     {
+         phosphor::logging::log<phosphor::logging::level::WARNING>(
+@@ -1103,7 +1127,8 @@ int FWUpdate::verifyComplete(const boost::asio::yield_context yield,
+     std::vector<uint8_t> pldmResp(PLDMCCOnlyResponse);
+     struct pldm_msg* msgResp = reinterpret_cast<pldm_msg*>(pldmResp.data());
+     retVal = encode_verify_complete_resp(msgReq->hdr.instance_id,
+-                                         static_cast<uint8_t>(retVal), msgResp);
++                                         static_cast<uint8_t>(retVal), msgResp,
++                                         sizeof(uint8_t));
+     if (retVal != PLDM_SUCCESS)
+     {
+         phosphor::logging::log<phosphor::logging::level::WARNING>(
+@@ -1125,8 +1150,8 @@ int FWUpdate::verifyComplete(const boost::asio::yield_context yield,
+ 
+ uint8_t FWUpdate::validateApplyComplete(const uint8_t applyResult)
+ {
+-    if (applyResult == PLDM_FWU_APPLY_SUCCESS ||
+-        applyResult == PLDM_FWU_APPLY_SUCCESS_WITH_ACTIVATION_METHOD)
++    if (applyResult == PLDM_FWUP_APPLY_SUCCESS ||
++        applyResult == PLDM_FWUP_APPLY_SUCCESS_WITH_ACTIVATION_METHOD)
+     {
+         return PLDM_SUCCESS;
+     }
+@@ -1137,17 +1162,17 @@ int FWUpdate::processApplyComplete(
+     const boost::asio::yield_context yield, const std::vector<uint8_t>& pldmReq,
+     uint8_t& applyResult, bitfield16_t& compActivationMethodsModification)
+ {
+-    if (!updateMode || fdState != FD_APPLY)
++    if (!updateMode || fdState != PLDM_FD_STATE_APPLY)
+     {
+         auto msgReq = reinterpret_cast<const pldm_msg*>(pldmReq.data());
+         if (!sendErrorCompletionCode(yield, msgReq->hdr.instance_id,
+-                                     COMMAND_NOT_EXPECTED, PLDM_APPLY_COMPLETE))
++                                     PLDM_FWUP_COMMAND_NOT_EXPECTED, PLDM_APPLY_COMPLETE))
+         {
+             phosphor::logging::log<phosphor::logging::level::ERR>(
+                 "ApplyComplete: Failed to send PLDM message",
+                 phosphor::logging::entry("TID=%d", currentTid));
+         }
+-        return COMMAND_NOT_EXPECTED;
++        return PLDM_FWUP_COMMAND_NOT_EXPECTED;
+     }
+     int retVal = applyComplete(yield, pldmReq, applyResult,
+                                compActivationMethodsModification);
+@@ -1190,7 +1215,8 @@ int FWUpdate::applyComplete(const boost::asio::yield_context yield,
+     std::vector<uint8_t> pldmResp(PLDMCCOnlyResponse);
+     struct pldm_msg* msgResp = reinterpret_cast<pldm_msg*>(pldmResp.data());
+     retVal =
+-        encode_apply_complete_resp(msgReq->hdr.instance_id, compCode, msgResp);
++        encode_apply_complete_resp(msgReq->hdr.instance_id, compCode,
++            msgResp,sizeof(completionCode));
+     if (retVal != PLDM_SUCCESS)
+     {
+         phosphor::logging::log<phosphor::logging::level::ERR>(
+@@ -1214,9 +1240,9 @@ int FWUpdate::applyComplete(const boost::asio::yield_context yield,
+ 
+ int FWUpdate::processRequestFirmwareData(const boost::asio::yield_context yield)
+ {
+-    if (!updateMode || fdState != FD_DOWNLOAD)
++    if (!updateMode || fdState != PLDM_FD_STATE_DOWNLOAD)
+     {
+-        return COMMAND_NOT_EXPECTED;
++        return PLDM_FWUP_COMMAND_NOT_EXPECTED;
+     }
+     uint32_t offset = 0;
+     uint32_t length = 0;
+@@ -1245,7 +1271,10 @@ int FWUpdate::processRequestFirmwareData(const boost::asio::yield_context yield)
+         return PLDM_ERROR;
+     }
+     uint32_t maxNumReq = findMaxNumReq(componentSize);
++    /* Inventec - openbmc libpldm didn't support to set transfer size. */
++    #if 0
+     initialize_fw_update(updateProperties.max_transfer_size, componentSize);
++    #endif
+ 
+     while (--maxNumReq)
+     {
+@@ -1378,9 +1407,12 @@ int FWUpdate::requestFirmwareData(const boost::asio::yield_context yield,
+     componentImagePortion.length = data.size();
+     componentImagePortion.ptr = data.data();
+     struct pldm_msg* msgResp = reinterpret_cast<pldm_msg*>(pldmResp.data());
+-    retVal = encode_request_firmware_data_resp(msgReq->hdr.instance_id, msgResp,
+-                                               payload_length, completionCode,
+-                                               &componentImagePortion);
++    retVal = encode_request_firmware_data_resp(msgReq->hdr.instance_id,completionCode,
++                                               msgResp, payload_length);
++
++    /* Inventec - Modify for Openbmc libpldm, copy the payload after encode_request_firmware_data_resp */
++    memcpy(msgResp->payload + sizeof(completionCode), componentImagePortion.ptr,
++           componentImagePortion.length);
+ 
+     if (retVal != PLDM_SUCCESS)
+     {
+@@ -1411,9 +1443,9 @@ size_t FWUpdate::calcMaxNumReq(const size_t dataSize)
+         return 0;
+     }
+ 
+-    size_t maxNumReq = dataSize / PLDM_FWU_BASELINE_TRANSFER_SIZE;
++    size_t maxNumReq = dataSize / PLDM_FWUP_BASELINE_TRANSFER_SIZE;
+ 
+-    if (dataSize % PLDM_FWU_BASELINE_TRANSFER_SIZE > 0)
++    if (dataSize % PLDM_FWUP_BASELINE_TRANSFER_SIZE > 0)
+     {
+         maxNumReq = maxNumReq + 1;
+     }
+@@ -1423,9 +1455,9 @@ size_t FWUpdate::calcMaxNumReq(const size_t dataSize)
+ 
+ int FWUpdate::processSendPackageData(const boost::asio::yield_context yield)
+ {
+-    if (fdState != FD_LEARN_COMPONENTS || !updateMode)
++    if (fdState != PLDM_FD_STATE_LEARN_COMPONENTS || !updateMode)
+     {
+-        return COMMAND_NOT_EXPECTED;
++        return PLDM_FWUP_COMMAND_NOT_EXPECTED;
+     }
+     /* fdWillSendGetPkgDataCmd will be set to 0x01 if there is package data
+      * that the FD should obtain
+@@ -1448,7 +1480,7 @@ int FWUpdate::processSendPackageData(const boost::asio::yield_context yield)
+ 
+     size_t offset = 0;
+     int retVal = 0;
+-    size_t length = PLDM_FWU_BASELINE_TRANSFER_SIZE; // max payload size
++    size_t length = PLDM_FWUP_BASELINE_TRANSFER_SIZE; // max payload size
+     const size_t dataSize = packageData.size();
+ 
+     // Calculate based on size of payload and maximum transfer size
+@@ -1517,7 +1549,7 @@ int FWUpdate::sendPackageData(const boost::asio::yield_context yield,
+         reinterpret_cast<const pldm_msg*>(fdReq.data());
+ 
+     int retVal = decode_get_pacakge_data_req(
+-        msgReq, sizeof(struct get_fd_data_req), &dataTransferHandle,
++        msgReq, sizeof(struct get_fd_data_req ), &dataTransferHandle,
+         &transferOperationFlag);
+ 
+     if (retVal != PLDM_SUCCESS)
+@@ -1547,14 +1579,14 @@ int FWUpdate::sendPackageData(const boost::asio::yield_context yield,
+     if (transferOperationFlag == PLDM_GET_FIRSTPART)
+     {
+         offset = 0;
+-        length = PLDM_FWU_BASELINE_TRANSFER_SIZE;
++        length = PLDM_FWUP_BASELINE_TRANSFER_SIZE;
+         // Ignoring the very first dataTransferHandle received and setting it as
+         // 0.
+         recvdRequests.insert(0);
+     }
+     else
+     {
+-        offset = dataTransferHandle * PLDM_FWU_BASELINE_TRANSFER_SIZE;
++        offset = dataTransferHandle * PLDM_FWUP_BASELINE_TRANSFER_SIZE;
+         recvdRequests.insert(dataTransferHandle);
+     }
+ 
+@@ -1664,11 +1696,11 @@ int FWUpdate::processActivateFirmware(
+ {
+     if (!updateMode)
+     {
+-        return NOT_IN_UPDATE_MODE;
++        return PLDM_FWUP_NOT_IN_UPDATE_MODE;
+     }
+-    if (fdState != FD_READY_XFER)
++    if (fdState != PLDM_FD_STATE_READY_XFER)
+     {
+-        return COMMAND_NOT_EXPECTED;
++        return PLDM_FWUP_COMMAND_NOT_EXPECTED;
+     }
+     int retVal = activateFirmware(yield, selfContainedActivationReq,
+                                   estimatedTimeForSelfContainedActivation);
+@@ -1676,7 +1708,7 @@ int FWUpdate::processActivateFirmware(
+     {
+         return retVal;
+     }
+-    fdState = FD_ACTIVATE;
++    fdState = PLDM_FD_STATE_ACTIVATE;
+     phosphor::logging::log<phosphor::logging::level::DEBUG>(
+         "FD changed state to ACTIVATE");
+     return PLDM_SUCCESS;
+@@ -1688,12 +1720,11 @@ int FWUpdate::activateFirmware(
+ {
+     uint8_t instanceID = createInstanceId(currentTid);
+     std::vector<uint8_t> pldmReq(sizeof(struct PLDMEmptyRequest) +
+-                                 sizeof(struct activate_firmware_req));
++                                 sizeof(struct pldm_activate_firmware_req));
+     struct pldm_msg* msgReq = reinterpret_cast<pldm_msg*>(pldmReq.data());
+     selfContainedActivationReq = false; // disable self-contained activation for e810
+     int retVal = encode_activate_firmware_req(
+-        instanceID, msgReq, sizeof(struct activate_firmware_req),
+-        selfContainedActivationReq);
++        instanceID, selfContainedActivationReq, msgReq, sizeof(struct pldm_activate_firmware_req));
+ 
+     if (!validatePLDMReqEncode(currentTid, retVal, "ActivateFirmware"))
+     {
+@@ -1727,7 +1758,8 @@ int FWUpdate::getStatus(const boost::asio::yield_context yield)
+     uint8_t instanceID = createInstanceId(currentTid);
+     std::vector<uint8_t> pldmReq(sizeof(struct PLDMEmptyRequest));
+     struct pldm_msg* msgReq = reinterpret_cast<pldm_msg*>(pldmReq.data());
+-    int retVal = encode_get_status_req(instanceID, msgReq);
++    int retVal = encode_get_status_req(instanceID, msgReq,
++        PLDM_GET_STATUS_REQ_BYTES);
+     if (!validatePLDMReqEncode(currentTid, retVal, std::string("GetStatus")))
+     {
+         return retVal;
+@@ -1761,11 +1793,11 @@ int FWUpdate::doCancelUpdateComponent(const boost::asio::yield_context yield)
+ {
+     if (!updateMode)
+     {
+-        return NOT_IN_UPDATE_MODE;
++        return PLDM_FWUP_NOT_IN_UPDATE_MODE;
+     }
+     if (!cancelUpdateComponentState.count(fdState))
+     {
+-        return COMMAND_NOT_EXPECTED;
++        return PLDM_FWUP_COMMAND_NOT_EXPECTED;
+     }
+     int retVal = cancelUpdateComponent(yield);
+     if (retVal != PLDM_SUCCESS)
+@@ -1773,7 +1805,7 @@ int FWUpdate::doCancelUpdateComponent(const boost::asio::yield_context yield)
+         return retVal;
+     }
+ 
+-    fdState = FD_READY_XFER;
++    fdState = PLDM_FD_STATE_READY_XFER;
+     phosphor::logging::log<phosphor::logging::level::DEBUG>(
+         "FD changed state to READY XFER");
+     return PLDM_SUCCESS;
+@@ -1784,7 +1816,8 @@ int FWUpdate::cancelUpdateComponent(const boost::asio::yield_context yield)
+     uint8_t instanceID = createInstanceId(currentTid);
+     std::vector<uint8_t> pldmReq(sizeof(struct PLDMEmptyRequest));
+     struct pldm_msg* msgReq = reinterpret_cast<pldm_msg*>(pldmReq.data());
+-    int retVal = encode_cancel_update_component_req(instanceID, msgReq);
++    int retVal = encode_cancel_update_component_req(instanceID, msgReq,
++        PLDM_CANCEL_UPDATE_COMPONENT_REQ_BYTES);
+     if (!validatePLDMReqEncode(currentTid, retVal, "CancelUpdateComponent"))
+     {
+         phosphor::logging::log<phosphor::logging::level::ERR>(
+@@ -1829,9 +1862,9 @@ int FWUpdate::doCancelUpdate(const boost ::asio ::yield_context yield,
+     {
+         return PLDM_ERROR;
+     }
+-    if ((fdState == FD_IDLE) || (fdState == FD_ACTIVATE))
++    if ((fdState == PLDM_FD_STATE_IDLE) || (fdState == PLDM_FD_STATE_ACTIVATE))
+     {
+-        return COMMAND_NOT_EXPECTED;
++        return PLDM_FWUP_COMMAND_NOT_EXPECTED;
+     }
+     // TODO:Need to provide D-Bus interface to invoke cancelUpdate
+     int retVal = cancelUpdate(yield, nonFunctioningComponentIndication,
+@@ -1840,7 +1873,7 @@ int FWUpdate::doCancelUpdate(const boost ::asio ::yield_context yield,
+     {
+         return retVal;
+     }
+-    fdState = FD_IDLE;
++    fdState = PLDM_FD_STATE_IDLE;
+     phosphor::logging::log<phosphor::logging::level::DEBUG>(
+         "FD changed state to IDLE");
+     return PLDM_SUCCESS;
+@@ -1854,7 +1887,7 @@ int FWUpdate::cancelUpdate(const boost::asio::yield_context yield,
+     uint8_t instanceID = createInstanceId(currentTid);
+     std::vector<uint8_t> pldmReq(sizeof(struct PLDMEmptyRequest));
+     struct pldm_msg* msgReq = reinterpret_cast<pldm_msg*>(pldmReq.data());
+-    int retVal = encode_cancel_update_req(instanceID, msgReq);
++    int retVal = encode_cancel_update_req(instanceID, msgReq, PLDM_CANCEL_UPDATE_REQ_BYTES);
+     if (!validatePLDMReqEncode(currentTid, retVal, "CancelUpdate"))
+     {
+         return retVal;
+@@ -1985,7 +2018,7 @@ int FWUpdate::runUpdate(const boost::asio::yield_context yield)
+     phosphor::logging::log<phosphor::logging::level::INFO>(
+         "RequestUpdate command is success");
+     updateMode = true;
+-    fdState = FD_LEARN_COMPONENTS;
++    fdState = PLDM_FD_STATE_LEARN_COMPONENTS;
+     phosphor::logging::log<phosphor::logging::level::INFO>(
+         "FD changed state to LEARN COMPONENTS");
+     createAsyncDelay(yield, delayBtw);
+@@ -2017,7 +2050,7 @@ int FWUpdate::runUpdate(const boost::asio::yield_context yield)
+     }
+     phosphor::logging::log<phosphor::logging::level::INFO>(
+         "PassComponentTable command is success");
+-    fdState = FD_READY_XFER;
++    fdState = PLDM_FD_STATE_READY_XFER;
+     phosphor::logging::log<phosphor::logging::level::INFO>(
+         "FD changed state to READY XFER");
+ 
+@@ -2050,7 +2083,7 @@ int FWUpdate::runUpdate(const boost::asio::yield_context yield)
+ 
+             continue;
+         }
+-        if (compCompatabilityResp != COMPONENT_CAN_BE_UPDATED)
++        if (compCompatabilityResp != PLDM_CCR_COMP_CAN_BE_UPDATED)
+         {
+             phosphor::logging::log<phosphor::logging::level::WARNING>(
+                 ("COMPONENT: " + std::to_string(count) +
+@@ -2062,7 +2095,7 @@ int FWUpdate::runUpdate(const boost::asio::yield_context yield)
+             continue;
+         }
+ 
+-        fdState = FD_DOWNLOAD;
++        fdState = PLDM_FD_STATE_DOWNLOAD;
+         phosphor::logging::log<phosphor::logging::level::INFO>(
+             "FD changed state to DOWNLOAD");
+         phosphor::logging::log<phosphor::logging::level::INFO>(
+@@ -2123,7 +2156,7 @@ int FWUpdate::runUpdate(const boost::asio::yield_context yield)
+             ("TransferComplete command is success. COMPONENT: " +
+              std::to_string(count))
+                 .c_str());
+-        fdState = FD_VERIFY;
++        fdState = PLDM_FD_STATE_VERIFY;
+         phosphor::logging::log<phosphor::logging::level::DEBUG>(
+             "FD changed state to VERIFY");
+ 
+@@ -2163,7 +2196,7 @@ int FWUpdate::runUpdate(const boost::asio::yield_context yield)
+             ("VerifyComplete command is success. COMPONENT: " +
+              std::to_string(count))
+                 .c_str());
+-        fdState = FD_APPLY;
++        fdState = PLDM_FD_STATE_APPLY;
+         phosphor::logging::log<phosphor::logging::level::DEBUG>(
+             "FD changed state to APPLY");
+ 
+@@ -2198,7 +2231,7 @@ int FWUpdate::runUpdate(const boost::asio::yield_context yield)
+             ("ApplyComplete command is success. COMPONENT: " +
+              std::to_string(count))
+                 .c_str());
+-        fdState = FD_READY_XFER;
++        fdState = PLDM_FD_STATE_READY_XFER;
+         phosphor::logging::log<phosphor::logging::level::DEBUG>(
+             "FD changed state to READY XFER");
+     }
+diff --git a/src/fwu_inventory.cpp b/src/fwu_inventory.cpp
+index a32c3c4..0a277c3 100644
+--- a/src/fwu_inventory.cpp
++++ b/src/fwu_inventory.cpp
+@@ -41,7 +41,7 @@ int FWInventoryInfo::runQueryDeviceIdentifiers(boost::asio::yield_context yield)
+     struct pldm_msg* msgReq = reinterpret_cast<pldm_msg*>(pldmReq.data());
+ 
+     int retVal = encode_query_device_identifiers_req(
+-        instanceID, msgReq, PLDM_QUERY_DEVICE_IDENTIFIERS_REQ_BYTES);
++        instanceID, PLDM_QUERY_DEVICE_IDENTIFIERS_REQ_BYTES, msgReq);
+ 
+     if (retVal != PLDM_SUCCESS)
+     {
+@@ -98,7 +98,7 @@ int FWInventoryInfo::runQueryDeviceIdentifiers(boost::asio::yield_context yield)
+ }
+ 
+ void FWInventoryInfo::copyCompImgSetData(
+-    const struct get_firmware_parameters_resp& respData,
++    const struct pldm_get_firmware_parameters_resp& respData,
+     const struct variable_field& activeCompImgSetVerData,
+     const struct variable_field& pendingCompImgSetVerData)
+ {
+@@ -116,7 +116,8 @@ void FWInventoryInfo::copyCompImgSetData(
+ }
+ 
+ void FWInventoryInfo::copyCompData(
+-    const uint16_t count, const struct component_parameter_table* componentData,
++    const uint16_t count,
++    const pldm_component_parameter_entry * componentData,
+     struct variable_field* activeCompVerData,
+     struct variable_field* pendingCompVerData)
+ {
+@@ -162,7 +163,7 @@ void FWInventoryInfo::copyCompData(
+ int FWInventoryInfo::unpackCompData(const uint16_t count,
+                                     const std::vector<uint8_t>& compData)
+ {
+-    struct component_parameter_table compDataObj;
++    pldm_component_parameter_entry compDataObj;
+     struct variable_field activeCompVerStr;
+     struct variable_field pendingCompVerStr;
+ 
+@@ -181,7 +182,7 @@ int FWInventoryInfo::unpackCompData(const uint16_t count,
+             break;
+         }
+ 
+-        int retVal = decode_get_firmware_parameters_comp_resp(
++        int retVal = decode_get_firmware_parameters_resp_comp_entry(
+             &it[0], bytesLeft, &compDataObj, &activeCompVerStr,
+             &pendingCompVerStr);
+ 
+@@ -195,7 +196,7 @@ int FWInventoryInfo::unpackCompData(const uint16_t count,
+             break;
+         }
+ 
+-        size_t offSet = sizeof(struct component_parameter_table) +
++        size_t offSet = sizeof(pldm_component_parameter_entry) +
+                         compDataObj.active_comp_ver_str_len +
+                         compDataObj.pending_comp_ver_str_len;
+ 
+@@ -232,7 +233,7 @@ int FWInventoryInfo::runGetFirmwareParameters(boost::asio::yield_context yield)
+     struct pldm_msg* msgReq = reinterpret_cast<pldm_msg*>(pldmReq.data());
+ 
+     int retVal = encode_get_firmware_parameters_req(
+-        instanceID, msgReq, PLDM_QUERY_DEVICE_IDENTIFIERS_REQ_BYTES);
++        instanceID, PLDM_QUERY_DEVICE_IDENTIFIERS_REQ_BYTES, msgReq);
+ 
+     if (retVal != PLDM_SUCCESS)
+     {
+@@ -256,13 +257,15 @@ int FWInventoryInfo::runGetFirmwareParameters(boost::asio::yield_context yield)
+     auto respMsg = reinterpret_cast<pldm_msg*>(pldmResp.data());
+     size_t payloadLen = pldmResp.size() - hdrSize;
+ 
+-    struct get_firmware_parameters_resp resp;
++    pldm_get_firmware_parameters_resp resp;
+     struct variable_field activeCompImageSetVerStr;
+     struct variable_field pendingCompImageSetVerStr;
++    struct variable_field comp_parameter_table;
+ 
+-    retVal = decode_get_firmware_parameters_comp_img_set_resp(
++    /* Inventec - Modify for Openbmc libpldm*/
++    retVal = decode_get_firmware_parameters_resp(
+         respMsg, payloadLen, &resp, &activeCompImageSetVerStr,
+-        &pendingCompImageSetVerStr);
++        &pendingCompImageSetVerStr, &comp_parameter_table);
+ 
+     if (retVal != PLDM_SUCCESS)
+     {
+@@ -277,20 +280,9 @@ int FWInventoryInfo::runGetFirmwareParameters(boost::asio::yield_context yield)
+ 
+     copyCompImgSetData(resp, activeCompImageSetVerStr,
+                        pendingCompImageSetVerStr);
+-
+-    size_t compDataOffset = hdrSize + sizeof(get_firmware_parameters_resp) +
+-                            resp.active_comp_image_set_ver_str_len +
+-                            resp.pending_comp_image_set_ver_str_len;
+-
+-    if (pldmResp.size() < compDataOffset)
+-    {
+-        phosphor::logging::log<phosphor::logging::level::ERR>(
+-            "GetFirmwareParameters: Response length is invalid");
+-        return PLDM_ERROR_INVALID_LENGTH;
+-    }
+-
+-    std::vector<uint8_t> compData(pldmResp.begin() + compDataOffset,
+-                                  pldmResp.end());
++    /* Inventec - Modify for Openbmc libpldm*/
++    std::vector<uint8_t> compData(comp_parameter_table.ptr,
++                                  comp_parameter_table.ptr+comp_parameter_table.length);
+ 
+     return unpackCompData(resp.comp_count, compData);
+ }
+diff --git a/src/numeric_effecter.cpp b/src/numeric_effecter.cpp
+index 76b5f07..b5f125e 100644
+--- a/src/numeric_effecter.cpp
++++ b/src/numeric_effecter.cpp
+@@ -21,7 +21,7 @@
+ #include <phosphor-logging/log.hpp>
+ #include <regex>
+ 
+-#include "platform.h"
++#include "libpldm/platform.h"
+ 
+ constexpr const size_t effecterErrorThreshold = 5;
+ 
+diff --git a/src/numeric_effecter_handler.cpp b/src/numeric_effecter_handler.cpp
+index 5b1537e..3a06338 100644
+--- a/src/numeric_effecter_handler.cpp
++++ b/src/numeric_effecter_handler.cpp
+@@ -118,7 +118,7 @@ bool NumericEffecterHandler::enableNumericEffecter(
+ bool NumericEffecterHandler::initEffecter()
+ {
+     std::optional<float> maxVal =
+-        pdr::effecter::fetchEffecterValue(*_pdr, _pdr->max_set_table);
++        pdr::effecter::fetchEffecterValue(*_pdr, _pdr->max_settable);
+     if (maxVal == std::nullopt)
+     {
+         phosphor::logging::log<phosphor::logging::level::ERR>(
+@@ -130,7 +130,7 @@ bool NumericEffecterHandler::initEffecter()
+     maxSettable = pdr::effecter::calculateEffecterValue(*_pdr, *maxVal);
+ 
+     std::optional<float> minVal =
+-        pdr::effecter::fetchEffecterValue(*_pdr, _pdr->min_set_table);
++        pdr::effecter::fetchEffecterValue(*_pdr, _pdr->min_settable);
+     if (minVal == std::nullopt)
+     {
+         phosphor::logging::log<phosphor::logging::level::ERR>(
+diff --git a/src/numeric_sensor_handler.cpp b/src/numeric_sensor_handler.cpp
+index 49e44b0..af54434 100644
+--- a/src/numeric_sensor_handler.cpp
++++ b/src/numeric_sensor_handler.cpp
+@@ -50,19 +50,19 @@ bool NumericSensorHandler::setNumericSensorEnable(
+     uint8_t sensorOpState;
+     switch (_pdr->sensor_init)
+     {
+-        case PLDM_SENSOR_NO_INIT:
++        case PLDM_SENSOR_INIT_NO_INIT:
+             sensorOpState = PLDM_SENSOR_ENABLED;
+             break;
+-        case PLDM_SENSOR_USE_INIT_PDR:
++        case PLDM_SENSOR_INIT_USE_INIT_PDR:
+             phosphor::logging::log<phosphor::logging::level::WARNING>(
+                 "Numeric Sensor Initialization PDR not supported",
+                 phosphor::logging::entry("TID=%d", _tid),
+                 phosphor::logging::entry("SENSOR_ID=%d", _sensorID));
+             return false;
+-        case PLDM_SENSOR_ENABLE:
++        case PLDM_SENSOR_INIT_ENABLE:
+             sensorOpState = PLDM_SENSOR_ENABLED;
+             break;
+-        case PLDM_SENSOR_DISABLE:
++        case PLDM_SENSOR_INIT_DISABLE:
+             sensorOpState = PLDM_SENSOR_DISABLED;
+             break;
+         default:
+@@ -227,7 +227,7 @@ bool NumericSensorHandler::initSensor()
+     std::vector<thresholds::Threshold> thresholdData;
+     getSupportedThresholds(thresholdData);
+ 
+-    if (_pdr->sensor_init == PLDM_SENSOR_DISABLE)
++    if (_pdr->sensor_init == PLDM_SENSOR_INIT_DISABLE)
+     {
+         sensorDisabled = true;
+     }
+@@ -380,7 +380,7 @@ bool NumericSensorHandler::getSensorReading(boost::asio::yield_context yield)
+ bool NumericSensorHandler::populateSensorValue(boost::asio::yield_context yield)
+ {
+     // No need to read the sensor if it is disabled
+-    if (_pdr->sensor_init == PLDM_SENSOR_DISABLE)
++    if (_pdr->sensor_init == PLDM_SENSOR_INIT_DISABLE)
+     {
+         return false;
+     }
+diff --git a/src/pdr_manager.cpp b/src/pdr_manager.cpp
+index 881c3b3..dd288fd 100644
+--- a/src/pdr_manager.cpp
++++ b/src/pdr_manager.cpp
+@@ -27,7 +27,7 @@
+ #include <queue>
+ #include <regex>
+ 
+-#include "utils.h"
++#include "libpldm/utils.h"
+ 
+ namespace pldm
+ {
+@@ -139,12 +139,32 @@ std::optional<pldm_pdr_repository_info>
+         return std::nullopt;
+     }
+ 
+-    pldm_get_pdr_repository_info_resp pdrInfo;
++    pldm::platform::pldm_pdr_repository_info retPdrRepoInfo;
+     auto rspMsg = reinterpret_cast<pldm_msg*>(resp.data());
+ 
++    uint8_t completion_code;
++	uint8_t repository_state;
++	uint8_t update_time[PLDM_TIMESTAMP104_SIZE];
++	uint8_t oem_update_time[PLDM_TIMESTAMP104_SIZE];
++	uint32_t record_count;
++	uint32_t repository_size;
++	uint32_t largest_record_size;
++	uint8_t data_transfer_handle_timeout;
++
++    /*Inventec - pldm_pdr_repository_info_resp change in Openbmc-libpldm */
+     rc = decode_get_pdr_repository_info_resp(
+-        rspMsg, resp.size() - pldmMsgHdrSize, &pdrInfo);
+-    if (!validatePLDMRespDecode(_tid, rc, pdrInfo.completion_code,
++        rspMsg, resp.size() - pldmMsgHdrSize,
++        &completion_code,
++        &repository_state,
++        update_time,
++        oem_update_time,
++        &record_count,
++        &repository_size,
++        &largest_record_size,
++        &data_transfer_handle_timeout
++        );
++
++    if (!validatePLDMRespDecode(_tid, rc, completion_code,
+                                 "GetPDRRepositoryInfo"))
+     {
+         return std::nullopt;
+@@ -153,7 +173,17 @@ std::optional<pldm_pdr_repository_info>
+     phosphor::logging::log<phosphor::logging::level::INFO>(
+         "GetPDRRepositoryInfo success",
+         phosphor::logging::entry("TID=%d", _tid));
+-    return pdrInfo.pdr_repo_info;
++
++    /*Inventec - pldm_pdr_repository_info_resp change in Openbmc-libpldm */
++    retPdrRepoInfo.repository_state =  repository_state;
++    memcpy(retPdrRepoInfo.update_time, update_time, PLDM_TIMESTAMP104_SIZE);
++    memcpy(retPdrRepoInfo.oem_update_time, oem_update_time, PLDM_TIMESTAMP104_SIZE);
++    retPdrRepoInfo.record_count = record_count;
++	retPdrRepoInfo.repository_size = repository_size;
++	retPdrRepoInfo.largest_record_size = largest_record_size;
++	retPdrRepoInfo.data_transfer_handle_timeout = data_transfer_handle_timeout;
++
++    return retPdrRepoInfo;
+ }
+ 
+ static bool handleGetPDRResp(pldm_tid_t tid, std::vector<uint8_t>& resp,
+@@ -340,6 +370,8 @@ bool PDRManager::addDevicePDRToRepo(
+     std::unordered_map<RecordHandle, std::vector<uint8_t>>& devicePDRs)
+ {
+     bool terminusLPDRFound = false;
++    pldm_terminus_locator_pdr* tLocatorPDR = NULL;
++
+     for (auto& pdrRecord : devicePDRs)
+     {
+         // Update the TID in Terminus Locator PDR before adding to repo
+@@ -347,7 +379,7 @@ bool PDRManager::addDevicePDRToRepo(
+             reinterpret_cast<const pldm_pdr_hdr*>(pdrRecord.second.data());
+         if (pdrHdr->type == PLDM_TERMINUS_LOCATOR_PDR)
+         {
+-            pldm_terminus_locator_pdr* tLocatorPDR =
++            tLocatorPDR =
+                 reinterpret_cast<pldm_terminus_locator_pdr*>(
+                     pdrRecord.second.data());
+             if (tLocatorPDR->validity == PLDM_TL_PDR_VALID)
+@@ -365,8 +397,12 @@ bool PDRManager::addDevicePDRToRepo(
+             }
+         }
+         uint32_t pdrRecordSize = utils::to_uint32(pdrRecord.second.size());
+-        pldm_pdr_add(_pdrRepo.get(), pdrRecord.second.data(), pdrRecordSize,
+-                     pdrRecord.first, true);
++        /* Inventec - Modify for Openbmc libpldm*/
++        if(terminusLPDRFound)
++        {
++            pldm_pdr_add(_pdrRepo.get(), pdrRecord.second.data(), pdrRecordSize,
++                        pdrRecord.first, true, tLocatorPDR->terminus_handle);
++        }
+     }
+     if (!terminusLPDRFound)
+     {
+@@ -380,7 +416,7 @@ bool PDRManager::constructPDRRepo(boost::asio::yield_context yield)
+ {
+     uint32_t recordCount = pdrRepoInfo.record_count;
+ 
+-    if (pdrRepoInfo.repository_state != PLDM_PDR_REPOSITORY_STATE_AVAILABLE)
++    if (pdrRepoInfo.repository_state != PLDM_AVAILABLE)
+     {
+         phosphor::logging::log<phosphor::logging::level::WARNING>(
+             "Device PDR record data is unavailable",
+@@ -525,8 +561,8 @@ void PDRManager::parseEntityAuxNamesPDR(std::vector<uint8_t>& pdrData)
+ 
+     if (pdrData.size() >= minEntityAuxNamesPDRLen)
+     {
+-        pldm_pdr_entity_auxiliary_names* namePDR =
+-            reinterpret_cast<pldm_pdr_entity_auxiliary_names*>(pdrData.data());
++        pldm_pdr_entity_auxiliary_names_pdr* namePDR =
++            reinterpret_cast<pldm_pdr_entity_auxiliary_names_pdr*>(pdrData.data());
+         LE16TOH(namePDR->entity.entity_type);
+         LE16TOH(namePDR->entity.entity_instance_num);
+         LE16TOH(namePDR->entity.entity_container_id);
+@@ -940,11 +976,11 @@ void PDRManager::parseSensorAuxNamesPDR(std::vector<uint8_t>& pdrData)
+     LE16TOH(namePDR->sensor_id);
+ 
+     // TODO: Handle Composite sensor names
++    /* Inventec - Modify aux name usage for Openbmc libpldm.*/
+     size_t auxNamesLen =
+-        pdrData.size() - (sizeof(pldm_sensor_auxiliary_names_pdr) -
+-                          sizeof(namePDR->sensor_auxiliary_names));
+-    if (auto name = getAuxName(namePDR->name_string_count, auxNamesLen,
+-                               namePDR->sensor_auxiliary_names))
++        pdrData.size() - sizeof(pldm_sensor_auxiliary_names_pdr);
++    if (auto name = getAuxName(namePDR->names[0], auxNamesLen,
++                               namePDR->names + sizeof(uint8_t)))
+     {
+         // Cache the Sensor Auxiliary Names
+         _sensorAuxNames[namePDR->sensor_id] = _deviceAuxName + "_" + *name;
+diff --git a/src/pdr_utils.cpp b/src/pdr_utils.cpp
+index b16244a..5c76f91 100644
+--- a/src/pdr_utils.cpp
++++ b/src/pdr_utils.cpp
+@@ -84,7 +84,7 @@ std::optional<SensorUnit>
+ {
+     switch (pdr.base_unit)
+     {
+-        case PLDM_SENSOR_UNIT_DEGREES_C:
++        case PLDM_SENSOR_UNIT_DEGRESS_C:
+             return SensorUnit::DegreesC;
+         case PLDM_SENSOR_UNIT_VOLTS:
+             return SensorUnit::Volts;
+diff --git a/src/pldm_fwu_image.cpp b/src/pldm_fwu_image.cpp
+index 4d6c474..504f050 100644
+--- a/src/pldm_fwu_image.cpp
++++ b/src/pldm_fwu_image.cpp
+@@ -60,7 +60,7 @@ PLDMImg::PLDMImg(const std::string& pldmImgPath)
+ bool PLDMImg::readData(const size_t startAddr, std::vector<uint8_t>& data,
+                        const size_t dataLen)
+ {
+-    if (startAddr + dataLen > pldmImgSize + PLDM_FWU_BASELINE_TRANSFER_SIZE)
++    if (startAddr + dataLen > pldmImgSize + PLDM_FWUP_BASELINE_TRANSFER_SIZE)
+     {
+         phosphor::logging::log<phosphor::logging::level::ERR>(
+             "readData: invalid start address or bytes to read is out of range");
+diff --git a/src/pldmd.cpp b/src/pldmd.cpp
+index 4165b83..0ea5d77 100644
+--- a/src/pldmd.cpp
++++ b/src/pldmd.cpp
+@@ -195,7 +195,7 @@ std::optional<uint8_t> getInstanceId(std::vector<uint8_t>& message)
+     {
+         return std::nullopt;
+     }
+-    return message[0] & PLDM_INSTANCE_ID_MASK;
++    return message[0];
+ }
+ 
+ std::optional<uint8_t> getPldmMessageType(std::vector<uint8_t>& message)
+@@ -205,7 +205,8 @@ std::optional<uint8_t> getPldmMessageType(std::vector<uint8_t>& message)
+     {
+         return std::nullopt;
+     }
+-    return message[msgTypeIndex] & PLDM_MSG_TYPE_MASK;
++    /* Inventec - Modify instanceId usage since PLDM_MSG_TYPE_MASK not declared*/
++    return message[msgTypeIndex] & 0x3f;
+ }
+ 
+ // Returns type of message(response,request, Reserved or Unacknowledged PLDM
+@@ -213,12 +214,18 @@ std::optional<uint8_t> getPldmMessageType(std::vector<uint8_t>& message)
+ std::optional<MessageType> getPldmPacketType(std::vector<uint8_t>& message)
+ {
+     constexpr int rqD = 0;
++    constexpr uint8_t rqDMask = 0xC0;
++    constexpr uint8_t rqDShift = 0x06;
+     if (message.size() < 1)
+     {
+         return std::nullopt;
+     }
+-
++    /* Inventec - PLDM_RQ_D_MASK and PLDM_RQ_D_SHIFT not defined in Openbmc libpldm */
++    #if 0
+     uint8_t rqDValue = (message[rqD] & PLDM_RQ_D_MASK) >> PLDM_RQ_D_SHIFT;
++    #endif
++    uint8_t rqDValue = (message[rqD] & rqDMask) >> rqDShift;
++
+     return static_cast<MessageType>(rqDValue);
+ }
+ 
+@@ -522,7 +529,16 @@ uint8_t createInstanceId(pldm_tid_t tid)
+ 
+     auto& instanceId = instanceMap[tid];
+ 
++    /* Inventec - Modify instanceId usage since PLDM_INSTANCE_ID_MASK not declared*/
++    #if 0
+     instanceId = (instanceId + 1) & PLDM_INSTANCE_ID_MASK;
++    #endif
++    instanceId++;
++    /* PLDM_INSTANCE_MAX is 31 in Openbmc libpldm */
++    if(instanceId > PLDM_INSTANCE_MAX)
++    {
++        instanceId = 0;
++    }
+     return instanceId;
+ }
+ } // namespace pldm
+@@ -541,8 +557,8 @@ void initDevice(const mctpw_eid_t eid, boost::asio::yield_context yield)
+         return;
+     }
+ 
+-    auto isSupported = [&cmdSupportTable](pldm_type_t type) {
+-        return cmdSupportTable.end() != cmdSupportTable.find(type);
++    auto isSupported = [&cmdSupportTable](uint8_t pldmType) {
++        return cmdSupportTable.end() != cmdSupportTable.find(pldmType);
+     };
+ 
+     if (isSupported(PLDM_PLATFORM) &&
+diff --git a/src/state_sensor_handler.cpp b/src/state_sensor_handler.cpp
+index 957edb0..8a84078 100644
+--- a/src/state_sensor_handler.cpp
++++ b/src/state_sensor_handler.cpp
+@@ -299,20 +299,20 @@ bool StateSensorHandler::setStateSensorEnables(boost::asio::yield_context yield)
+     uint8_t sensorOpState;
+     switch (_pdr->stateSensorData.sensor_init)
+     {
+-        case PLDM_SENSOR_NO_INIT:
++        case PLDM_SENSOR_INIT_NO_INIT:
+             sensorOpState = PLDM_SENSOR_ENABLED;
+             break;
+-        case PLDM_SENSOR_USE_INIT_PDR:
++        case PLDM_SENSOR_INIT_USE_INIT_PDR:
+             // TODO: State Sensor Initialization PDR support
+             phosphor::logging::log<phosphor::logging::level::WARNING>(
+                 "State Sensor Initialization PDR not supported",
+                 phosphor::logging::entry("TID=%d", _tid),
+                 phosphor::logging::entry("SENSOR_ID=%d", _sensorID));
+             return false;
+-        case PLDM_SENSOR_ENABLE:
++        case PLDM_SENSOR_INIT_ENABLE:
+             sensorOpState = PLDM_SENSOR_ENABLED;
+             break;
+-        case PLDM_SENSOR_DISABLE:
++        case PLDM_SENSOR_INIT_DISABLE:
+             sensorOpState = PLDM_SENSOR_DISABLED;
+             /** @brief Sensor disabled flag*/
+             sensorDisabled = true;
+@@ -427,7 +427,7 @@ bool StateSensorHandler::getStateSensorReadings(
+ bool StateSensorHandler::populateSensorValue(boost::asio::yield_context yield)
+ {
+     // No need to read the sensor if it is disabled
+-    if (_pdr->stateSensorData.sensor_init == PLDM_SENSOR_DISABLE)
++    if (_pdr->stateSensorData.sensor_init == PLDM_SENSOR_INIT_DISABLE)
+     {
+         return false;
+     }
+-- 
+2.25.1
+

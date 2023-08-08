@@ -1,0 +1,2479 @@
+From d91c3febd950405375c0609d723a1ce6cb3a3d6a Mon Sep 17 00:00:00 2001
+From: PJ Chen <chen.pj@inventec.com>
+Date: Thu, 20 Jul 2023 09:43:09 +0800
+Subject: [PATCH] Bug 1746 - [SW][libpldm] - Add Intel-BMC libpldm features to
+ Openbmc libpldm
+
+Symtpom/Reason:
+  Intel-BMC would not maintain libpldm anymore and transfer to Openbmc.
+
+    https://github.com/openbmc/libpldm.
+
+  To use Intel-BMC pldmd, would need some features that are not contained in Openbmc.
+  Should add these functions to Openbmc libpldm.
+
+Root Cause:
+  N/A
+
+Solution/Change:
+  [libpldm]
+    Move features from Intel-BMC libpldm to Openbmc libpldm.
+
+Entry Test:
+  N/A
+---
+ include/libpldm/base.h            |  63 +++
+ include/libpldm/firmware_update.h | 166 ++++++
+ include/libpldm/fru.h             |  42 ++
+ include/libpldm/pdr.h             |  27 +
+ include/libpldm/platform.h        | 334 +++++++++++-
+ include/libpldm/utils.h           |   9 +
+ src/base.c                        |  38 ++
+ src/firmware_update.c             | 269 ++++++++++
+ src/fru.c                         |  72 +++
+ src/pdr.c                         | 848 ++++++++++++++++++++++++++++++
+ src/platform.c                    | 274 +++++++++-
+ src/utils.c                       |  12 +
+ 12 files changed, 2151 insertions(+), 3 deletions(-)
+
+diff --git a/include/libpldm/base.h b/include/libpldm/base.h
+index c3d1ac9..a9e9fe9 100644
+--- a/include/libpldm/base.h
++++ b/include/libpldm/base.h
+@@ -17,10 +17,12 @@ typedef uint8_t pldm_tid_t;
+  */
+ enum pldm_supported_types {
+ 	PLDM_BASE = 0x00,
++	PLDM_SMBIOS = 0x01,
+ 	PLDM_PLATFORM = 0x02,
+ 	PLDM_BIOS = 0x03,
+ 	PLDM_FRU = 0x04,
+ 	PLDM_FWUP = 0x05,
++	PLDM_RDE = 0x06,
+ 	PLDM_OEM = 0x3F,
+ };
+ 
+@@ -547,6 +549,19 @@ int decode_multipart_receive_req(const struct pldm_msg *msg,
+ 				 uint32_t *section_offset,
+ 				 uint32_t *section_length);
+ 
++/* Inventec - Add decode_cc_only_resp */
++/** @brief Decode a PLDM response message containing only completion code
++ *
++ *  @param[in] msg - Response message
++ *  @param[in] payload_length - Length of response message payload. Should be 1
++ * byte.
++ *  @param[out] completion_code - Pointer to store response msg's PLDM
++ * completion code
++ *  @return pldm_completion_codes
++ */
++int decode_cc_only_resp(const struct pldm_msg *msg, const size_t payload_length,
++			uint8_t *completion_code);
++
+ /** @brief Create a PLDM response message containing only cc
+  *
+  *  @param[in] instance_id - Message's instance id
+@@ -559,6 +574,54 @@ int decode_multipart_receive_req(const struct pldm_msg *msg,
+ int encode_cc_only_resp(uint8_t instance_id, uint8_t type, uint8_t command,
+ 			uint8_t cc, struct pldm_msg *msg);
+ 
++
++/*SetTID*/
++/* Inventec - Add set TID support */
++/** @brief Create a PLDM response message for SetTID
++ *
++ *  @param[in] instance_id - Message's instance id
++ *  @param[in] completion_code - PLDM completion code
++ *  @param[in,out] msg - Message will be written to this
++ *  @return pldm_completion_codes
++ *  @note  Caller is responsible for memory alloc and dealloc of param
++ *         'msg.payload'
++ */
++inline int encode_set_tid_resp(const uint8_t instance_id,
++			       const uint8_t completion_code,
++			       struct pldm_msg *msg)
++{
++	return encode_cc_only_resp(instance_id, PLDM_BASE, PLDM_SET_TID,
++				   completion_code, msg);
++}
++
++/* Inventec - Add set TID support */
++/** @brief Decode a SetTID request message
++ *
++ *  @param[in] msg - Request message
++ *  @param[in] payload_length - length of request message payload
++ *  @param[out] tid - Terminus ID to be set
++ *  @return pldm_completion_codes
++ */
++int decode_set_tid_req(const struct pldm_msg *msg, const size_t payload_length,
++		       uint8_t *tid);
++
++/* Inventec - Add set TID support */
++/** @brief Decode a SetTID response message
++ *
++ *  @param[in] msg - Response message
++ *  @param[in] payload_length - Length of response message payload
++ *  @param[out] completion_code - Pointer to store response msg's PLDM
++ * completion code
++ *  @return pldm_completion_codes
++ */
++inline int decode_set_tid_resp(const struct pldm_msg *msg,
++			       const size_t payload_length,
++			       uint8_t *completion_code)
++{
++	return decode_cc_only_resp(msg, payload_length, completion_code);
++}
++
++
+ /** @brief Create a PLDM message only with the header
+  *
+  *	@param[in] msg_type - PLDM message type
+diff --git a/include/libpldm/firmware_update.h b/include/libpldm/firmware_update.h
+index fe89b41..525d9df 100644
+--- a/include/libpldm/firmware_update.h
++++ b/include/libpldm/firmware_update.h
+@@ -34,12 +34,15 @@ enum pldm_firmware_update_commands {
+ 	PLDM_QUERY_DEVICE_IDENTIFIERS = 0x01,
+ 	PLDM_GET_FIRMWARE_PARAMETERS = 0x02,
+ 	PLDM_REQUEST_UPDATE = 0x10,
++	PLDM_GET_PACKAGE_DATA = 0x11,
++	PLDM_GET_DEVICE_META_DATA = 0x12,
+ 	PLDM_PASS_COMPONENT_TABLE = 0x13,
+ 	PLDM_UPDATE_COMPONENT = 0x14,
+ 	PLDM_REQUEST_FIRMWARE_DATA = 0x15,
+ 	PLDM_TRANSFER_COMPLETE = 0x16,
+ 	PLDM_VERIFY_COMPLETE = 0x17,
+ 	PLDM_APPLY_COMPLETE = 0x18,
++	PLDM_GET_META_DATA = 0x19,
+ 	PLDM_ACTIVATE_FIRMWARE = 0x1A,
+ 	PLDM_GET_STATUS = 0x1B,
+ 	PLDM_CANCEL_UPDATE_COMPONENT = 0x1C,
+@@ -453,6 +456,49 @@ struct pldm_request_update_resp {
+ 	uint8_t fd_will_send_pkg_data;
+ } __attribute__((packed));
+ 
++/* Inventec - Add GetMetaData/GetPackageData common structure */
++/* TODO - Modify to Openbmc coding style */
++/* @struct get_fd_data_req
++ *
++ *  Structure representing GetMetaData/GetPackageData request
++ */
++struct get_fd_data_req {
++	uint32_t data_transfer_handle;
++	uint8_t transfer_operation_flag;
++} __attribute__((packed));
++
++/* @struct get_fd_data_resp
++ *
++ *  Structure representing GetMetaData/GetPackageData response
++ */
++struct get_fd_data_resp {
++	uint8_t completion_code;
++	uint32_t next_data_transfer_handle;
++	uint8_t transfer_flag;
++} __attribute__((packed));
++
++/* Inventec - Add GetDeviceMetaData structure */
++/* @struct get_device_meta_data_req
++ *
++ *  Structure representing Get Device Meta Data request
++ */
++struct get_device_meta_data_req {
++	uint32_t data_transfer_handle;
++	uint8_t transfer_operation_flag;
++} __attribute__((packed));
++
++/* @struct get_device_meta_data_resp
++ *
++ *  Structure representing Get Device Meta Data response
++ */
++struct get_device_meta_data_resp {
++	uint8_t completion_code;
++	uint32_t next_data_transfer_handle;
++	uint8_t transfer_flag;
++} __attribute__((packed));
++
++
++
+ /** @struct pldm_pass_component_table_req
+  *
+  *  Structure representing PassComponentTable request
+@@ -786,6 +832,86 @@ int decode_request_update_resp(const struct pldm_msg *msg,
+ 			       uint16_t *fd_meta_data_len,
+ 			       uint8_t *fd_will_send_pkg_data);
+ 
++/* Inventec - Add GetPackageData decode/encode */
++/** @brief Create a PLDM response message for GetPackageData
++ *
++ *  @param[in] instance_id - Message's instance id
++ *  @param[in] payload_length - Length of response message payload
++ *  @param[in,out] msg - Message will be written to this
++ *  @param[in] data - pointer to response data
++ *  @param[in] portion_of_meta_data - pointer to package data
++ *  @return pldm_completion_codes
++ *  @note  Caller is responsible for memory alloc and dealloc of param
++ * 'msg.payload'
++ */
++int encode_get_package_data_resp(const uint8_t instance_id,
++				 const size_t payload_length,
++				 struct pldm_msg *msg,
++				 struct get_fd_data_resp *data,
++				 struct variable_field *portion_of_meta_data);
++
++/** @brief Decode GetPackageData request message
++ *
++ *  Note:
++ *  * If the return value is not PLDM_SUCCESS, it represents a
++ * transport layer error.
++ *  * If the completion_code value is not PLDM_SUCCESS, it represents a
++ * protocol layer error and all the out-parameters are invalid.
++ *
++ *  @param[in] msg - Request message
++ *  @param[in] payload_length - Length of Request message payload
++ *  @param[out] data_transfer_handle - Pointer to data transfer handle
++ *  @param[out] transfer_operation_flag - Pointer to transfer operation flag
++ *  @return pldm_completion_codes
++ */
++int decode_get_pacakge_data_req(const struct pldm_msg *msg,
++				const size_t payload_length,
++				uint32_t *data_transfer_handle,
++				uint8_t *transfer_operation_flag);
++
++/** @brief Create a PLDM request message for GetDeviceMetaData
++ *
++ *  @param[in] instance_id - Message's instance id
++ *  @param[in,out] msg - Message will be written to this
++ *  @param[in] payload_length - Length of request message payload
++ *  @param[in] data_transfer_handle - A handle that is used to identify a
++ * package data transfer
++ *  @param[in] transfer_operation_flag - The operation flag that indicates
++ * whether this is the start of the transfer
++ *  @return pldm_completion_codes
++ *  @note  Caller is responsible for memory alloc and dealloc of param
++ *         'msg.payload'
++ */
++int encode_get_device_meta_data_req(const uint8_t instance_id,
++				    struct pldm_msg *msg,
++				    const size_t payload_length,
++				    const uint32_t data_transfer_handle,
++				    const uint8_t transfer_operation_flag);
++
++/** @brief Decode a GetDeviceMetaData response message
++ *
++ *  Note:
++ *  * If the return value is not PLDM_SUCCESS, it represents a
++ * transport layer error.
++ *  * If the completion_code value is not PLDM_SUCCESS, it represents a
++ * protocol layer error and all the out-parameters are invalid.
++ *
++ *  @param[in] msg - Response message
++ *  @param[in] payload_length - Length of response message payload
++ *  @param[out] completion_code - Pointer to response msg's PLDM completion code
++ *  @param[out] next_data_transfer_handle - Pointer to next data transfer handle
++ *  @param[out] transfer_flag - Pointer to transfer flag
++ *  @param[out] portion_of_meta_data - Pointer to portion of meta data
++ *  @return pldm_completion_codes
++ */
++int decode_get_device_meta_data_resp(
++    const struct pldm_msg *msg, const size_t payload_length,
++    uint8_t *completion_code, uint32_t *next_data_transfer_handle,
++    uint8_t *transfer_flag, struct variable_field *portion_of_meta_data);
++
++
++
++
+ /** @brief Create PLDM request message for PassComponentTable
+  *
+  *  @param[in] instance_id - Message's instance id
+@@ -1003,6 +1129,46 @@ int decode_apply_complete_req(
+ int encode_apply_complete_resp(uint8_t instance_id, uint8_t completion_code,
+ 			       struct pldm_msg *msg, size_t payload_length);
+ 
++
++/* Inventec - Add GetMetaData decode/encode */
++/* TODO - Modify to Openbmc style */
++/** @brief Create a PLDM response message for GetMetaData
++ *
++ *  @param[in] instance_id - Message's instance id
++ *  @param[in] payload_length - Length of response message payload
++ *  @param[in,out] msg - Message will be written to this
++ *  @param[in] data - pointer to response data
++ *  @param[in] portion_of_meta_data - pointer to package data
++ *  @return pldm_completion_codes
++ *  @note  Caller is responsible for memory alloc and dealloc of param
++ * 'msg.payload'
++ */
++int encode_get_meta_data_resp(const uint8_t instance_id,
++			      const size_t payload_length, struct pldm_msg *msg,
++			      struct get_fd_data_resp *data,
++			      struct variable_field *portion_of_meta_data);
++
++/* Inventec - Add GetMetaData decode/encode */
++/* TODO - Modify to Openbmc style */
++/** @brief Decode GetMetaData request message
++ *
++ *  Note:
++ *  * If the return value is not PLDM_SUCCESS, it represents a
++ * transport layer error.
++ *  * If the completion_code value is not PLDM_SUCCESS, it represents a
++ * protocol layer error and all the out-parameters are invalid.
++ *
++ *  @param[in] msg - request message
++ *  @param[in] payload_length - Length of request message payload
++ *  @param[out] data_transfer_handle - Pointer to data transfer handle
++ *  @param[out] transfer_operation_flag - Pointer to transfer operation flag
++ *  @return pldm_completion_codes
++ */
++int decode_get_meta_data_req(const struct pldm_msg *msg,
++			     const size_t payload_length,
++			     uint32_t *data_transfer_handle,
++			     uint8_t *transfer_operation_flag);
++
+ /** @brief Create PLDM request message for ActivateFirmware
+  *
+  *  @param[in] instance_id - Message's instance id
+diff --git a/include/libpldm/fru.h b/include/libpldm/fru.h
+index ce93e55..238832f 100644
+--- a/include/libpldm/fru.h
++++ b/include/libpldm/fru.h
+@@ -500,6 +500,48 @@ int encode_set_fru_record_table_resp(uint8_t instance_id,
+ 				     size_t payload_length,
+ 				     struct pldm_msg *msg);
+ 
++/* Inventec - Add SetFruRecordTable req encode/resp decode*/
++/*
++ *
++ * SetFruRecordTable
++ *
++ * @brief Create a PLDM request message for SetFruRecordTable
++ *
++ *  @param[in] instance_id - Message's instance id
++ *  @param[in] data_transfer_handle - A handle, used to identify a FRU Record
++ *  Table data transfer
++ *  @param[in] transfer_flag - The transfer flag that indicates what part of
++ * the transfer this response represents
++ *  @param[in] fru_record_table_data - This data is a portion of the overall
++ * FRU Record Table
++ *  @param[in,out] msg - Message will be written to this
++ *  @param[in] payload_length - Length of request message payload
++ *  @return pldm_completion_codes
++ *  @note  Caller is responsible for memory alloc and dealloc of param
++ *         'msg.payload'
++ */
++
++int encode_set_fru_record_table_req(
++    const uint8_t instance_id, const uint32_t data_transfer_handle,
++    const uint8_t transfer_flag, struct variable_field *fru_record_table_data,
++    struct pldm_msg *msg, const size_t payload_length);
++
++/** @brief Decode SetFruRecordTable response data
++ *
++ *  @param[in] msg - Response message
++ *  @param[in] payload_length - Length of response message payload
++ *  @param[out] completion_code - Pointer to response msg's PLDM completion code
++ *  @param[out] next_data_transfer_handle - A handle used to identify the next
++ *  portion of the transfer
++ *  @return pldm_completion_codes
++ */
++
++int decode_set_fru_record_table_resp(const struct pldm_msg *msg,
++				     const size_t payload_length,
++				     uint8_t *completion_code,
++				     uint32_t *next_data_transfer_handle);
++
++
+ #ifdef __cplusplus
+ }
+ #endif
+diff --git a/include/libpldm/pdr.h b/include/libpldm/pdr.h
+index de5a787..6b2b42b 100644
+--- a/include/libpldm/pdr.h
++++ b/include/libpldm/pdr.h
+@@ -508,6 +508,33 @@ void pldm_entity_association_pdr_extract(const uint8_t *pdr, uint16_t pdr_len,
+ 					 size_t *num_entities,
+ 					 pldm_entity **entities);
+ 
++/* Inventec - Add Parse Numeric Sensor PDR */
++/** @brief Parse Numeric Sensor PDR
++ *
++ *  @param[in] pdr - Numeric Sensor PDR
++ *  @param[in] pdr_len - size of Numeric Sensor PDR in bytes
++ *  @param[out] numeric_sensor_pdr - parsed PDR will be writted to this
++ *
++ *  @return bool true if the parsing success
++ *  @note caller is responsible for alloc/dealloc of *pdr and
++ *  *numeric_sensor_pdr
++ */
++bool pldm_numeric_sensor_pdr_parse(const uint8_t *pdr, const uint16_t pdr_len,
++				   uint8_t *numeric_sensor_pdr);
++
++/* Inventec - Add Parse Parse Numeric Effecter PDR */
++/** @brief Parse Numeric Effecter PDR
++ *
++ *	@param[in] pdr - Numeric Effecter PDR
++ *	@param[in] pdr_len - size of Numeric Effecter PDR in bytes
++ *	@param[out] numeric_effecter_pdr - parsed PDR will be writted to this
++ *
++ *	@return bool true if the parsing success
++ *	@note caller is responsible for alloc/dealloc of *pdr and
++ * *numeric_effecter_pdr
++ */
++bool pldm_numeric_effecter_pdr_parse(const uint8_t *pdr, const uint16_t pdr_len,
++				     uint8_t *numeric_effecter_pdr);
+ #ifdef __cplusplus
+ }
+ #endif
+diff --git a/include/libpldm/platform.h b/include/libpldm/platform.h
+index 26d47c5..198a31e 100644
+--- a/include/libpldm/platform.h
++++ b/include/libpldm/platform.h
+@@ -45,6 +45,7 @@ extern "C" {
+ #define PLDM_GET_NUMERIC_EFFECTER_VALUE_MIN_RESP_BYTES 5
+ #define PLDM_GET_SENSOR_READING_MIN_RESP_BYTES	       8
+ #define PLDM_GET_STATE_SENSOR_READINGS_MIN_RESP_BYTES  2
++#define PLDM_GET_STATE_EFFECTER_STATES_MIN_RESP_BYTES  2
+ #define PLDM_GET_PDR_REPOSITORY_INFO_RESP_BYTES	       41
+ 
+ /* Minimum length for PLDM PlatformEventMessage request */
+@@ -81,6 +82,13 @@ extern "C" {
+ 	 PLDM_PDR_NUMERIC_SENSOR_PDR_VARIED_SENSOR_DATA_SIZE_MIN_LENGTH +      \
+ 	 PLDM_PDR_NUMERIC_SENSOR_PDR_VARIED_RANGE_FIELD_MIN_LENGTH)
+ 
++/* Inventec - Add numeric effecter pdr support*/
++#define PLDM_PDR_NUMERIC_EFFECTER_MIN_LENGTH 63
++
++/* Inventec - Add composite effecter support*/
++#define PLDM_COMPOSITE_EFFECTER_COUNT_MIN 0x01
++#define PLDM_COMPOSITE_EFFECTER_COUNT_MAX 0x08
++
+ #define PLDM_INVALID_EFFECTER_ID 0xFFFF
+ #define PLDM_TID_RESERVED	 0xFF
+ 
+@@ -134,6 +142,13 @@ enum pldm_sensor_event_message_enable {
+ 	PLDM_STATE_EVENTS_ONLY_ENABLED
+ };
+ 
++/* Inventec - Add state_event_message_enable*/
++enum pldm_state_event_message_enable {
++	PLDM_ENABLE_EVENTS,
++	PLDM_DISABLE_EVENTS,
++	PLDM_NO_CHANGE_EVENTS = 0xff
++};
++
+ enum pldm_effecter_oper_state {
+ 	EFFECTER_OPER_STATE_ENABLED_UPDATEPENDING,
+ 	EFFECTER_OPER_STATE_ENABLED_NOUPDATEPENDING,
+@@ -147,16 +162,22 @@ enum pldm_effecter_oper_state {
+ };
+ 
+ enum pldm_platform_commands {
++	PLDM_GET_TERMINUS_UID = 0x03,
+ 	PLDM_SET_EVENT_RECEIVER = 0x04,
+ 	PLDM_PLATFORM_EVENT_MESSAGE = 0x0A,
+ 	PLDM_POLL_FOR_PLATFORM_EVENT_MESSAGE = 0x0B,
+ 	PLDM_EVENT_MESSAGE_SUPPORTED = 0x0C,
+ 	PLDM_EVENT_MESSAGE_BUFFER_SIZE = 0x0D,
++	PLDM_SET_NUMERIC_SENSOR_ENABLE = 0x10,
+ 	PLDM_GET_SENSOR_READING = 0x11,
++	PLDM_SET_STATE_SENSOR_ENABLE = 0x20,
+ 	PLDM_GET_STATE_SENSOR_READINGS = 0x21,
++	PLDM_SET_NUMERIC_EFFECTER_ENABLE = 0x30,
+ 	PLDM_SET_NUMERIC_EFFECTER_VALUE = 0x31,
+ 	PLDM_GET_NUMERIC_EFFECTER_VALUE = 0x32,
++	PLDM_SET_STATE_EFFECTER_ENABLE = 0x38,
+ 	PLDM_SET_STATE_EFFECTER_STATES = 0x39,
++	PLDM_GET_STATE_EFFECTER_STATES = 0x3A,
+ 	PLDM_GET_PDR_REPOSITORY_INFO = 0x50,
+ 	PLDM_GET_PDR = 0x51,
+ };
+@@ -310,6 +331,17 @@ enum pldm_terminus_locator_type {
+ 	PLDM_TERMINUS_LOCATOR_TYPE_SYS_SW
+ };
+ 
++/* Inventec - Add sensor init emum*/
++/** @brief PLDM sensor initialization schemes
++ */
++enum pldm_sensor_init {
++	PLDM_SENSOR_INIT_NO_INIT,
++	PLDM_SENSOR_INIT_USE_INIT_PDR,
++	PLDM_SENSOR_INIT_ENABLE,
++	PLDM_SENSOR_INIT_DISABLE
++};
++
++
+ /** @brief PLDM event message global enable for
+  *  SetEventReceiver command
+  */
+@@ -507,6 +539,21 @@ struct pldm_pdr_entity_association {
+ 	pldm_entity children[1];
+ } __attribute__((packed));
+ 
++/* Inventec - Add pldm_effecter_auxiliary_names_pdr type*/
++/** @struct pldm_effecter_auxiliary_names_pdr
++ *
++ *  Structure representing PLDM Effecter Auxiliary Names PDR
++ */
++struct pldm_effecter_auxiliary_names_pdr {
++	struct pldm_pdr_hdr hdr;
++	uint16_t terminus_handle;
++	uint16_t effecter_id;
++	uint8_t effecter_count;
++	uint8_t name_string_count;
++	uint8_t effecter_auxiliary_names[1];
++} __attribute__((packed));
++
++
+ /** @struct pldm_pdr_fru_record_set
+  *
+  *  Structure representing PLDM FRU record set PDR
+@@ -519,6 +566,32 @@ struct pldm_pdr_fru_record_set {
+ 	uint16_t container_id;
+ } __attribute__((packed));
+ 
++
++/* Inventec - Add pldm_pdr_entity_auxiliary_names_pdr type*/
++/** @struct pldm_pdr_entity_auxiliary_names_pdr
++ *
++ *  Structure representing PLDM Entity Auxiliary Names PDR
++ */
++struct pldm_pdr_entity_auxiliary_names_pdr {
++	struct pldm_pdr_hdr hdr;
++	pldm_entity entity;
++	uint8_t shared_name_count;
++	uint8_t name_string_count;
++	uint8_t entity_auxiliary_names[1];
++} __attribute__((packed));
++
++
++/* Inventec - Add pldm_fru_record_set_pdr type*/
++/** @struct pldm_fru_record_set_pdr
++ *
++ *  Structure representing PLDM FRU record set PDR
++ */
++struct pldm_fru_record_set_pdr {
++	struct pldm_pdr_hdr hdr;
++	struct pldm_pdr_fru_record_set fru_record_set;
++} __attribute__((packed));
++
++
+ /** @struct pldm_state_sensor_pdr
+  *
+  *  Structure representing PLDM state sensor PDR
+@@ -844,11 +917,43 @@ struct pldm_set_state_effecter_states_req {
+ 	set_effecter_state_field field[8];
+ } __attribute__((packed));
+ 
++
++/* Inventec - Add pldm_get_state_effecter_states_req*/
++/** @struct pldm_get_state_effecter_states_req
++ *
++ *  Structure representing PLDM get state effecter states request.
++ */
++struct pldm_get_state_effecter_states_req {
++	uint16_t effecter_id;
++} __attribute__((packed));
++
++/* Inventec - Add pldm_get_state_effecter_states_resp*/
++/** @struct get_effecter_state_field
++ *
++ *  Structure representing a stateField in GetStateEffecterStates command */
++
++typedef struct state_field_for_state_effecter_get {
++	uint8_t effecter_op_state; //!< The state of the effecter itself
++	uint8_t pending_state;	   //!< Return a pending state value
++	uint8_t present_state;	   //!< Present state of the effecter
++} __attribute__((packed)) get_effecter_state_field;
++
++/** @struct pldm_get_state_effecter_states_resp
++ *
++ *  Structure representing PLDM get state effecter states response.
++ */
++struct pldm_get_state_effecter_states_resp {
++	uint8_t completion_code;
++	uint8_t comp_effecter_count;
++	get_effecter_state_field field[1];
++} __attribute__((packed));
++
++/* Inventec - Modify pldm_pdr_repository_info_resp to pldm_get_pdr_repository_info_resp*/
+ /** @struct pldm_get_pdr_repository_info_resp
+  *
+  *  Structure representing GetPDRRepositoryInfo response packet
+  */
+-struct pldm_pdr_repository_info_resp {
++struct pldm_get_pdr_repository_info_resp {
+ 	uint8_t completion_code;
+ 	uint8_t repository_state;
+ 	uint8_t update_time[PLDM_TIMESTAMP104_SIZE];
+@@ -1086,6 +1191,72 @@ struct pldm_get_numeric_effecter_value_resp {
+ 	uint8_t pending_and_present_values[1];
+ } __attribute__((packed));
+ 
++
++/* Inventec - Add message struct*/
++/** @struct pldm_set_numeric_sensor_enable_req
++ *
++ *  Structure representing PLDM SetNumericSensorEnable request
++ */
++struct pldm_set_numeric_sensor_enable_req {
++	uint16_t sensor_id;
++	uint8_t sensor_operational_state;
++	uint8_t sensor_event_message_enable;
++} __attribute__((packed));
++
++/* Inventec - Add message struct*/
++/** @struct pldm_set_numeric_effecter_enable_req
++ *
++ *  Structure representing PLDM SetNumericSensorEnable request
++ */
++struct pldm_set_numeric_effecter_enable_req {
++	uint16_t effecter_id;
++	uint8_t effecter_operational_state;
++} __attribute__((packed));
++
++/* Inventec - Add message struct*/
++/** @struct pldm_state_sensor_op_field
++ *
++ *  Structure representing PLDM SetStateSensorEnables opField format
++ */
++typedef struct pldm_state_sensor_op_field {
++	uint8_t sensor_operational_state;
++	uint8_t event_message_enable;
++} __attribute__((packed)) state_sensor_op_field;
++
++/* Inventec - Add message struct*/
++/** @struct pldm_set_state_sensor_enable_req
++ *
++ *  Structure representing PLDM SetStateSensorEnables request
++ */
++struct pldm_set_state_sensor_enable_req {
++	uint16_t sensor_id;
++	uint8_t composite_sensor_count;
++	state_sensor_op_field op_field[1];
++} __attribute__((packed));
++
++/* Inventec - Add message struct*/
++/** @struct pldm_state_effecter_op_field
++ *
++ *  Structure representing PLDM SetStateSensorEnables opField format
++ */
++typedef struct pldm_state_effecter_op_field {
++	uint8_t effecter_operational_state;
++	uint8_t event_message_enable;
++} __attribute__((packed)) state_effecter_op_field;
++
++/* Inventec - Add message struct*/
++/** @struct pldm_set_state_effecter_enable_req
++ *
++ *  Structure representing PLDM SetStateSensorEnables request
++ */
++struct pldm_set_state_effecter_enable_req {
++	uint16_t effecter_id;
++	uint8_t composite_effecter_count;
++	state_effecter_op_field op_field[1];
++} __attribute__((packed));
++
++
++
+ /** @struct pldm_get_sensor_reading_req
+  *
+  *  Structure representing PLDM get sensor reading request
+@@ -1110,6 +1281,17 @@ struct pldm_get_sensor_reading_resp {
+ 	uint8_t present_reading[1];
+ } __attribute__((packed));
+ 
++/* Inventec - Add pldm_get_terminus_uid_resp*/
++/** @struct pldm_get_terminus_uid_resp
++ *
++ *  Structure representing PLDM GetTerminusUID response
++ */
++struct pldm_get_terminus_uid_resp {
++	uint8_t completion_code; //!< Response completion code
++	uint8_t uuid[16];	 //!< 16byte UUID
++} __attribute__((packed));
++
++
+ /* Responder */
+ 
+ /* SetNumericEffecterValue */
+@@ -1364,6 +1546,20 @@ int encode_get_sensor_reading_resp(uint8_t instance_id, uint8_t completion_code,
+ 				   const uint8_t *present_reading,
+ 				   struct pldm_msg *msg, size_t payload_length);
+ 
++/* Inventec - Add GetPDRRepositoryInfo encode request*/
++/*GetPDRRepositoryInfo*/
++
++/** @brief Encode GetPDRRepositoryInfo request data
++ *
++ *  @param[in] instance_id - Message's instance id
++ *  @param[out] msg - Message will be written to this
++ *  @return pldm_completion_codes
++ */
++int encode_get_pdr_repository_info_req(uint8_t instance_id,
++				       struct pldm_msg *msg);
++
++
++
+ /* Requester */
+ 
+ /*GetPDRRepositoryInfo*/
+@@ -2177,6 +2373,142 @@ int decode_set_event_receiver_req(const struct pldm_msg *msg,
+ int encode_set_event_receiver_resp(uint8_t instance_id, uint8_t completion_code,
+ 				   struct pldm_msg *msg);
+ 
++
++/* Inventec - Add platform command support */
++/** @brief Encode GetTerminusUID request message
++ *
++ *  @param[in] instance_id - Message's instance id
++ *  @param[out] msg - Message will be written to this
++ *  @return pldm_completion_codes
++ */
++inline int encode_get_terminus_uid_req(const uint8_t instance_id,
++				       struct pldm_msg *msg)
++{
++	return encode_pldm_header_only(PLDM_REQUEST, instance_id, PLDM_PLATFORM,
++					  PLDM_GET_TERMINUS_UID, msg);
++}
++
++/* Inventec - Add platform command support */
++/** @brief Decode GetTerminusUID response data
++ *
++ *  @param[in] msg - Response message
++ *  @param[in] payload_length - Length of response message payload
++ *  @param[out] completion_code - PLDM completion code
++ *  @param[out] uuid - 16 byte UUID of the device
++ *  @return pldm_completion_codes
++ */
++int decode_get_terminus_uid_resp(const struct pldm_msg *msg,
++				 const size_t payload_length,
++				 uint8_t *completion_code, uint8_t *uuid);
++
++/* Inventec - Add platform command support */
++/** @brief Encode SetNumericSensorEnable request
++ *
++ *  @param[in] instance_id - Message's instance id
++ *  @param[in] sensor_id - A handle that is used to identify and access the
++ *         sensor
++ *  @param[in] sensor_operational_state - The state of the sensor itself
++ *  @param[in] sensor_event_message_enable - value: { noEventGeneration,
++ *         eventsDisabled, eventsEnabled, opEventsOnlyEnabled,
++ *         stateEventsOnlyEnabled }
++ *  @param[out] msg - Response message
++ *
++ *  @return pldm_completion_codes
++ */
++int encode_set_numeric_sensor_enable_req(
++    const uint8_t instance_id, const uint16_t sensor_id,
++    const uint8_t sensor_operational_state,
++    const uint8_t sensor_event_message_enable, struct pldm_msg *msg);
++
++/* Inventec - Add platform command support */
++/** @brief Encode SetStateSensorEnables request
++ *
++ *  @param[in] instance_id - Message's instance id
++ *  @param[in] sensor_id - A handle that is used to identify and access the
++ *         sensor
++ *  @param[in] composite_sensor_count - Number of coposite sensors
++ *  @param[in] op_fields - SetStateSensorEnables opField - value:{{enabled,
++ * disabled, unavailable},{noChange, disableEvents, enableEvents,
++ * enableOpEventsOnly, enableStateEventsOnly}}
++ *  @param[out] msg - Encoded message
++ *
++ *  @return pldm_completion_codes
++ */
++int encode_set_state_sensor_enable_req(const uint8_t instance_id,
++				       const uint16_t sensor_id,
++				       const uint8_t composite_sensor_count,
++				       state_sensor_op_field *op_fields,
++				       struct pldm_msg *msg);
++
++/* Inventec - Add platform command support */
++/** @brief Encode SetNumericEffecterEnable request
++ *
++ *	@param[in] instance_id - Message's instance id
++ *	@param[in] effecter_id - A handle that is used to identify and access
++ *the effecter
++ *	@param[in] effecter_operational_state - The state of the effecter itself
++ *	@param[out] msg - Response message
++ *
++ *	@return pldm_completion_codes
++ */
++int encode_set_numeric_effecter_enable_req(
++    const uint8_t instance_id, const uint16_t effecter_id,
++    const uint8_t effecter_operational_state, struct pldm_msg *msg);
++
++/* Inventec - Add platform command support */
++/** @brief Encode SetStateEffecterEnables request
++ *
++ *	@param[in] instance_id - Message's instance id
++ *	@param[in] effecter_id - A handle that is used to identify and access
++ *the effecter
++ *	@param[in] composite_effecter_count - Number of coposite effecters
++ *	@param[in] op_fields - SetStateEffecterEnables opField -
++ *value:{{enabled, disabled, unavailable},{noChange, disableEvents,
++ *enableEvents, enableOpEventsOnly, enableStateEventsOnly}}
++ *	@param[out] msg - Encoded message
++ *
++ *	@return pldm_completion_codes
++ */
++int encode_set_state_effecter_enable_req(const uint8_t instance_id,
++					 const uint16_t effecter_id,
++					 const uint8_t composite_effecter_count,
++					 state_effecter_op_field *op_fields,
++					 struct pldm_msg *msg);
++
++/* Inventec - Add platform command support */
++/** @brief Encode GetStateEffecterStates request
++ *
++ *	@param[in] instance_id - Message's instance id
++ *	@param[in] effecter_id - A handle that is used to identify and access
++ *the effecter
++ *	@param[out] msg - Encoded message
++ *
++ *	@return pldm_completion_codes
++ */
++int encode_get_state_effecter_states_req(const uint8_t instance_id,
++					 const uint16_t effecter_id,
++					 struct pldm_msg *msg);
++
++/* Inventec - Add platform command support */
++/** @brief Decode GetStateEffecterStates response data
++ *
++ *  @param[in] msg - Request message
++ *  @param[in] payload_length - Length of response message payload
++ *  @param[out] completion_code - PLDM completion code
++ *  @param[in,out] comp_effecter_count - The number of individual sets of
++ * effecter information that this command accesses
++ *  @param[out] field - Each stateField is an instance of a stateField structure
++ *         that is used to return the present operational state setting and the
++ *         present state and pending state for a particular set of effecter
++ *         information contained within the state effecter
++ *  @return pldm_completion_codes
++ */
++int decode_get_state_effecter_states_resp(const struct pldm_msg *msg,
++					  const size_t payload_length,
++					  uint8_t *completion_code,
++					  uint8_t *comp_effecter_count,
++					  get_effecter_state_field *field);
++
+ #ifdef __cplusplus
+ }
+ #endif
+diff --git a/include/libpldm/utils.h b/include/libpldm/utils.h
+index 93720a4..40a96d5 100644
+--- a/include/libpldm/utils.h
++++ b/include/libpldm/utils.h
+@@ -105,6 +105,15 @@ bool is_time_legal(uint8_t seconds, uint8_t minutes, uint8_t hours, uint8_t day,
+  */
+ bool is_transfer_flag_valid(uint8_t transfer_flag);
+ 
++
++/** @brief Check whether transfer operation flag is valid
++ *
++ *  @param[in] transfer operation flag. Value: PLDM_GET_NEXTPART = 0,
++ * PLDM_GET_FIRSTPART = 1
++ *  @return true if is from above values, false if not
++ */
++bool is_transfer_operation_flag_valid(const uint8_t transfer_operation_flag);
++
+ #ifdef __cplusplus
+ }
+ #endif
+diff --git a/src/base.c b/src/base.c
+index 02dca1a..74148f1 100644
+--- a/src/base.c
++++ b/src/base.c
+@@ -497,6 +497,23 @@ int decode_multipart_receive_req(const struct pldm_msg *msg,
+ 	return PLDM_SUCCESS;
+ }
+ 
++/* Inventec - Add decode_cc_only_resp*/
++LIBPLDM_ABI_STABLE
++int decode_cc_only_resp(const struct pldm_msg *msg, const size_t payload_length,
++			uint8_t *completion_code)
++{
++	if (NULL == msg || NULL == completion_code) {
++		return PLDM_ERROR_INVALID_DATA;
++	}
++	if (sizeof(uint8_t) != payload_length) {
++		return PLDM_ERROR_INVALID_LENGTH;
++	}
++	*completion_code = msg->payload[0];
++
++	return PLDM_SUCCESS;
++}
++
++
+ LIBPLDM_ABI_STABLE
+ int encode_cc_only_resp(uint8_t instance_id, uint8_t type, uint8_t command,
+ 			uint8_t cc, struct pldm_msg *msg)
+@@ -521,6 +538,27 @@ int encode_cc_only_resp(uint8_t instance_id, uint8_t type, uint8_t command,
+ 	return PLDM_SUCCESS;
+ }
+ 
++/* Inventec - Add set TID support*/
++LIBPLDM_ABI_STABLE
++int decode_set_tid_req(const struct pldm_msg *msg, const size_t payload_length,
++		       uint8_t *tid)
++{
++	if (NULL == msg || NULL == tid) {
++		return PLDM_ERROR_INVALID_DATA;
++	}
++
++	if (sizeof(struct pldm_set_tid_req) != payload_length) {
++		return PLDM_ERROR_INVALID_LENGTH;
++	}
++
++	struct pldm_set_tid_req *request =
++	    (struct pldm_set_tid_req *)msg->payload;
++	*tid = request->tid;
++
++	return PLDM_SUCCESS;
++}
++
++
+ LIBPLDM_ABI_STABLE
+ int encode_pldm_header_only(uint8_t msg_type, uint8_t instance_id,
+ 			    uint8_t pldm_type, uint8_t command,
+diff --git a/src/firmware_update.c b/src/firmware_update.c
+index 3cab7d0..e791aa2 100644
+--- a/src/firmware_update.c
++++ b/src/firmware_update.c
+@@ -942,6 +942,238 @@ int decode_request_update_resp(const struct pldm_msg *msg,
+ 	return PLDM_SUCCESS;
+ }
+ 
++
++/*
++    Inventec - Add firmware_device_data req decode/resp encode
++    TODO - Porting to current coding style.
++*/
++/** @brief generic encode api for GetMetaData/GetPackageData response command
++ *
++ *  @param[in] instance_id - Message's instance id
++ *  @param[in] payload_length - Length of response message payload
++ *  @param[in,out] msg - Message will be written to this
++ *  @param[in] command_code - PLDM Command
++ *  @param[in] data - pointer to response data
++ *  @param[in] portion_of_meta_data - pointer to package data
++ *  @return pldm_completion_codes
++ */
++LIBPLDM_ABI_STABLE
++int encode_firmware_device_data_resp(
++    const uint8_t instance_id, const size_t payload_length,
++    struct pldm_msg *msg, uint8_t command_code, struct get_fd_data_resp *data,
++    struct variable_field *portion_of_meta_data)
++{
++	if (msg == NULL || data == NULL || portion_of_meta_data == NULL) {
++		return PLDM_ERROR_INVALID_DATA;
++	}
++
++	int rc = encode_pldm_header_only(instance_id, PLDM_FWUP, command_code,
++				    PLDM_RESPONSE, msg);
++
++	if (PLDM_SUCCESS != rc) {
++		return rc;
++	}
++
++	if (payload_length < sizeof(struct get_fd_data_resp)) {
++		return PLDM_ERROR_INVALID_LENGTH;
++	}
++
++	if (!is_transfer_flag_valid(data->transfer_flag)) {
++		return PLDM_INVALID_TRANSFER_OPERATION_FLAG;
++	}
++
++	if (portion_of_meta_data->ptr == NULL) {
++		return PLDM_ERROR_INVALID_DATA;
++	}
++
++	HTOLE32(data->next_data_transfer_handle);
++	memcpy(msg->payload, data, sizeof(struct get_fd_data_resp));
++
++	memcpy(msg->payload + sizeof(struct get_fd_data_resp),
++	       portion_of_meta_data->ptr, portion_of_meta_data->length);
++
++	return PLDM_SUCCESS;
++}
++
++/*
++    Inventec - Add firmware_device_data req decode/resp encode
++    TODO - Porting to current coding style.
++*/
++/** @brief generic decode api for GetMetaData/GetPackageData request command
++ *
++ *  @param[in] msg - request message
++ *  @param[in] payload_length - Length of request message payload
++ *  @param[out] data_transfer_handle - Pointer to data transfer handle
++ *  @param[out] transfer_operation_flag - Pointer to transfer operation flag
++ *  @return pldm_completion_codes
++ */
++LIBPLDM_ABI_STABLE
++int decode_firmware_device_data_req(const struct pldm_msg *msg,
++					   const size_t payload_length,
++					   uint32_t *data_transfer_handle,
++					   uint8_t *transfer_operation_flag)
++{
++	if (msg == NULL || data_transfer_handle == NULL ||
++	    transfer_operation_flag == NULL) {
++		return PLDM_ERROR_INVALID_DATA;
++	}
++	if (payload_length != sizeof(struct get_fd_data_req)) {
++		return PLDM_ERROR_INVALID_LENGTH;
++	}
++	struct get_fd_data_req *request =
++	    (struct get_fd_data_req *)msg->payload;
++
++	if (request == NULL) {
++		return PLDM_ERROR_INVALID_DATA;
++	}
++
++	if (request->transfer_operation_flag > PLDM_GET_FIRSTPART) {
++		return PLDM_INVALID_TRANSFER_OPERATION_FLAG;
++	}
++
++	*data_transfer_handle = le32toh(request->data_transfer_handle);
++	*transfer_operation_flag = request->transfer_operation_flag;
++	return PLDM_SUCCESS;
++}
++
++/*
++    Inventec - Add get_package_data req decode/resp encode
++    TODO - Porting to current coding style.
++*/
++LIBPLDM_ABI_STABLE
++int encode_get_package_data_resp(const uint8_t instance_id,
++				 const size_t payload_length,
++				 struct pldm_msg *msg,
++				 struct get_fd_data_resp *data,
++				 struct variable_field *portion_of_meta_data)
++{
++	if (msg == NULL || data == NULL || portion_of_meta_data == NULL) {
++		return PLDM_ERROR_INVALID_DATA;
++	}
++
++	return (encode_firmware_device_data_resp(instance_id, payload_length,
++						 msg, PLDM_GET_PACKAGE_DATA,
++						 data, portion_of_meta_data));
++}
++
++/*
++    Inventec - Add get_package_data req decode/resp encode
++    TODO - Porting to current coding style.
++*/
++LIBPLDM_ABI_STABLE
++int decode_get_pacakge_data_req(const struct pldm_msg *msg,
++				const size_t payload_length,
++				uint32_t *data_transfer_handle,
++				uint8_t *transfer_operation_flag)
++{
++	if (msg == NULL || data_transfer_handle == NULL ||
++	    transfer_operation_flag == NULL) {
++		return PLDM_ERROR_INVALID_DATA;
++	}
++
++	return (decode_firmware_device_data_req(msg, payload_length,
++						data_transfer_handle,
++						transfer_operation_flag));
++}
++
++/*
++    Inventec - Add get_device_meta_data req encode/resp decode
++    TODO - Porting to current coding style.
++*/
++LIBPLDM_ABI_STABLE
++int encode_get_device_meta_data_req(const uint8_t instance_id,
++				    struct pldm_msg *msg,
++				    const size_t payload_length,
++				    const uint32_t data_transfer_handle,
++				    const uint8_t transfer_operation_flag)
++{
++	if (msg == NULL) {
++		return PLDM_ERROR_INVALID_DATA;
++	}
++
++	if (payload_length != sizeof(struct get_device_meta_data_req)) {
++		return PLDM_ERROR_INVALID_LENGTH;
++	}
++
++    struct pldm_header_info header = { 0 };
++	header.instance = instance_id;
++	header.msg_type = PLDM_REQUEST;
++	header.pldm_type = PLDM_FWUP;
++	header.command = PLDM_GET_DEVICE_META_DATA;
++	uint8_t rc = pack_pldm_header(&header, &(msg->hdr));
++
++	if (PLDM_SUCCESS != rc) {
++		return rc;
++	}
++
++	struct get_device_meta_data_req *request =
++	    (struct get_device_meta_data_req *)msg->payload;
++
++	if (request == NULL) {
++		return PLDM_ERROR_INVALID_DATA;
++	}
++
++	request->data_transfer_handle = htole32(data_transfer_handle);
++
++	if (!is_transfer_operation_flag_valid(transfer_operation_flag)) {
++		return PLDM_INVALID_TRANSFER_OPERATION_FLAG;
++	}
++
++	request->transfer_operation_flag = transfer_operation_flag;
++
++	return PLDM_SUCCESS;
++}
++
++/*
++    Inventec - Add get_device_meta_data req encode/resp decode
++    TODO - Porting to current coding style.
++*/
++LIBPLDM_ABI_STABLE
++int decode_get_device_meta_data_resp(
++    const struct pldm_msg *msg, const size_t payload_length,
++    uint8_t *completion_code, uint32_t *next_data_transfer_handle,
++    uint8_t *transfer_flag, struct variable_field *portion_of_meta_data)
++{
++	if (msg == NULL || completion_code == NULL ||
++	    next_data_transfer_handle == NULL || transfer_flag == NULL ||
++	    portion_of_meta_data == NULL) {
++		return PLDM_ERROR_INVALID_DATA;
++	}
++
++	*completion_code = msg->payload[0];
++
++	if (*completion_code != PLDM_SUCCESS) {
++		return PLDM_ERROR;
++	}
++
++	if (payload_length < sizeof(struct get_device_meta_data_resp)) {
++		return PLDM_ERROR_INVALID_LENGTH;
++	}
++
++	struct get_device_meta_data_resp *response =
++	    (struct get_device_meta_data_resp *)msg->payload;
++
++	if (response == NULL) {
++		return PLDM_ERROR_INVALID_DATA;
++	}
++
++	*next_data_transfer_handle =
++	    le32toh(response->next_data_transfer_handle);
++
++	if (!is_transfer_flag_valid(response->transfer_flag)) {
++		return PLDM_INVALID_TRANSFER_OPERATION_FLAG;
++	}
++
++	*transfer_flag = response->transfer_flag;
++
++	portion_of_meta_data->ptr =
++	    msg->payload + sizeof(struct get_device_meta_data_resp);
++	portion_of_meta_data->length =
++	    payload_length - sizeof(struct get_device_meta_data_resp);
++
++	return PLDM_SUCCESS;
++}
++
+ LIBPLDM_ABI_STABLE
+ int encode_pass_component_table_req(uint8_t instance_id, uint8_t transfer_flag,
+ 				    uint16_t comp_classification,
+@@ -1338,6 +1570,43 @@ int encode_apply_complete_resp(uint8_t instance_id, uint8_t completion_code,
+ 	return PLDM_SUCCESS;
+ }
+ 
++
++/* Inventec - Add GetMetaData decode/encode */
++/* TODO - Modify to Openbmc style */
++LIBPLDM_ABI_STABLE
++int encode_get_meta_data_resp(const uint8_t instance_id,
++			      const size_t payload_length, struct pldm_msg *msg,
++			      struct get_fd_data_resp *data,
++			      struct variable_field *portion_of_meta_data)
++{
++	if (msg == NULL || data == NULL || portion_of_meta_data == NULL) {
++		return PLDM_ERROR_INVALID_DATA;
++	}
++
++	return (encode_firmware_device_data_resp(instance_id, payload_length,
++						 msg, PLDM_GET_META_DATA, data,
++						 portion_of_meta_data));
++}
++
++/* Inventec - Add GetMetaData decode/encode */
++/* TODO - Modify to Openbmc style */
++LIBPLDM_ABI_STABLE
++int decode_get_meta_data_req(const struct pldm_msg *msg,
++			     const size_t payload_length,
++			     uint32_t *data_transfer_handle,
++			     uint8_t *transfer_operation_flag)
++{
++	if (msg == NULL || data_transfer_handle == NULL ||
++	    transfer_operation_flag == NULL) {
++		return PLDM_ERROR_INVALID_DATA;
++	}
++
++	return (decode_firmware_device_data_req(msg, payload_length,
++						data_transfer_handle,
++						transfer_operation_flag));
++}
++
++
+ LIBPLDM_ABI_STABLE
+ int encode_activate_firmware_req(uint8_t instance_id,
+ 				 bool8_t self_contained_activation_req,
+diff --git a/src/fru.c b/src/fru.c
+index aeb7d50..e1e8124 100644
+--- a/src/fru.c
++++ b/src/fru.c
+@@ -567,3 +567,75 @@ int encode_set_fru_record_table_resp(uint8_t instance_id,
+ 
+ 	return PLDM_SUCCESS;
+ }
++
++/* Inventec - Add SetFruRecordTable req encode/resp decode */
++LIBPLDM_ABI_STABLE
++int encode_set_fru_record_table_req(
++    const uint8_t instance_id, const uint32_t data_transfer_handle,
++    const uint8_t transfer_flag, struct variable_field *fru_record_table_data,
++    struct pldm_msg *msg, const size_t payload_length)
++
++{
++	struct pldm_header_info header = {0};
++	int rc = PLDM_ERROR_INVALID_DATA;
++
++	if (msg == NULL || fru_record_table_data->ptr == NULL) {
++		return rc;
++	}
++	if ((payload_length != sizeof(struct pldm_set_fru_record_table_req) +
++				   fru_record_table_data->length) ||
++	    (fru_record_table_data->length == 0)) {
++		return PLDM_ERROR_INVALID_LENGTH;
++	}
++
++	if (!is_transfer_flag_valid(transfer_flag)) {
++		return PLDM_ERROR_INVALID_DATA;
++	}
++
++	header.msg_type = PLDM_REQUEST;
++	header.instance = instance_id;
++	header.pldm_type = PLDM_FRU;
++	header.command = PLDM_SET_FRU_RECORD_TABLE;
++
++	if ((rc = pack_pldm_header(&header, &(msg->hdr))) != PLDM_SUCCESS) {
++		return rc;
++	}
++
++	struct pldm_set_fru_record_table_req *req =
++	    (struct pldm_set_fru_record_table_req *)msg->payload;
++	req->data_transfer_handle = htole32(data_transfer_handle);
++	req->transfer_flag = transfer_flag;
++
++	memcpy(msg->payload + sizeof(struct pldm_set_fru_record_table_req),
++	       fru_record_table_data->ptr, fru_record_table_data->length);
++
++	return PLDM_SUCCESS;
++}
++
++/* Inventec - Add SetFruRecordTable req encode/resp decode */
++LIBPLDM_ABI_STABLE
++int decode_set_fru_record_table_resp(const struct pldm_msg *msg,
++				     const size_t payload_length,
++				     uint8_t *completion_code,
++				     uint32_t *next_data_transfer_handle)
++{
++	if (msg == NULL || completion_code == NULL ||
++	    next_data_transfer_handle == NULL) {
++		return PLDM_ERROR_INVALID_DATA;
++	}
++
++	*completion_code = msg->payload[0];
++	if (PLDM_SUCCESS != *completion_code) {
++		return PLDM_SUCCESS;
++	}
++	if (payload_length != sizeof(struct pldm_set_fru_record_table_resp)) {
++		return PLDM_ERROR_INVALID_LENGTH;
++	}
++
++	struct pldm_get_fru_record_table_resp *resp =
++	    (struct pldm_get_fru_record_table_resp *)msg->payload;
++
++	*next_data_transfer_handle = le32toh(resp->next_data_transfer_handle);
++
++	return PLDM_SUCCESS;
++}
+diff --git a/src/pdr.c b/src/pdr.c
+index 55350a8..7148fd1 100644
+--- a/src/pdr.c
++++ b/src/pdr.c
+@@ -1231,3 +1231,851 @@ void pldm_entity_association_pdr_extract(const uint8_t *pdr, uint16_t pdr_len,
+ 		++i;
+ 	}
+ }
++
++/* Inventec - Add Parse Numeric Sensor PDR */
++static bool numeric_sensor_pdr_sensor_data_size_parse(
++    struct pldm_numeric_sensor_value_pdr *sensor_pdr_out, const uint8_t **iter,
++    size_t *min_pdr_size)
++{
++	assert(sensor_pdr_out != NULL);
++	assert(*iter != NULL);
++	assert(min_pdr_size != NULL);
++
++	size_t len_after_hysteresis =
++	    sizeof(sensor_pdr_out->supported_thresholds) +
++	    sizeof(sensor_pdr_out->threshold_and_hysteresis_volatility) +
++	    sizeof(sensor_pdr_out->state_transition_interval) +
++	    sizeof(sensor_pdr_out->update_interval);
++
++	switch (sensor_pdr_out->sensor_data_size) {
++	case PLDM_SENSOR_DATA_SIZE_UINT8:
++		memcpy(&sensor_pdr_out->hysteresis.value_u8, *iter,
++		       sizeof(sensor_pdr_out->hysteresis.value_u8));
++		*iter += sizeof(sensor_pdr_out->hysteresis.value_u8);
++		memcpy(&sensor_pdr_out->supported_thresholds, *iter,
++		       len_after_hysteresis);
++		*iter += len_after_hysteresis;
++		memcpy(&sensor_pdr_out->max_readable.value_u8, *iter,
++		       sizeof(sensor_pdr_out->max_readable.value_u8));
++		*iter += sizeof(sensor_pdr_out->max_readable.value_u8);
++		memcpy(&sensor_pdr_out->min_readable.value_u8, *iter,
++		       sizeof(sensor_pdr_out->min_readable.value_u8));
++		*iter += sizeof(sensor_pdr_out->min_readable.value_u8);
++		break;
++	case PLDM_SENSOR_DATA_SIZE_SINT8:
++		memcpy(&sensor_pdr_out->hysteresis.value_s8, *iter,
++		       sizeof(sensor_pdr_out->hysteresis.value_s8));
++		*iter += sizeof(sensor_pdr_out->hysteresis.value_s8);
++		memcpy(&sensor_pdr_out->supported_thresholds, *iter,
++		       len_after_hysteresis);
++		*iter += len_after_hysteresis;
++		memcpy(&sensor_pdr_out->max_readable.value_s8, *iter,
++		       sizeof(sensor_pdr_out->max_readable.value_s8));
++		*iter += sizeof(sensor_pdr_out->max_readable.value_s8);
++		memcpy(&sensor_pdr_out->min_readable.value_s8, *iter,
++		       sizeof(sensor_pdr_out->min_readable.value_s8));
++		*iter += sizeof(sensor_pdr_out->min_readable.value_s8);
++		break;
++	case PLDM_SENSOR_DATA_SIZE_UINT16:
++		memcpy(&sensor_pdr_out->hysteresis.value_u16, *iter,
++		       sizeof(sensor_pdr_out->hysteresis.value_u16));
++		LE16TOH(sensor_pdr_out->hysteresis.value_u16);
++		*iter += sizeof(sensor_pdr_out->hysteresis.value_u16);
++		memcpy(&sensor_pdr_out->supported_thresholds, *iter,
++		       len_after_hysteresis);
++		LE32TOH(sensor_pdr_out->state_transition_interval);
++		LE32TOH(sensor_pdr_out->update_interval);
++		*iter += len_after_hysteresis;
++		memcpy(&sensor_pdr_out->max_readable.value_u16, *iter,
++		       sizeof(sensor_pdr_out->max_readable.value_u16));
++		LE16TOH(sensor_pdr_out->max_readable.value_u16);
++		*iter += sizeof(sensor_pdr_out->max_readable.value_u16);
++		memcpy(&sensor_pdr_out->min_readable.value_u16, *iter,
++		       sizeof(sensor_pdr_out->min_readable.value_u16));
++		LE16TOH(sensor_pdr_out->min_readable.value_u16);
++		*iter += sizeof(sensor_pdr_out->min_readable.value_u16);
++		break;
++	case PLDM_SENSOR_DATA_SIZE_SINT16:
++		memcpy(&sensor_pdr_out->hysteresis.value_s16, *iter,
++		       sizeof(sensor_pdr_out->hysteresis.value_s16));
++		LE16TOH(sensor_pdr_out->hysteresis.value_s16);
++		*iter += sizeof(sensor_pdr_out->hysteresis.value_s16);
++		memcpy(&sensor_pdr_out->supported_thresholds, *iter,
++		       len_after_hysteresis);
++		LE32TOH(sensor_pdr_out->state_transition_interval);
++		LE32TOH(sensor_pdr_out->update_interval);
++		*iter += len_after_hysteresis;
++		memcpy(&sensor_pdr_out->max_readable.value_s16, *iter,
++		       sizeof(sensor_pdr_out->max_readable.value_s16));
++		LE16TOH(sensor_pdr_out->max_readable.value_s16);
++		*iter += sizeof(sensor_pdr_out->max_readable.value_s16);
++		memcpy(&sensor_pdr_out->min_readable.value_s16, *iter,
++		       sizeof(sensor_pdr_out->min_readable.value_s16));
++		LE16TOH(sensor_pdr_out->min_readable.value_s16);
++		*iter += sizeof(sensor_pdr_out->min_readable.value_s16);
++		break;
++	case PLDM_SENSOR_DATA_SIZE_UINT32:
++		memcpy(&sensor_pdr_out->hysteresis.value_u32, *iter,
++		       sizeof(sensor_pdr_out->hysteresis.value_u32));
++		LE32TOH(sensor_pdr_out->hysteresis.value_u32);
++		*iter += sizeof(sensor_pdr_out->hysteresis.value_u32);
++		memcpy(&sensor_pdr_out->supported_thresholds, *iter,
++		       len_after_hysteresis);
++		LE32TOH(sensor_pdr_out->state_transition_interval);
++		LE32TOH(sensor_pdr_out->update_interval);
++		*iter += len_after_hysteresis;
++		memcpy(&sensor_pdr_out->max_readable.value_u32, *iter,
++		       sizeof(sensor_pdr_out->max_readable.value_u32));
++		LE32TOH(sensor_pdr_out->max_readable.value_u32);
++		*iter += sizeof(sensor_pdr_out->max_readable.value_u32);
++		memcpy(&sensor_pdr_out->min_readable.value_u32, *iter,
++		       sizeof(sensor_pdr_out->min_readable.value_u32));
++		LE32TOH(sensor_pdr_out->min_readable.value_u32);
++		*iter += sizeof(sensor_pdr_out->min_readable.value_u32);
++		break;
++	case PLDM_SENSOR_DATA_SIZE_SINT32:
++		memcpy(&sensor_pdr_out->hysteresis.value_s32, *iter,
++		       sizeof(sensor_pdr_out->hysteresis.value_s32));
++		LE32TOH(sensor_pdr_out->hysteresis.value_s32);
++		*iter += sizeof(sensor_pdr_out->hysteresis.value_s32);
++		memcpy(&sensor_pdr_out->supported_thresholds, *iter,
++		       len_after_hysteresis);
++		LE32TOH(sensor_pdr_out->state_transition_interval);
++		LE32TOH(sensor_pdr_out->update_interval);
++		*iter += len_after_hysteresis;
++		memcpy(&sensor_pdr_out->max_readable.value_s32, *iter,
++		       sizeof(sensor_pdr_out->max_readable.value_s32));
++		LE32TOH(sensor_pdr_out->max_readable.value_s32);
++		*iter += sizeof(sensor_pdr_out->max_readable.value_s32);
++		memcpy(&sensor_pdr_out->min_readable.value_s32, *iter,
++		       sizeof(sensor_pdr_out->min_readable.value_s32));
++		LE32TOH(sensor_pdr_out->min_readable.value_s32);
++		*iter += sizeof(sensor_pdr_out->min_readable.value_s32);
++		break;
++	default:
++		return false;
++	}
++	return true;
++}
++
++/* Inventec - Add Parse Numeric Sensor PDR */
++static bool numeric_sensor_pdr_range_field_format_parse(
++    struct pldm_numeric_sensor_value_pdr *sensor_pdr_out, const uint8_t **iter,
++    size_t *min_pdr_size)
++{
++	assert(sensor_pdr_out != NULL);
++	assert(*iter != NULL);
++	assert(min_pdr_size != NULL);
++
++	switch (sensor_pdr_out->range_field_format) {
++	case PLDM_RANGE_FIELD_FORMAT_UINT8:
++		memcpy(&sensor_pdr_out->nominal_value.value_u8, *iter,
++		       sizeof(sensor_pdr_out->nominal_value.value_u8));
++		*iter += sizeof(sensor_pdr_out->nominal_value.value_u8);
++		memcpy(&sensor_pdr_out->normal_max.value_u8, *iter,
++		       sizeof(sensor_pdr_out->normal_max.value_u8));
++		*iter += sizeof(sensor_pdr_out->normal_max.value_u8);
++		memcpy(&sensor_pdr_out->normal_min.value_u8, *iter,
++		       sizeof(sensor_pdr_out->normal_min.value_u8));
++		*iter += sizeof(sensor_pdr_out->normal_min.value_u8);
++		memcpy(&sensor_pdr_out->warning_high.value_u8, *iter,
++		       sizeof(sensor_pdr_out->warning_high.value_u8));
++		*iter += sizeof(sensor_pdr_out->warning_high.value_u8);
++		memcpy(&sensor_pdr_out->warning_low.value_u8, *iter,
++		       sizeof(sensor_pdr_out->warning_low.value_u8));
++		*iter += sizeof(sensor_pdr_out->warning_low.value_u8);
++		memcpy(&sensor_pdr_out->critical_high.value_u8, *iter,
++		       sizeof(sensor_pdr_out->critical_high.value_u8));
++		*iter += sizeof(sensor_pdr_out->critical_high.value_u8);
++		memcpy(&sensor_pdr_out->critical_low.value_u8, *iter,
++		       sizeof(sensor_pdr_out->critical_low.value_u8));
++		*iter += sizeof(sensor_pdr_out->critical_low.value_u8);
++		memcpy(&sensor_pdr_out->fatal_high.value_u8, *iter,
++		       sizeof(sensor_pdr_out->fatal_high.value_u8));
++		*iter += sizeof(sensor_pdr_out->fatal_high.value_u8);
++		memcpy(&sensor_pdr_out->fatal_low.value_u8, *iter,
++		       sizeof(sensor_pdr_out->fatal_low.value_u8));
++		break;
++	case PLDM_RANGE_FIELD_FORMAT_SINT8:
++		memcpy(&sensor_pdr_out->nominal_value.value_s8, *iter,
++		       sizeof(sensor_pdr_out->nominal_value.value_s8));
++		*iter += sizeof(sensor_pdr_out->nominal_value.value_s8);
++		memcpy(&sensor_pdr_out->normal_max.value_s8, *iter,
++		       sizeof(sensor_pdr_out->normal_max.value_s8));
++		*iter += sizeof(sensor_pdr_out->normal_max.value_s8);
++		memcpy(&sensor_pdr_out->normal_min.value_s8, *iter,
++		       sizeof(sensor_pdr_out->normal_min.value_s8));
++		*iter += sizeof(sensor_pdr_out->normal_min.value_s8);
++		memcpy(&sensor_pdr_out->warning_high.value_s8, *iter,
++		       sizeof(sensor_pdr_out->warning_high.value_s8));
++		*iter += sizeof(sensor_pdr_out->warning_high.value_s8);
++		memcpy(&sensor_pdr_out->warning_low.value_s8, *iter,
++		       sizeof(sensor_pdr_out->warning_low.value_s8));
++		*iter += sizeof(sensor_pdr_out->warning_low.value_s8);
++		memcpy(&sensor_pdr_out->critical_high.value_s8, *iter,
++		       sizeof(sensor_pdr_out->critical_high.value_s8));
++		*iter += sizeof(sensor_pdr_out->critical_high.value_s8);
++		memcpy(&sensor_pdr_out->critical_low.value_s8, *iter,
++		       sizeof(sensor_pdr_out->critical_low.value_s8));
++		*iter += sizeof(sensor_pdr_out->critical_low.value_s8);
++		memcpy(&sensor_pdr_out->fatal_high.value_s8, *iter,
++		       sizeof(sensor_pdr_out->fatal_high.value_s8));
++		*iter += sizeof(sensor_pdr_out->fatal_high.value_s8);
++		memcpy(&sensor_pdr_out->fatal_low.value_s8, *iter,
++		       sizeof(sensor_pdr_out->fatal_low.value_s8));
++		break;
++	case PLDM_RANGE_FIELD_FORMAT_UINT16:
++		memcpy(&sensor_pdr_out->nominal_value.value_u16, *iter,
++		       sizeof(sensor_pdr_out->nominal_value.value_u16));
++		LE16TOH(sensor_pdr_out->nominal_value.value_u16);
++		*iter += sizeof(sensor_pdr_out->nominal_value.value_u16);
++		memcpy(&sensor_pdr_out->normal_max.value_u16, *iter,
++		       sizeof(sensor_pdr_out->normal_max.value_u16));
++		LE16TOH(sensor_pdr_out->normal_max.value_u16);
++		*iter += sizeof(sensor_pdr_out->normal_max.value_u16);
++		memcpy(&sensor_pdr_out->normal_min.value_u16, *iter,
++		       sizeof(sensor_pdr_out->normal_min.value_u16));
++		LE16TOH(sensor_pdr_out->normal_min.value_u16);
++		*iter += sizeof(sensor_pdr_out->normal_min.value_u16);
++		memcpy(&sensor_pdr_out->warning_high.value_u16, *iter,
++		       sizeof(sensor_pdr_out->warning_high.value_u16));
++		LE16TOH(sensor_pdr_out->warning_high.value_u16);
++		*iter += sizeof(sensor_pdr_out->warning_high.value_u16);
++		memcpy(&sensor_pdr_out->warning_low.value_u16, *iter,
++		       sizeof(sensor_pdr_out->warning_low.value_u16));
++		LE16TOH(sensor_pdr_out->warning_low.value_u16);
++		*iter += sizeof(sensor_pdr_out->warning_low.value_u16);
++		memcpy(&sensor_pdr_out->critical_high.value_u16, *iter,
++		       sizeof(sensor_pdr_out->critical_high.value_u16));
++		LE16TOH(sensor_pdr_out->critical_high.value_u16);
++		*iter += sizeof(sensor_pdr_out->critical_high.value_u16);
++		memcpy(&sensor_pdr_out->critical_low.value_u16, *iter,
++		       sizeof(sensor_pdr_out->critical_low.value_u16));
++		LE16TOH(sensor_pdr_out->critical_low.value_u16);
++		*iter += sizeof(sensor_pdr_out->critical_low.value_u16);
++		memcpy(&sensor_pdr_out->fatal_high.value_u16, *iter,
++		       sizeof(sensor_pdr_out->fatal_high.value_u16));
++		LE16TOH(sensor_pdr_out->fatal_high.value_u16);
++		*iter += sizeof(sensor_pdr_out->fatal_high.value_u16);
++		memcpy(&sensor_pdr_out->fatal_low.value_u16, *iter,
++		       sizeof(sensor_pdr_out->fatal_low.value_u16));
++		LE16TOH(sensor_pdr_out->fatal_low.value_u16);
++		break;
++	case PLDM_RANGE_FIELD_FORMAT_SINT16:
++		memcpy(&sensor_pdr_out->nominal_value.value_s16, *iter,
++		       sizeof(sensor_pdr_out->nominal_value.value_s16));
++		LE16TOH(sensor_pdr_out->nominal_value.value_s16);
++		*iter += sizeof(sensor_pdr_out->nominal_value.value_s16);
++		memcpy(&sensor_pdr_out->normal_max.value_s16, *iter,
++		       sizeof(sensor_pdr_out->normal_max.value_s16));
++		LE16TOH(sensor_pdr_out->normal_max.value_s16);
++		*iter += sizeof(sensor_pdr_out->normal_max.value_s16);
++		memcpy(&sensor_pdr_out->normal_min.value_s16, *iter,
++		       sizeof(sensor_pdr_out->normal_min.value_s16));
++		LE16TOH(sensor_pdr_out->normal_min.value_s16);
++		*iter += sizeof(sensor_pdr_out->normal_min.value_s16);
++		memcpy(&sensor_pdr_out->warning_high.value_s16, *iter,
++		       sizeof(sensor_pdr_out->warning_high.value_s16));
++		LE16TOH(sensor_pdr_out->warning_high.value_s16);
++		*iter += sizeof(sensor_pdr_out->warning_high.value_s16);
++		memcpy(&sensor_pdr_out->warning_low.value_s16, *iter,
++		       sizeof(sensor_pdr_out->warning_low.value_s16));
++		LE16TOH(sensor_pdr_out->warning_low.value_s16);
++		*iter += sizeof(sensor_pdr_out->warning_low.value_s16);
++		memcpy(&sensor_pdr_out->critical_high.value_s16, *iter,
++		       sizeof(sensor_pdr_out->critical_high.value_s16));
++		LE16TOH(sensor_pdr_out->critical_high.value_s16);
++		*iter += sizeof(sensor_pdr_out->critical_high.value_s16);
++		memcpy(&sensor_pdr_out->critical_low.value_s16, *iter,
++		       sizeof(sensor_pdr_out->critical_low.value_s16));
++		LE16TOH(sensor_pdr_out->critical_low.value_s16);
++		*iter += sizeof(sensor_pdr_out->critical_low.value_s16);
++		memcpy(&sensor_pdr_out->fatal_high.value_s16, *iter,
++		       sizeof(sensor_pdr_out->fatal_high.value_s16));
++		LE16TOH(sensor_pdr_out->fatal_high.value_s16);
++		*iter += sizeof(sensor_pdr_out->fatal_high.value_s16);
++		memcpy(&sensor_pdr_out->fatal_low.value_s16, *iter,
++		       sizeof(sensor_pdr_out->fatal_low.value_s16));
++		LE16TOH(sensor_pdr_out->fatal_low.value_s16);
++		break;
++	case PLDM_RANGE_FIELD_FORMAT_UINT32:
++		memcpy(&sensor_pdr_out->nominal_value.value_u32, *iter,
++		       sizeof(sensor_pdr_out->nominal_value.value_u32));
++		LE32TOH(sensor_pdr_out->nominal_value.value_u32);
++		*iter += sizeof(sensor_pdr_out->nominal_value.value_u32);
++		memcpy(&sensor_pdr_out->normal_max.value_u32, *iter,
++		       sizeof(sensor_pdr_out->normal_max.value_u32));
++		LE32TOH(sensor_pdr_out->normal_max.value_u32);
++		*iter += sizeof(sensor_pdr_out->normal_max.value_u32);
++		memcpy(&sensor_pdr_out->normal_min.value_u32, *iter,
++		       sizeof(sensor_pdr_out->normal_min.value_u32));
++		LE32TOH(sensor_pdr_out->normal_min.value_u32);
++		*iter += sizeof(sensor_pdr_out->normal_min.value_u32);
++		memcpy(&sensor_pdr_out->warning_high.value_u32, *iter,
++		       sizeof(sensor_pdr_out->warning_high.value_u32));
++		LE32TOH(sensor_pdr_out->warning_high.value_u32);
++		*iter += sizeof(sensor_pdr_out->warning_high.value_u32);
++		memcpy(&sensor_pdr_out->warning_low.value_u32, *iter,
++		       sizeof(sensor_pdr_out->warning_low.value_u32));
++		LE32TOH(sensor_pdr_out->warning_low.value_u32);
++		*iter += sizeof(sensor_pdr_out->warning_low.value_u32);
++		memcpy(&sensor_pdr_out->critical_high.value_u32, *iter,
++		       sizeof(sensor_pdr_out->critical_high.value_u32));
++		LE32TOH(sensor_pdr_out->critical_high.value_u32);
++		*iter += sizeof(sensor_pdr_out->critical_high.value_u32);
++		memcpy(&sensor_pdr_out->critical_low.value_u32, *iter,
++		       sizeof(sensor_pdr_out->critical_low.value_u32));
++		LE32TOH(sensor_pdr_out->critical_low.value_u32);
++		*iter += sizeof(sensor_pdr_out->critical_low.value_u32);
++		memcpy(&sensor_pdr_out->fatal_high.value_u32, *iter,
++		       sizeof(sensor_pdr_out->fatal_high.value_u32));
++		LE32TOH(sensor_pdr_out->fatal_high.value_u32);
++		*iter += sizeof(sensor_pdr_out->fatal_high.value_u32);
++		memcpy(&sensor_pdr_out->fatal_low.value_u32, *iter,
++		       sizeof(sensor_pdr_out->fatal_low.value_u32));
++		LE32TOH(sensor_pdr_out->fatal_low.value_u32);
++		break;
++	case PLDM_RANGE_FIELD_FORMAT_SINT32:
++		memcpy(&sensor_pdr_out->nominal_value.value_s32, *iter,
++		       sizeof(sensor_pdr_out->nominal_value.value_s32));
++		LE32TOH(sensor_pdr_out->nominal_value.value_s32);
++		*iter += sizeof(sensor_pdr_out->nominal_value.value_s32);
++		memcpy(&sensor_pdr_out->normal_max.value_s32, *iter,
++		       sizeof(sensor_pdr_out->normal_max.value_s32));
++		LE32TOH(sensor_pdr_out->normal_max.value_s32);
++		*iter += sizeof(sensor_pdr_out->normal_max.value_s32);
++		memcpy(&sensor_pdr_out->normal_min.value_s32, *iter,
++		       sizeof(sensor_pdr_out->normal_min.value_s32));
++		LE32TOH(sensor_pdr_out->normal_min.value_s32);
++		*iter += sizeof(sensor_pdr_out->normal_min.value_s32);
++		memcpy(&sensor_pdr_out->warning_high.value_s32, *iter,
++		       sizeof(sensor_pdr_out->warning_high.value_s32));
++		LE32TOH(sensor_pdr_out->warning_high.value_s32);
++		*iter += sizeof(sensor_pdr_out->warning_high.value_s32);
++		memcpy(&sensor_pdr_out->warning_low.value_s32, *iter,
++		       sizeof(sensor_pdr_out->warning_low.value_s32));
++		LE32TOH(sensor_pdr_out->warning_low.value_s32);
++		*iter += sizeof(sensor_pdr_out->warning_low.value_s32);
++		memcpy(&sensor_pdr_out->critical_high.value_s32, *iter,
++		       sizeof(sensor_pdr_out->critical_high.value_s32));
++		LE32TOH(sensor_pdr_out->critical_high.value_s32);
++		*iter += sizeof(sensor_pdr_out->critical_high.value_s32);
++		memcpy(&sensor_pdr_out->critical_low.value_s32, *iter,
++		       sizeof(sensor_pdr_out->critical_low.value_s32));
++		LE32TOH(sensor_pdr_out->critical_low.value_s32);
++		*iter += sizeof(sensor_pdr_out->critical_low.value_s32);
++		memcpy(&sensor_pdr_out->fatal_high.value_s32, *iter,
++		       sizeof(sensor_pdr_out->fatal_high.value_s32));
++		LE32TOH(sensor_pdr_out->fatal_high.value_s32);
++		*iter += sizeof(sensor_pdr_out->fatal_high.value_s32);
++		memcpy(&sensor_pdr_out->fatal_low.value_s32, *iter,
++		       sizeof(sensor_pdr_out->fatal_low.value_s32));
++		LE32TOH(sensor_pdr_out->fatal_low.value_s32);
++		break;
++	case PLDM_RANGE_FIELD_FORMAT_REAL32:
++		memcpy(&sensor_pdr_out->nominal_value.value_f32, *iter,
++		       sizeof(sensor_pdr_out->nominal_value.value_f32));
++		LE32TOH(sensor_pdr_out->nominal_value.value_f32);
++		*iter += sizeof(sensor_pdr_out->nominal_value.value_f32);
++		memcpy(&sensor_pdr_out->normal_max.value_f32, *iter,
++		       sizeof(sensor_pdr_out->normal_max.value_f32));
++		LE32TOH(sensor_pdr_out->normal_max.value_f32);
++		*iter += sizeof(sensor_pdr_out->normal_max.value_f32);
++		memcpy(&sensor_pdr_out->normal_min.value_f32, *iter,
++		       sizeof(sensor_pdr_out->normal_min.value_f32));
++		LE32TOH(sensor_pdr_out->normal_min.value_f32);
++		*iter += sizeof(sensor_pdr_out->normal_min.value_f32);
++		memcpy(&sensor_pdr_out->warning_high.value_f32, *iter,
++		       sizeof(sensor_pdr_out->warning_high.value_f32));
++		LE32TOH(sensor_pdr_out->warning_high.value_f32);
++		*iter += sizeof(sensor_pdr_out->warning_high.value_f32);
++		memcpy(&sensor_pdr_out->warning_low.value_f32, *iter,
++		       sizeof(sensor_pdr_out->warning_low.value_f32));
++		LE32TOH(sensor_pdr_out->warning_low.value_f32);
++		*iter += sizeof(sensor_pdr_out->warning_low.value_f32);
++		memcpy(&sensor_pdr_out->critical_high.value_f32, *iter,
++		       sizeof(sensor_pdr_out->critical_high.value_f32));
++		LE32TOH(sensor_pdr_out->critical_high.value_f32);
++		*iter += sizeof(sensor_pdr_out->critical_high.value_f32);
++		memcpy(&sensor_pdr_out->critical_low.value_f32, *iter,
++		       sizeof(sensor_pdr_out->critical_low.value_f32));
++		LE32TOH(sensor_pdr_out->critical_low.value_f32);
++		*iter += sizeof(sensor_pdr_out->critical_low.value_f32);
++		memcpy(&sensor_pdr_out->fatal_high.value_f32, *iter,
++		       sizeof(sensor_pdr_out->fatal_high.value_f32));
++		LE32TOH(sensor_pdr_out->fatal_high.value_f32);
++		*iter += sizeof(sensor_pdr_out->fatal_high.value_f32);
++		memcpy(&sensor_pdr_out->fatal_low.value_f32, *iter,
++		       sizeof(sensor_pdr_out->fatal_low.value_f32));
++		LE32TOH(sensor_pdr_out->fatal_low.value_f32);
++		break;
++	default:
++		return false;
++	}
++	return true;
++}
++
++/* Inventec - Add Parse Numeric Sensor PDR */
++static bool validate_numeric_sensor_pdr_len(
++    const uint16_t pdr_len,
++    const struct pldm_numeric_sensor_value_pdr *sensor_pdr_in)
++{
++
++	assert(sensor_pdr_in != NULL);
++	size_t min_pdr_size = PLDM_PDR_NUMERIC_SENSOR_PDR_MIN_LENGTH;
++	// first possible location will be 13 bytes after hysteresis.value
++	const uint8_t *range_field_format_pos =
++	    (const uint8_t *)(&sensor_pdr_in->hysteresis.value_u8 + 13);
++
++	switch (sensor_pdr_in->sensor_data_size) {
++	case PLDM_SENSOR_DATA_SIZE_UINT8:
++	case PLDM_SENSOR_DATA_SIZE_SINT8:
++		break;
++	case PLDM_SENSOR_DATA_SIZE_UINT16:
++	case PLDM_SENSOR_DATA_SIZE_SINT16:
++		// Increase length by 3 for the extra byte in 3 fields
++		min_pdr_size += 3;
++		range_field_format_pos += 3;
++		break;
++	case PLDM_SENSOR_DATA_SIZE_UINT32:
++	case PLDM_SENSOR_DATA_SIZE_SINT32:
++		// Increase length by 9 for the extra 3 byte in 3 fields
++		min_pdr_size += 9;
++		range_field_format_pos += 9;
++		break;
++	default:
++		return false;
++	}
++	if (pdr_len < min_pdr_size) {
++		return false;
++	}
++
++	switch (*range_field_format_pos) {
++	case PLDM_RANGE_FIELD_FORMAT_UINT8:
++	case PLDM_RANGE_FIELD_FORMAT_SINT8:
++		break;
++	case PLDM_RANGE_FIELD_FORMAT_UINT16:
++	case PLDM_RANGE_FIELD_FORMAT_SINT16:
++		// Increase length by 9 for the extra byte in 9 fields
++		min_pdr_size += 9;
++		break;
++	case PLDM_RANGE_FIELD_FORMAT_UINT32:
++	case PLDM_RANGE_FIELD_FORMAT_SINT32:
++	case PLDM_RANGE_FIELD_FORMAT_REAL32:
++		// Increase length by 27 for the extra 3 bytes in 9 fields
++		min_pdr_size += 27;
++		break;
++	default:
++		return false;
++	}
++	if (pdr_len < min_pdr_size) {
++		return false;
++	}
++	return true;
++}
++
++/* Inventec - Add Parse Numeric Sensor PDR */
++LIBPLDM_ABI_STABLE
++bool pldm_numeric_sensor_pdr_parse(const uint8_t *pdr, const uint16_t pdr_len,
++				   uint8_t *numeric_sensor_pdr)
++{
++	assert(pdr != NULL);
++	assert(numeric_sensor_pdr != NULL);
++	if (pdr_len < PLDM_PDR_NUMERIC_SENSOR_PDR_MIN_LENGTH) {
++		return false;
++	}
++	struct pldm_pdr_hdr *hdr = (struct pldm_pdr_hdr *)pdr;
++	assert(hdr->type == PLDM_NUMERIC_SENSOR_PDR);
++
++	const struct pldm_numeric_sensor_value_pdr *sensor_pdr_in =
++	    (const struct pldm_numeric_sensor_value_pdr *)pdr;
++
++	if (!validate_numeric_sensor_pdr_len(pdr_len, sensor_pdr_in)) {
++		return false;
++	}
++	struct pldm_numeric_sensor_value_pdr *sensor_pdr_out =
++	    (struct pldm_numeric_sensor_value_pdr *)numeric_sensor_pdr;
++	memcpy(sensor_pdr_out, sensor_pdr_in,
++	       &sensor_pdr_in->hysteresis.value_u8 - pdr);
++	LE32TOH(sensor_pdr_out->hdr.record_handle);
++	LE16TOH(sensor_pdr_out->hdr.record_change_num);
++	LE16TOH(sensor_pdr_out->hdr.length);
++	LE16TOH(sensor_pdr_out->terminus_handle);
++	LE16TOH(sensor_pdr_out->sensor_id);
++	LE16TOH(sensor_pdr_out->entity_type);
++	LE16TOH(sensor_pdr_out->entity_instance_num);
++	LE16TOH(sensor_pdr_out->container_id);
++	LE32TOH(sensor_pdr_out->resolution);
++	LE32TOH(sensor_pdr_out->offset);
++	LE32TOH(sensor_pdr_out->accuracy);
++
++	size_t min_pdr_size = PLDM_PDR_NUMERIC_SENSOR_PDR_MIN_LENGTH;
++	const uint8_t *iter = &sensor_pdr_in->minus_tolerance +
++			      sizeof(sensor_pdr_in->minus_tolerance);
++	if (!numeric_sensor_pdr_sensor_data_size_parse(
++		sensor_pdr_out, &iter, &min_pdr_size)) {
++		return false;
++	}
++
++	size_t len_after_min_readable =
++	    sizeof(sensor_pdr_out->range_field_format) +
++	    sizeof(sensor_pdr_out->range_field_support);
++	memcpy(&sensor_pdr_out->range_field_format, iter,
++	       len_after_min_readable);
++	iter += len_after_min_readable;
++
++	if (!numeric_sensor_pdr_range_field_format_parse(
++		sensor_pdr_out, &iter, &min_pdr_size)) {
++		return false;
++	}
++	return true;
++}
++
++/* Inventec - Add Parse Parse Numeric Effecter PDR */
++static bool validate_numeric_effecter_pdr_len(
++    const uint16_t pdr_len,
++    const struct pldm_numeric_effecter_value_pdr *effecter_pdr_in)
++{
++
++	assert(effecter_pdr_in != NULL);
++	size_t min_pdr_size = PLDM_PDR_NUMERIC_EFFECTER_MIN_LENGTH;
++	// first possible location will be 2 bytes after max_settable
++	const uint8_t *range_field_format_pos =
++	    (const uint8_t *)(&effecter_pdr_in->max_settable.value_u8 + 2);
++
++	switch (effecter_pdr_in->effecter_data_size) {
++	case PLDM_EFFECTER_DATA_SIZE_UINT8:
++	case PLDM_EFFECTER_DATA_SIZE_SINT8:
++		break;
++	case PLDM_EFFECTER_DATA_SIZE_UINT16:
++	case PLDM_EFFECTER_DATA_SIZE_SINT16:
++		// Increase length by 2 for the extra byte in 2 fields
++		min_pdr_size += 2;
++		range_field_format_pos += 2;
++		break;
++	case PLDM_EFFECTER_DATA_SIZE_UINT32:
++	case PLDM_EFFECTER_DATA_SIZE_SINT32:
++		// Increase length by 6 for the extra 3 byte in 2 fields
++		min_pdr_size += 6;
++		range_field_format_pos += 6;
++		break;
++	default:
++		return false;
++	}
++
++	if (pdr_len < min_pdr_size) {
++		return false;
++	}
++
++	switch (*range_field_format_pos) {
++	case PLDM_RANGE_FIELD_FORMAT_UINT8:
++	case PLDM_RANGE_FIELD_FORMAT_SINT8:
++		break;
++	case PLDM_RANGE_FIELD_FORMAT_UINT16:
++	case PLDM_RANGE_FIELD_FORMAT_SINT16:
++		// Increase length by 5 for the extra byte in 5 fields
++		min_pdr_size += 5;
++		break;
++	case PLDM_RANGE_FIELD_FORMAT_UINT32:
++	case PLDM_RANGE_FIELD_FORMAT_SINT32:
++	case PLDM_RANGE_FIELD_FORMAT_REAL32:
++		// Increase length by 15 for the extra 3 byte in 5
++		// fields
++		min_pdr_size += 15;
++		break;
++	default:
++		return false;
++	}
++
++	if (pdr_len < min_pdr_size) {
++		return false;
++	}
++	return true;
++}
++
++/* Inventec - Add Parse Parse Numeric Effecter PDR */
++static bool numeric_effecter_pdr_effecter_data_size_parse(
++    struct pldm_numeric_effecter_value_pdr *effecter_pdr_out,
++    const uint8_t **iter)
++{
++	assert(effecter_pdr_out != NULL);
++	assert(*iter != NULL);
++
++	switch (effecter_pdr_out->effecter_data_size) {
++	case PLDM_EFFECTER_DATA_SIZE_UINT8:
++		memcpy(&effecter_pdr_out->max_settable.value_u8, *iter,
++		       sizeof(effecter_pdr_out->max_settable.value_u8));
++		*iter += sizeof(effecter_pdr_out->max_settable.value_u8);
++		memcpy(&effecter_pdr_out->min_settable.value_u8, *iter,
++		       sizeof(effecter_pdr_out->min_settable.value_u8));
++		*iter += sizeof(effecter_pdr_out->min_settable.value_u8);
++		break;
++	case PLDM_EFFECTER_DATA_SIZE_SINT8:
++		memcpy(&effecter_pdr_out->max_settable.value_s8, *iter,
++		       sizeof(effecter_pdr_out->max_settable.value_s8));
++		*iter += sizeof(effecter_pdr_out->max_settable.value_s8);
++		memcpy(&effecter_pdr_out->min_settable.value_s8, *iter,
++		       sizeof(effecter_pdr_out->min_settable.value_s8));
++		*iter += sizeof(effecter_pdr_out->min_settable.value_s8);
++		break;
++	case PLDM_EFFECTER_DATA_SIZE_UINT16:
++		memcpy(&effecter_pdr_out->max_settable.value_u16, *iter,
++		       sizeof(effecter_pdr_out->max_settable.value_u16));
++		LE16TOH(effecter_pdr_out->max_settable.value_u16);
++		*iter += sizeof(effecter_pdr_out->max_settable.value_u16);
++		memcpy(&effecter_pdr_out->min_settable.value_u16, *iter,
++		       sizeof(effecter_pdr_out->min_settable.value_u16));
++		LE16TOH(effecter_pdr_out->min_settable.value_u16);
++		*iter += sizeof(effecter_pdr_out->min_settable.value_u16);
++		break;
++	case PLDM_EFFECTER_DATA_SIZE_SINT16:
++		memcpy(&effecter_pdr_out->max_settable.value_s16, *iter,
++		       sizeof(effecter_pdr_out->max_settable.value_s16));
++		LE16TOH(effecter_pdr_out->max_settable.value_s16);
++		*iter += sizeof(effecter_pdr_out->max_settable.value_s16);
++		memcpy(&effecter_pdr_out->min_settable.value_s16, *iter,
++		       sizeof(effecter_pdr_out->min_settable.value_s16));
++		LE16TOH(effecter_pdr_out->min_settable.value_s16);
++		*iter += sizeof(effecter_pdr_out->min_settable.value_s16);
++		break;
++	case PLDM_EFFECTER_DATA_SIZE_UINT32:
++		memcpy(&effecter_pdr_out->max_settable.value_u32, *iter,
++		       sizeof(effecter_pdr_out->max_settable.value_u32));
++		LE32TOH(effecter_pdr_out->max_settable.value_u32);
++		*iter += sizeof(effecter_pdr_out->max_settable.value_u32);
++		memcpy(&effecter_pdr_out->min_settable.value_u32, *iter,
++		       sizeof(effecter_pdr_out->min_settable.value_u32));
++		LE32TOH(effecter_pdr_out->min_settable.value_u32);
++		*iter += sizeof(effecter_pdr_out->min_settable.value_u32);
++		break;
++	case PLDM_EFFECTER_DATA_SIZE_SINT32:
++		memcpy(&effecter_pdr_out->max_settable.value_s32, *iter,
++		       sizeof(effecter_pdr_out->max_settable.value_s32));
++		LE32TOH(effecter_pdr_out->max_settable.value_s32);
++		*iter += sizeof(effecter_pdr_out->max_settable.value_s32);
++		memcpy(&effecter_pdr_out->min_settable.value_s32, *iter,
++		       sizeof(effecter_pdr_out->min_settable.value_s32));
++		LE32TOH(effecter_pdr_out->min_settable.value_s32);
++		*iter += sizeof(effecter_pdr_out->min_settable.value_s32);
++		break;
++	default:
++		return false;
++	}
++	return true;
++}
++
++/* Inventec - Add Parse Parse Numeric Effecter PDR */
++static bool numeric_effecter_pdr_range_field_format_parse(
++    struct pldm_numeric_effecter_value_pdr *effecter_pdr_out,
++    const uint8_t **iter)
++{
++	assert(effecter_pdr_out != NULL);
++	assert(*iter != NULL);
++
++	switch (effecter_pdr_out->range_field_format) {
++	case PLDM_RANGE_FIELD_FORMAT_UINT8:
++		memcpy(&effecter_pdr_out->nominal_value.value_u8, *iter,
++		       sizeof(effecter_pdr_out->nominal_value.value_u8));
++		*iter += sizeof(effecter_pdr_out->nominal_value.value_u8);
++		memcpy(&effecter_pdr_out->normal_max.value_u8, *iter,
++		       sizeof(effecter_pdr_out->normal_max.value_u8));
++		*iter += sizeof(effecter_pdr_out->normal_max.value_u8);
++		memcpy(&effecter_pdr_out->normal_min.value_u8, *iter,
++		       sizeof(effecter_pdr_out->normal_min.value_u8));
++		*iter += sizeof(effecter_pdr_out->normal_min.value_u8);
++		memcpy(&effecter_pdr_out->rated_max.value_u8, *iter,
++		       sizeof(effecter_pdr_out->rated_max.value_u8));
++		*iter += sizeof(effecter_pdr_out->rated_max.value_u8);
++		memcpy(&effecter_pdr_out->rated_min.value_u8, *iter,
++		       sizeof(effecter_pdr_out->rated_min.value_u8));
++		break;
++	case PLDM_RANGE_FIELD_FORMAT_SINT8:
++		memcpy(&effecter_pdr_out->nominal_value.value_s8, *iter,
++		       sizeof(effecter_pdr_out->nominal_value.value_s8));
++		*iter += sizeof(effecter_pdr_out->nominal_value.value_s8);
++		memcpy(&effecter_pdr_out->normal_max.value_s8, *iter,
++		       sizeof(effecter_pdr_out->normal_max.value_s8));
++		*iter += sizeof(effecter_pdr_out->normal_max.value_s8);
++		memcpy(&effecter_pdr_out->normal_min.value_s8, *iter,
++		       sizeof(effecter_pdr_out->normal_min.value_s8));
++		*iter += sizeof(effecter_pdr_out->normal_min.value_s8);
++		memcpy(&effecter_pdr_out->rated_max.value_s8, *iter,
++		       sizeof(effecter_pdr_out->rated_max.value_s8));
++		*iter += sizeof(effecter_pdr_out->rated_max.value_s8);
++		memcpy(&effecter_pdr_out->rated_min.value_s8, *iter,
++		       sizeof(effecter_pdr_out->rated_min.value_s8));
++		break;
++	case PLDM_RANGE_FIELD_FORMAT_UINT16:
++		memcpy(&effecter_pdr_out->nominal_value.value_u16, *iter,
++		       sizeof(effecter_pdr_out->nominal_value.value_u16));
++		LE16TOH(effecter_pdr_out->nominal_value.value_u16);
++		*iter += sizeof(effecter_pdr_out->nominal_value.value_u16);
++		memcpy(&effecter_pdr_out->normal_max.value_u16, *iter,
++		       sizeof(effecter_pdr_out->normal_max.value_u16));
++		LE16TOH(effecter_pdr_out->normal_max.value_u16);
++		*iter += sizeof(effecter_pdr_out->normal_max.value_u16);
++		memcpy(&effecter_pdr_out->normal_min.value_u16, *iter,
++		       sizeof(effecter_pdr_out->normal_min.value_u16));
++		LE16TOH(effecter_pdr_out->normal_min.value_u16);
++		*iter += sizeof(effecter_pdr_out->normal_min.value_u16);
++		memcpy(&effecter_pdr_out->rated_max.value_u16, *iter,
++		       sizeof(effecter_pdr_out->rated_max.value_u16));
++		LE16TOH(effecter_pdr_out->rated_max.value_u16);
++		*iter += sizeof(effecter_pdr_out->rated_max.value_u16);
++		memcpy(&effecter_pdr_out->rated_min.value_u16, *iter,
++		       sizeof(effecter_pdr_out->rated_min.value_u16));
++		LE16TOH(effecter_pdr_out->rated_min.value_u16);
++		break;
++	case PLDM_RANGE_FIELD_FORMAT_SINT16:
++		memcpy(&effecter_pdr_out->nominal_value.value_s16, *iter,
++		       sizeof(effecter_pdr_out->nominal_value.value_s16));
++		LE16TOH(effecter_pdr_out->nominal_value.value_s16);
++		*iter += sizeof(effecter_pdr_out->nominal_value.value_s16);
++		memcpy(&effecter_pdr_out->normal_max.value_s16, *iter,
++		       sizeof(effecter_pdr_out->normal_max.value_s16));
++		LE16TOH(effecter_pdr_out->normal_max.value_s16);
++		*iter += sizeof(effecter_pdr_out->normal_max.value_s16);
++		memcpy(&effecter_pdr_out->normal_min.value_s16, *iter,
++		       sizeof(effecter_pdr_out->normal_min.value_s16));
++		LE16TOH(effecter_pdr_out->normal_min.value_s16);
++		*iter += sizeof(effecter_pdr_out->normal_min.value_s16);
++		memcpy(&effecter_pdr_out->rated_max.value_s16, *iter,
++		       sizeof(effecter_pdr_out->rated_max.value_s16));
++		LE16TOH(effecter_pdr_out->rated_max.value_s16);
++		*iter += sizeof(effecter_pdr_out->rated_max.value_s16);
++		memcpy(&effecter_pdr_out->rated_min.value_s16, *iter,
++		       sizeof(effecter_pdr_out->rated_min.value_s16));
++		LE16TOH(effecter_pdr_out->rated_min.value_s16);
++		break;
++	case PLDM_RANGE_FIELD_FORMAT_UINT32:
++		memcpy(&effecter_pdr_out->nominal_value.value_u32, *iter,
++		       sizeof(effecter_pdr_out->nominal_value.value_u32));
++		LE32TOH(effecter_pdr_out->nominal_value.value_u32);
++		*iter += sizeof(effecter_pdr_out->nominal_value.value_u32);
++		memcpy(&effecter_pdr_out->normal_max.value_u32, *iter,
++		       sizeof(effecter_pdr_out->normal_max.value_u32));
++		LE32TOH(effecter_pdr_out->normal_max.value_u32);
++		*iter += sizeof(effecter_pdr_out->normal_max.value_u32);
++		memcpy(&effecter_pdr_out->normal_min.value_u32, *iter,
++		       sizeof(effecter_pdr_out->normal_min.value_u32));
++		LE32TOH(effecter_pdr_out->normal_min.value_u32);
++		*iter += sizeof(effecter_pdr_out->normal_min.value_u32);
++		memcpy(&effecter_pdr_out->rated_max.value_u32, *iter,
++		       sizeof(effecter_pdr_out->rated_max.value_u32));
++		LE32TOH(effecter_pdr_out->rated_max.value_u32);
++		*iter += sizeof(effecter_pdr_out->rated_max.value_u32);
++		memcpy(&effecter_pdr_out->rated_min.value_u32, *iter,
++		       sizeof(effecter_pdr_out->rated_min.value_u32));
++		LE32TOH(effecter_pdr_out->rated_min.value_u32);
++		break;
++	case PLDM_RANGE_FIELD_FORMAT_SINT32:
++		memcpy(&effecter_pdr_out->nominal_value.value_s32, *iter,
++		       sizeof(effecter_pdr_out->nominal_value.value_s32));
++		LE32TOH(effecter_pdr_out->nominal_value.value_s32);
++		*iter += sizeof(effecter_pdr_out->nominal_value.value_s32);
++		memcpy(&effecter_pdr_out->normal_max.value_s32, *iter,
++		       sizeof(effecter_pdr_out->normal_max.value_s32));
++		LE32TOH(effecter_pdr_out->normal_max.value_s32);
++		*iter += sizeof(effecter_pdr_out->normal_max.value_s32);
++		memcpy(&effecter_pdr_out->normal_min.value_s32, *iter,
++		       sizeof(effecter_pdr_out->normal_min.value_s32));
++		LE32TOH(effecter_pdr_out->normal_min.value_s32);
++		*iter += sizeof(effecter_pdr_out->normal_min.value_s32);
++		memcpy(&effecter_pdr_out->rated_max.value_s32, *iter,
++		       sizeof(effecter_pdr_out->rated_max.value_s32));
++		LE32TOH(effecter_pdr_out->rated_max.value_s32);
++		*iter += sizeof(effecter_pdr_out->rated_max.value_s32);
++		memcpy(&effecter_pdr_out->rated_min.value_s32, *iter,
++		       sizeof(effecter_pdr_out->rated_min.value_s32));
++		LE32TOH(effecter_pdr_out->rated_min.value_s32);
++		break;
++	case PLDM_RANGE_FIELD_FORMAT_REAL32:
++		memcpy(&effecter_pdr_out->nominal_value.value_f32, *iter,
++		       sizeof(effecter_pdr_out->nominal_value.value_f32));
++		LE32TOH(effecter_pdr_out->nominal_value.value_f32);
++		*iter += sizeof(effecter_pdr_out->nominal_value.value_f32);
++		memcpy(&effecter_pdr_out->normal_max.value_f32, *iter,
++		       sizeof(effecter_pdr_out->normal_max.value_f32));
++		LE32TOH(effecter_pdr_out->normal_max.value_f32);
++		*iter += sizeof(effecter_pdr_out->normal_max.value_f32);
++		memcpy(&effecter_pdr_out->normal_min.value_f32, *iter,
++		       sizeof(effecter_pdr_out->normal_min.value_f32));
++		LE32TOH(effecter_pdr_out->normal_min.value_f32);
++		*iter += sizeof(effecter_pdr_out->normal_min.value_f32);
++		memcpy(&effecter_pdr_out->rated_max.value_f32, *iter,
++		       sizeof(effecter_pdr_out->rated_max.value_f32));
++		LE32TOH(effecter_pdr_out->rated_max.value_f32);
++		*iter += sizeof(effecter_pdr_out->rated_max.value_f32);
++		memcpy(&effecter_pdr_out->rated_min.value_f32, *iter,
++		       sizeof(effecter_pdr_out->rated_min.value_f32));
++		LE32TOH(effecter_pdr_out->rated_min.value_f32);
++		break;
++	default:
++		return false;
++	}
++	return true;
++}
++
++/* Inventec - Add Parse Parse Numeric Effecter PDR */
++LIBPLDM_ABI_STABLE
++bool pldm_numeric_effecter_pdr_parse(const uint8_t *pdr, const uint16_t pdr_len,
++				     uint8_t *numeric_effecter_pdr)
++{
++	assert(pdr != NULL);
++	assert(numeric_effecter_pdr != NULL);
++	if (pdr_len < PLDM_PDR_NUMERIC_EFFECTER_MIN_LENGTH) {
++		return false;
++	}
++	struct pldm_pdr_hdr *hdr = (struct pldm_pdr_hdr *)pdr;
++	if (hdr->type != PLDM_NUMERIC_EFFECTER_PDR) {
++		return false;
++	}
++
++	const struct pldm_numeric_effecter_value_pdr *effecter_pdr_in =
++	    (const struct pldm_numeric_effecter_value_pdr *)pdr;
++
++	if (!validate_numeric_effecter_pdr_len(pdr_len, effecter_pdr_in)) {
++		return false;
++	}
++
++	struct pldm_numeric_effecter_value_pdr *effecter_pdr_out =
++	    (struct pldm_numeric_effecter_value_pdr *)numeric_effecter_pdr;
++	memcpy(effecter_pdr_out, effecter_pdr_in,
++	       &effecter_pdr_in->max_settable.value_u8 - pdr);
++	LE32TOH(effecter_pdr_out->hdr.record_handle);
++	LE16TOH(effecter_pdr_out->hdr.record_change_num);
++	LE16TOH(effecter_pdr_out->hdr.length);
++	LE16TOH(effecter_pdr_out->terminus_handle);
++	LE16TOH(effecter_pdr_out->effecter_id);
++	LE16TOH(effecter_pdr_out->entity_type);
++	LE16TOH(effecter_pdr_out->entity_instance);
++	LE16TOH(effecter_pdr_out->container_id);
++	LE16TOH(effecter_pdr_out->effecter_semantic_id);
++	LE32TOH(effecter_pdr_out->resolution);
++	LE32TOH(effecter_pdr_out->offset);
++	LE16TOH(effecter_pdr_out->accuracy);
++	LE32TOH(effecter_pdr_out->state_transition_interval);
++	LE32TOH(effecter_pdr_out->transition_interval);
++
++	const uint8_t *iter =
++	    (const uint8_t *)(&effecter_pdr_in->max_settable.value_u8);
++	if (!numeric_effecter_pdr_effecter_data_size_parse(effecter_pdr_out,
++							   &iter)) {
++		return false;
++	}
++
++	size_t len_after_min_settable =
++	    sizeof(effecter_pdr_out->range_field_format) +
++	    sizeof(effecter_pdr_out->range_field_support);
++	memcpy(&effecter_pdr_out->range_field_format, iter,
++	       len_after_min_settable);
++	iter += len_after_min_settable;
++
++	if (!numeric_effecter_pdr_range_field_format_parse(effecter_pdr_out,
++							   &iter)) {
++		return false;
++	}
++	return true;
++}
++
++
+diff --git a/src/platform.c b/src/platform.c
+index 8619772..a09f779 100644
+--- a/src/platform.c
++++ b/src/platform.c
+@@ -369,6 +369,16 @@ int encode_get_pdr_resp(uint8_t instance_id, uint8_t completion_code,
+ 	return PLDM_SUCCESS;
+ }
+ 
++/* Inventec - Add GetPDRRepositoryInfo encode request and decode response*/
++LIBPLDM_ABI_STABLE
++int encode_get_pdr_repository_info_req(const uint8_t instance_id,
++				       struct pldm_msg *msg)
++{
++	return encode_pldm_header_only(PLDM_REQUEST, instance_id, PLDM_PLATFORM,
++					  PLDM_GET_PDR_REPOSITORY_INFO, msg);
++}
++
++
+ LIBPLDM_ABI_STABLE
+ int encode_get_pdr_repository_info_resp(
+ 	uint8_t instance_id, uint8_t completion_code, uint8_t repository_state,
+@@ -392,8 +402,9 @@ int encode_get_pdr_repository_info_resp(
+ 		return rc;
+ 	}
+ 
+-	struct pldm_pdr_repository_info_resp *response =
+-		(struct pldm_pdr_repository_info_resp *)msg->payload;
++	/* Invenetc - Modify pldm_pdr_repository_info_resp to pldm_get_pdr_repository_info_resp*/
++	struct pldm_get_pdr_repository_info_resp *response =
++		(struct pldm_get_pdr_repository_info_resp *)msg->payload;
+ 	response->completion_code = completion_code;
+ 
+ 	if (response->completion_code == PLDM_SUCCESS) {
+@@ -2427,3 +2438,262 @@ int decode_poll_for_platform_event_message_resp(
+ 
+ 	return pldm_msgbuf_destroy_consumed(buf);
+ }
++
++/* Inventec - Add platform command support */
++LIBPLDM_ABI_STABLE
++int decode_get_terminus_uid_resp(const struct pldm_msg *msg,
++				 const size_t payload_length,
++				 uint8_t *completion_code, uint8_t *uuid)
++{
++	if (msg == NULL || completion_code == NULL || uuid == NULL) {
++		return PLDM_ERROR_INVALID_DATA;
++	}
++
++	struct pldm_get_terminus_uid_resp *response =
++	    (struct pldm_get_terminus_uid_resp *)msg->payload;
++
++	*completion_code = response->completion_code;
++	if (*completion_code != PLDM_SUCCESS) {
++		return PLDM_SUCCESS;
++	}
++
++	if (payload_length != sizeof(struct pldm_get_terminus_uid_resp)) {
++		return PLDM_ERROR_INVALID_LENGTH;
++	}
++
++	memcpy(uuid, response->uuid, sizeof(response->uuid));
++
++	return PLDM_SUCCESS;
++}
++
++/* Inventec - Add platform command support */
++LIBPLDM_ABI_STABLE
++int encode_set_numeric_sensor_enable_req(
++    const uint8_t instance_id, const uint16_t sensor_id,
++    const uint8_t sensor_operational_state,
++    const uint8_t sensor_event_message_enable, struct pldm_msg *msg)
++{
++	if (msg == NULL) {
++		return PLDM_ERROR_INVALID_DATA;
++	}
++
++	if (sensor_event_message_enable > PLDM_STATE_EVENTS_ONLY_ENABLED ||
++	    sensor_operational_state > PLDM_SENSOR_UNAVAILABLE) {
++		return PLDM_ERROR_INVALID_DATA;
++	}
++
++	int rc = PLDM_SUCCESS;
++	if ((rc = encode_pldm_header_only(PLDM_REQUEST, instance_id, PLDM_PLATFORM,
++				     PLDM_SET_NUMERIC_SENSOR_ENABLE, msg)) != PLDM_SUCCESS) {
++		return rc;
++	}
++
++	struct pldm_set_numeric_sensor_enable_req *request =
++	    (struct pldm_set_numeric_sensor_enable_req *)msg->payload;
++	request->sensor_id = htole16(sensor_id);
++	request->sensor_operational_state = sensor_operational_state;
++	request->sensor_event_message_enable = sensor_event_message_enable;
++	return PLDM_SUCCESS;
++}
++
++/* Inventec - Add platform command support */
++static bool is_state_sensor_op_field_valid(uint8_t sensor_operational_state,
++					   uint8_t event_message_enable)
++{
++	if ((event_message_enable > PLDM_ENABLE_EVENTS &&
++	     event_message_enable != PLDM_NO_CHANGE_EVENTS) ||
++	    sensor_operational_state > PLDM_SENSOR_UNAVAILABLE) {
++		return false;
++	}
++	return true;
++}
++
++/* Inventec - Add platform command support */
++LIBPLDM_ABI_STABLE
++int encode_set_state_sensor_enable_req(const uint8_t instance_id,
++				       const uint16_t sensor_id,
++				       const uint8_t composite_sensor_count,
++				       state_sensor_op_field *op_fields,
++				       struct pldm_msg *msg)
++{
++	uint8_t itr = 0;
++
++	if (msg == NULL || op_fields == NULL) {
++		return PLDM_ERROR_INVALID_DATA;
++	}
++
++	if (composite_sensor_count < PLDM_COMPOSITE_EFFECTER_COUNT_MIN ||
++	    composite_sensor_count > PLDM_COMPOSITE_EFFECTER_COUNT_MAX) {
++		return PLDM_ERROR_INVALID_DATA;
++	}
++
++	int rc =
++	    encode_pldm_header_only(PLDM_REQUEST, instance_id, PLDM_PLATFORM,
++			       PLDM_SET_STATE_SENSOR_ENABLE, msg);
++	if (rc != PLDM_SUCCESS) {
++		return rc;
++	}
++
++	struct pldm_set_state_sensor_enable_req *request =
++	    (struct pldm_set_state_sensor_enable_req *)msg->payload;
++	request->sensor_id = htole16(sensor_id);
++	request->composite_sensor_count = composite_sensor_count;
++
++	for (itr = 0; itr < composite_sensor_count; ++itr) {
++		if (!is_state_sensor_op_field_valid(
++			(op_fields + itr)->sensor_operational_state,
++			(op_fields + itr)->event_message_enable)) {
++			return PLDM_ERROR_INVALID_DATA;
++		}
++		memcpy(&request->op_field[itr], op_fields + itr,
++		       sizeof(state_sensor_op_field));
++	}
++	return PLDM_SUCCESS;
++}
++
++/* Inventec - Add platform command support */
++LIBPLDM_ABI_STABLE
++int encode_set_numeric_effecter_enable_req(
++    const uint8_t instance_id, const uint16_t effecter_id,
++    const uint8_t effecter_operational_state, struct pldm_msg *msg)
++{
++	if (msg == NULL) {
++		return PLDM_ERROR_INVALID_DATA;
++	}
++
++	if (effecter_operational_state > PLDM_SENSOR_UNAVAILABLE) {
++		return PLDM_ERROR_INVALID_DATA;
++	}
++
++	int rc = PLDM_SUCCESS;
++	if ((rc = encode_pldm_header_only(PLDM_REQUEST, instance_id, PLDM_PLATFORM,
++				     PLDM_SET_NUMERIC_EFFECTER_ENABLE, msg)) != PLDM_SUCCESS) {
++		return rc;
++	}
++
++	struct pldm_set_numeric_effecter_enable_req *request =
++	    (struct pldm_set_numeric_effecter_enable_req *)msg->payload;
++	request->effecter_id = htole16(effecter_id);
++	request->effecter_operational_state = effecter_operational_state;
++	return PLDM_SUCCESS;
++}
++
++/* Inventec - Add platform command support */
++static bool is_state_effecter_op_field_valid(uint8_t event_message_enable,
++					     uint8_t effecter_operational_state)
++{
++	if ((event_message_enable > PLDM_DISABLE_EVENTS &&
++	     event_message_enable != PLDM_NO_CHANGE_EVENTS) ||
++	    effecter_operational_state > EFFECTER_OPER_STATE_INTEST) {
++		return false;
++	}
++	return true;
++}
++
++/* Inventec - Add platform command support */
++LIBPLDM_ABI_STABLE
++int encode_set_state_effecter_enable_req(const uint8_t instance_id,
++					 const uint16_t effecter_id,
++					 const uint8_t composite_effecter_count,
++					 state_effecter_op_field *op_fields,
++					 struct pldm_msg *msg)
++{
++	uint8_t itr = 0;
++
++	if (msg == NULL || op_fields == NULL) {
++		return PLDM_ERROR_INVALID_DATA;
++	}
++
++	if (composite_effecter_count < PLDM_COMPOSITE_EFFECTER_COUNT_MIN ||
++	    composite_effecter_count > PLDM_COMPOSITE_EFFECTER_COUNT_MAX) {
++		return PLDM_ERROR_INVALID_DATA;
++	}
++
++	int rc = rc = encode_pldm_header_only(PLDM_REQUEST, instance_id, PLDM_PLATFORM,
++					 PLDM_SET_STATE_EFFECTER_ENABLE, msg);
++	if (rc != PLDM_SUCCESS) {
++		return rc;
++	}
++
++	struct pldm_set_state_effecter_enable_req *request =
++	    (struct pldm_set_state_effecter_enable_req *)msg->payload;
++	request->effecter_id = htole16(effecter_id);
++	request->composite_effecter_count = composite_effecter_count;
++
++	for (itr = 0; itr < composite_effecter_count; ++itr) {
++		if (!is_state_effecter_op_field_valid(
++			(op_fields + itr)->event_message_enable,
++			(op_fields + itr)->effecter_operational_state)) {
++			return PLDM_ERROR_INVALID_DATA;
++		}
++		memcpy(&request->op_field[itr], op_fields + itr,
++		       sizeof(state_effecter_op_field));
++	}
++	return PLDM_SUCCESS;
++}
++
++/* Inventec - Add platform command support */
++LIBPLDM_ABI_STABLE
++int encode_get_state_effecter_states_req(const uint8_t instance_id,
++					 const uint16_t effecter_id,
++					 struct pldm_msg *msg)
++{
++	int rc = PLDM_SUCCESS;
++
++	if (msg == NULL) {
++		return PLDM_ERROR_INVALID_DATA;
++	}
++
++	if ((rc = encode_pldm_header_only(PLDM_REQUEST, instance_id, PLDM_PLATFORM,
++				     PLDM_GET_STATE_EFFECTER_STATES, msg)) != PLDM_SUCCESS) {
++		return rc;
++	}
++
++	struct pldm_get_state_effecter_states_req *request =
++	    (struct pldm_get_state_effecter_states_req *)msg->payload;
++	request->effecter_id = htole16(effecter_id);
++
++	return PLDM_SUCCESS;
++}
++
++/* Inventec - Add platform command support */
++LIBPLDM_ABI_STABLE
++int decode_get_state_effecter_states_resp(const struct pldm_msg *msg,
++					  const size_t payload_length,
++					  uint8_t *completion_code,
++					  uint8_t *comp_effecter_count,
++					  get_effecter_state_field *field)
++{
++	if (msg == NULL || completion_code == NULL ||
++	    comp_effecter_count == NULL || field == NULL) {
++		return PLDM_ERROR_INVALID_DATA;
++	}
++
++	*completion_code = msg->payload[0];
++	if (PLDM_SUCCESS != *completion_code) {
++		return PLDM_SUCCESS;
++	}
++
++	if (payload_length >
++	    PLDM_GET_STATE_EFFECTER_STATES_MIN_RESP_BYTES +
++		sizeof(get_effecter_state_field) * *comp_effecter_count) {
++		return PLDM_ERROR_INVALID_LENGTH;
++	}
++
++	struct pldm_get_state_effecter_states_resp *response =
++	    (struct pldm_get_state_effecter_states_resp *)msg->payload;
++
++	if (response->comp_effecter_count < PLDM_COMPOSITE_EFFECTER_COUNT_MIN ||
++	    response->comp_effecter_count > PLDM_COMPOSITE_EFFECTER_COUNT_MAX) {
++		return PLDM_ERROR_INVALID_DATA;
++	}
++	if (response->comp_effecter_count > *comp_effecter_count) {
++		return PLDM_ERROR_INVALID_LENGTH;
++	}
++	*comp_effecter_count = response->comp_effecter_count;
++
++	memcpy(field, response->field,
++	       (sizeof(get_effecter_state_field) * (*comp_effecter_count)));
++
++	return PLDM_SUCCESS;
++}
+diff --git a/src/utils.c b/src/utils.c
+index 2f46b75..9d95116 100644
+--- a/src/utils.c
++++ b/src/utils.c
+@@ -234,3 +234,15 @@ bool is_transfer_flag_valid(uint8_t transfer_flag)
+ 		return false;
+ 	}
+ }
++
++bool is_transfer_operation_flag_valid(const uint8_t transfer_operation_flag)
++{
++	switch (transfer_operation_flag) {
++	case PLDM_GET_NEXTPART:
++	case PLDM_GET_FIRSTPART:
++		return true;
++
++	default:
++		return false;
++	}
++}
+-- 
+2.25.1
+

@@ -17,7 +17,7 @@ FILESEXTRAPATHS:prepend := "${THISDIR}/${PN}:"
 
 DEPENDS += " \
     cli11 \
-    libpldm-intel \
+    libpldm \
     mctp-wrapper \
     systemd \
     sdbusplus \
