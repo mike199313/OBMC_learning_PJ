@@ -27,6 +27,7 @@ DEPENDS += " \
     phosphor-dbus-interfaces \
     mctpwplus \
     nlohmann-json \
+    libbej \
     "
 
 #FILES:${PN} += "${systemd_system_unitdir}/xyz.openbmc_project.pldmd.service"

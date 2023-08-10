@@ -1,0 +1,61 @@
+From 53b4d9bf8224a222e263f4156a03ed27ed8e35b0 Mon Sep 17 00:00:00 2001
+From: PJ Chen <chen.pj@inventec.com>
+Date: Thu, 10 Aug 2023 10:54:40 +0800
+Subject: [PATCH] Bug 1753 - [SW][pldmd] - Add depends libbej
+
+Symptom/Reason:
+  PLDM for RDE features should call libbej functions.
+    https://github.com/openbmc/libbej
+
+  Add depends and library links.
+
+Root Cause:
+  N/A
+
+Solution/Change:
+  Add links in CMake and depend in bb files.
+
+Entry Test:
+
+Refer to https://github.com/openbmc/libbej/blob/main/test/bej_common_test.cpp
+
+Add in code:
+    uint8_t bytes[] = {0xab, 0xcd, 0xef, 0x12,
+                                 0x13, 0x65, 0x23, 0x89};
+    uint64_t ret;
+
+    ret = bejGetUnsignedInteger(bytes, /*numOfBytes=*/1);
+    std::cout << ret << " should be 0xab" << std::endl;
+    ret = bejGetUnsignedInteger(bytes, /*numOfBytes=*/2);
+    std::cout << ret << " should be 0xcdab" << std::endl;
+    ret = bejGetUnsignedInteger(bytes, /*numOfBytes=*/5);
+    std::cout << ret << " should be 0x1312efcdab" << std::endl;
+    ret = bejGetUnsignedInteger(bytes, /*numOfBytes=*/8);
+    std::cout << ret << " should be 0x8923651312efcdab" << std::endl;
+
+Log:
+Mar 03 09:51:43 transformers systemd[1]: Starting PLDM daemon...
+Aug 10 02:45:33 transformers pldmd-pcie[468]: 171 should be 0xab
+Aug 10 02:45:33 transformers pldmd-pcie[468]: 52651 should be 0xcdab
+Aug 10 02:45:33 transformers pldmd-pcie[468]: 81922084267 should be 0x1312efcdab
+Aug 10 02:45:33 transformers pldmd-pcie[468]: 9881853139977489835 should be 0x8923651312efcdab
+---
+ CMakeLists.txt | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index ae82635..5d49f8b 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -86,7 +86,7 @@ set (SERVICE_FILES
+ 
+ add_executable(${PROJECT_NAME} ${SRC_FILES} ${HEADER_FILES})
+ 
+-target_link_libraries (${PROJECT_NAME} mctpwplus sdbusplus -lsystemd -lpldm
++target_link_libraries (${PROJECT_NAME} mctpwplus sdbusplus -lsystemd -lpldm -llibbej
+                         -lpthread -lstdc++fs -lphosphor_dbus -lboost_coroutine)
+ 
+ install (TARGETS ${PROJECT_NAME} DESTINATION bin)
+-- 
+2.25.1
+
