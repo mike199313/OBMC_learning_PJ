@@ -25,8 +25,11 @@ PACKAGECONFIG[inv-psu] = "-Dredfish-enable-inv-psu=enabled,-Dredfish-enable-inv-
 PACKAGECONFIG[query] = "-Dinsecure-enable-redfish-query=enabled,-Dinsecure-enable-redfish-query=disabled,"
 PACKAGECONFIG[power-thermal] = "-Dredfish-allow-deprecated-power-thermal=enabled,-Dredfish-allow-deprecated-power-thermal=disabled,"
 PACKAGECONFIG[power-thermal-subsystem] = "-Dredfish-new-powersubsystem-thermalsubsystem=enabled,-Dredfish-new-powersubsystem-thermalsubsystem=disabled,"
+PACKAGECONFIG[redfish-aggregation] = "-Dredfish-aggregation=enabled,-Dredfish-aggregation=disabled,"
 
-PACKAGECONFIG:append = " journal dump tftp inv-psu query power-thermal power-thermal-subsystem"
+
+
+PACKAGECONFIG:append = " journal dump tftp inv-psu query power-thermal power-thermal-subsystem redfish-aggregation "
 
 SRC_URI:append = " \
     file://0001-Empty-base-dn-error.patch \
@@ -54,4 +57,5 @@ SRC_URI:append = " \
     file://0025-ikvm-video-recorder-supporting.patch \
     file://0026-AccountService-enhancement.patch \
     file://0027-SW-Redfish-Redfish-log-session-schema-enhancements.patch \
+    file://0028-Bug-1755-SW-bmcweb-Add-RDE-aggregator-support.patch \
 "
