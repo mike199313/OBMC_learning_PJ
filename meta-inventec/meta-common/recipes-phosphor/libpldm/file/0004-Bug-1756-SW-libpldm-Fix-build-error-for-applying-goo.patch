@@ -1,0 +1,54 @@
+From 8cb6c81b14158ac216b5c3c323008d20e64f9b41 Mon Sep 17 00:00:00 2001
+From: PJ Chen <chen.pj@inventec.com>
+Date: Fri, 11 Aug 2023 19:26:17 +0800
+Subject: [PATCH] Bug 1756 - [SW][libpldm] - Fix build error for applying
+ google patch Bug 1749
+
+Sysmptom/Reason:
+  Refer to Bug 1749,
+  we cherry-pick the RDE patch but need to modify for it.
+
+Root Cause:
+  N/A
+
+Solution/Change:
+  [libpldm]
+    Remove the files are not in our codebase.
+
+Entry Test:
+  N/A
+---
+ include/libpldm/meson.build | 4 +---
+ src/requester/meson.build   | 4 +---
+ 2 files changed, 2 insertions(+), 6 deletions(-)
+
+diff --git a/include/libpldm/meson.build b/include/libpldm/meson.build
+index 2f1c6b2..fbadfb5 100644
+--- a/include/libpldm/meson.build
++++ b/include/libpldm/meson.build
+@@ -16,9 +16,7 @@ libpldm_headers += files(
+   'states.h',
+   'transport.h',
+   'utils.h',
+-  'pldm_rde.h',
+-  'requester/pldm_base_requester.h',
+-  'requester/pldm_rde_requester.h'
++  'pldm_rde.h'
+   )
+ 
+ libpldm_transport_headers += files(
+diff --git a/src/requester/meson.build b/src/requester/meson.build
+index 4430682..663b607 100644
+--- a/src/requester/meson.build
++++ b/src/requester/meson.build
+@@ -1,6 +1,4 @@
+ libpldm_sources += files(
+   'instance-id.c',
+-  'pldm.c',
+-  'pldm_base_requester.c',
+-  'pldm_rde_requester.c'
++  'pldm.c'
+   )
+-- 
+2.25.1
+
