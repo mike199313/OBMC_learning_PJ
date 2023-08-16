@@ -22,6 +22,7 @@ SRC_URI:append = " file://transformers.cfg \
                    file://0017-roll-back-the-ipmi-driver-to-2.10.patch \
                    file://0018-Add-aspeed-mctp-dts-definition.patch \
                    file://0019-Patch-for-Slave-mqueue-driver-porting.patch \
+                   file://0015-Bug-1788-SW-linux-aspeed-Fallback-aspeed-mctp-to-00..patch \
                  "
 
 do_add_overwrite_files () {
