@@ -1,4 +1,4 @@
-From ee2a1053a8e333a32e439f30cdca096a12ba5fe3 Mon Sep 17 00:00:00 2001
+From f1998151dedac29b203d9b8dbbd0fc2ea9443755 Mon Sep 17 00:00:00 2001
 From: PJ Chen <chen.pj@inventec.com>
 Date: Wed, 9 Aug 2023 21:50:37 +0800
 Subject: [PATCH] Bug 1747 - [SW][pldmd] - Change to use Openbmc libpldm
@@ -33,18 +33,18 @@ Entry Test:
  include/state_effecter_handler.hpp   |   2 +-
  include/state_sensor_handler.hpp     |   2 +-
  include/state_set.hpp                |  10 +-
- src/base.cpp                         |  16 +-
+ src/base.cpp                         |  39 +-
  src/firmware_update.cpp              | 237 +++++-----
  src/fwu_inventory.cpp                |  40 +-
  src/numeric_effecter.cpp             |   2 +-
  src/numeric_effecter_handler.cpp     |   4 +-
  src/numeric_sensor_handler.cpp       |  12 +-
- src/pdr_manager.cpp                  |  66 ++-
+ src/pdr_manager.cpp                  |  78 +++-
  src/pdr_utils.cpp                    |   2 +-
  src/pldm_fwu_image.cpp               |   2 +-
  src/pldmd.cpp                        |  26 +-
  src/state_sensor_handler.cpp         |  10 +-
- 27 files changed, 625 insertions(+), 522 deletions(-)
+ 27 files changed, 649 insertions(+), 533 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
 index fac5a24..ae82635 100644
@@ -1026,7 +1026,7 @@ index 3d42ca2..095969c 100644
 +            StateSetValueInfo{"Error", "StateSensorStressed"}},
 +          }}}};
 diff --git a/src/base.cpp b/src/base.cpp
-index 9ac35fb..43af1d4 100644
+index 9ac35fb..fc3fbe1 100644
 --- a/src/base.cpp
 +++ b/src/base.cpp
 @@ -23,8 +23,8 @@
@@ -1049,7 +1049,7 @@ index 9ac35fb..43af1d4 100644
      auto msg = reinterpret_cast<pldm_msg*>(getPLDMVersionsRequest.data());
      std::vector<uint8_t> versionDataBuffer;
  
-@@ -284,9 +284,11 @@ bool getPLDMVersions(boost::asio::yield_context yield, const mctpw_eid_t eid,
+@@ -284,14 +284,19 @@ bool getPLDMVersions(boost::asio::yield_context yield, const mctpw_eid_t eid,
          {
              return false;
          }
@@ -1064,7 +1064,54 @@ index 9ac35fb..43af1d4 100644
          transferOpFlag = PLDM_GET_NEXTPART;
      }
  
-@@ -538,7 +540,7 @@ CommandSupportTable
+     // Version response should contain at least one version and its CRC32
+     // checksum. So minimum 8 bytes.
++    /* Inventec - Due to structure change by openbmc libpldm,
++    skip version length and CRC check*/
++    #if 0
+     if (versionDataBuffer.size() < sizeof(uint64_t))
+     {
+         phosphor::logging::log<phosphor::logging::level::ERR>(
+@@ -311,17 +316,23 @@ bool getPLDMVersions(boost::asio::yield_context yield, const mctpw_eid_t eid,
+             phosphor::logging::entry("EID=0x%X", eid));
+         return false;
+     }
++    #endif
+ 
+-    auto versionPtr = reinterpret_cast<uint32_t*>(versionDataBuffer.data());
+-    size_t versionCount = versionDataSize / sizeof(uint32_t);
++    size_t versionCount = versionDataBuffer.size() / sizeof(uint32_t);
+     for (size_t i = 0; i < versionCount; i++)
+     {
+-        uint32_t encodedVersion = le32toh(versionPtr[i]);
+-        encodedVersion = htobe32(encodedVersion);
+-        auto version = reinterpret_cast<ver32_t*>(&encodedVersion);
+-        supportedVersions.emplace_back(*version);
++        ver32_t version;
++        version.alpha = versionDataBuffer[i];
++        version.update = versionDataBuffer[i+1];
++        version.minor = versionDataBuffer[i+2];
++        version.major = versionDataBuffer[i+3];
++
++        supportedVersions.emplace_back(version);
+     }
+ 
++    /* Inventec - Due to structure change by openbmc libpldm,
++    skip version length and CRC check*/
++    #if 0
+     uint32_t* crcPacket =
+         reinterpret_cast<uint32_t*>(versionDataBuffer.data() + versionDataSize);
+     uint32_t crcCalculated = crc32(versionDataBuffer.data(), versionDataSize);
+@@ -336,7 +347,7 @@ bool getPLDMVersions(boost::asio::yield_context yield, const mctpw_eid_t eid,
+             phosphor::logging::entry("EID=0x%X", eid));
+         return false;
+     }
+-
++    #endif
+     return true;
+ }
+ 
+@@ -538,7 +549,7 @@ CommandSupportTable
  }
  
  bool isSupported(const CommandSupportTable& cmdSupportTable,
@@ -1993,7 +2040,7 @@ index 49e44b0..af54434 100644
          return false;
      }
 diff --git a/src/pdr_manager.cpp b/src/pdr_manager.cpp
-index 881c3b3..dd288fd 100644
+index 881c3b3..0db70ab 100644
 --- a/src/pdr_manager.cpp
 +++ b/src/pdr_manager.cpp
 @@ -27,7 +27,7 @@
@@ -2060,17 +2107,20 @@ index 881c3b3..dd288fd 100644
  }
  
  static bool handleGetPDRResp(pldm_tid_t tid, std::vector<uint8_t>& resp,
-@@ -340,6 +370,8 @@ bool PDRManager::addDevicePDRToRepo(
+@@ -340,14 +370,16 @@ bool PDRManager::addDevicePDRToRepo(
      std::unordered_map<RecordHandle, std::vector<uint8_t>>& devicePDRs)
  {
      bool terminusLPDRFound = false;
 +    pldm_terminus_locator_pdr* tLocatorPDR = NULL;
++    const pldm_pdr_hdr* pdrHdr;
 +
++    /* Inventec - Find PLDM_TERMINUS_LOCATOR_PDR first*/
      for (auto& pdrRecord : devicePDRs)
      {
-         // Update the TID in Terminus Locator PDR before adding to repo
-@@ -347,7 +379,7 @@ bool PDRManager::addDevicePDRToRepo(
-             reinterpret_cast<const pldm_pdr_hdr*>(pdrRecord.second.data());
+-        // Update the TID in Terminus Locator PDR before adding to repo
+-        const pldm_pdr_hdr* pdrHdr =
+-            reinterpret_cast<const pldm_pdr_hdr*>(pdrRecord.second.data());
++        pdrHdr = reinterpret_cast<const pldm_pdr_hdr*>(pdrRecord.second.data());
          if (pdrHdr->type == PLDM_TERMINUS_LOCATOR_PDR)
          {
 -            pldm_terminus_locator_pdr* tLocatorPDR =
@@ -2078,22 +2128,34 @@ index 881c3b3..dd288fd 100644
                  reinterpret_cast<pldm_terminus_locator_pdr*>(
                      pdrRecord.second.data());
              if (tLocatorPDR->validity == PLDM_TL_PDR_VALID)
-@@ -365,8 +397,12 @@ bool PDRManager::addDevicePDRToRepo(
+@@ -364,15 +396,23 @@ bool PDRManager::addDevicePDRToRepo(
+                 _containerID = tLocatorPDR->container_id;
              }
          }
-         uint32_t pdrRecordSize = utils::to_uint32(pdrRecord.second.size());
+-        uint32_t pdrRecordSize = utils::to_uint32(pdrRecord.second.size());
 -        pldm_pdr_add(_pdrRepo.get(), pdrRecord.second.data(), pdrRecordSize,
 -                     pdrRecord.first, true);
-+        /* Inventec - Modify for Openbmc libpldm*/
-+        if(terminusLPDRFound)
+     }
++
+     if (!terminusLPDRFound)
+     {
+         phosphor::logging::log<phosphor::logging::level::WARNING>(
+             "Terminus Locator PDR not found");
+     }
++    else
++    {
++        for (auto& pdrRecord : devicePDRs)
 +        {
++            uint32_t pdrRecordSize = utils::to_uint32(pdrRecord.second.size());
++            /* Inventec - Modify for Openbmc libpldm*/
 +            pldm_pdr_add(_pdrRepo.get(), pdrRecord.second.data(), pdrRecordSize,
 +                        pdrRecord.first, true, tLocatorPDR->terminus_handle);
 +        }
-     }
-     if (!terminusLPDRFound)
-     {
-@@ -380,7 +416,7 @@ bool PDRManager::constructPDRRepo(boost::asio::yield_context yield)
++    }
+     return true;
+ }
+ 
+@@ -380,7 +420,7 @@ bool PDRManager::constructPDRRepo(boost::asio::yield_context yield)
  {
      uint32_t recordCount = pdrRepoInfo.record_count;
  
@@ -2102,7 +2164,7 @@ index 881c3b3..dd288fd 100644
      {
          phosphor::logging::log<phosphor::logging::level::WARNING>(
              "Device PDR record data is unavailable",
-@@ -525,8 +561,8 @@ void PDRManager::parseEntityAuxNamesPDR(std::vector<uint8_t>& pdrData)
+@@ -525,8 +565,8 @@ void PDRManager::parseEntityAuxNamesPDR(std::vector<uint8_t>& pdrData)
  
      if (pdrData.size() >= minEntityAuxNamesPDRLen)
      {
@@ -2113,7 +2175,7 @@ index 881c3b3..dd288fd 100644
          LE16TOH(namePDR->entity.entity_type);
          LE16TOH(namePDR->entity.entity_instance_num);
          LE16TOH(namePDR->entity.entity_container_id);
-@@ -940,11 +976,11 @@ void PDRManager::parseSensorAuxNamesPDR(std::vector<uint8_t>& pdrData)
+@@ -940,11 +980,11 @@ void PDRManager::parseSensorAuxNamesPDR(std::vector<uint8_t>& pdrData)
      LE16TOH(namePDR->sensor_id);
  
      // TODO: Handle Composite sensor names
