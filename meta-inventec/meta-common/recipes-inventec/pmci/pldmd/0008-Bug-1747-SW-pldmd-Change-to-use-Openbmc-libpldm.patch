@@ -1,4 +1,4 @@
-From f1998151dedac29b203d9b8dbbd0fc2ea9443755 Mon Sep 17 00:00:00 2001
+From 826c4ad229292ff58c8acf7b7d94f6eb042716f3 Mon Sep 17 00:00:00 2001
 From: PJ Chen <chen.pj@inventec.com>
 Date: Wed, 9 Aug 2023 21:50:37 +0800
 Subject: [PATCH] Bug 1747 - [SW][pldmd] - Change to use Openbmc libpldm
@@ -42,9 +42,9 @@ Entry Test:
  src/pdr_manager.cpp                  |  78 +++-
  src/pdr_utils.cpp                    |   2 +-
  src/pldm_fwu_image.cpp               |   2 +-
- src/pldmd.cpp                        |  26 +-
+ src/pldmd.cpp                        |  27 +-
  src/state_sensor_handler.cpp         |  10 +-
- 27 files changed, 649 insertions(+), 533 deletions(-)
+ 27 files changed, 650 insertions(+), 533 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
 index fac5a24..ae82635 100644
@@ -2218,19 +2218,20 @@ index 4d6c474..504f050 100644
          phosphor::logging::log<phosphor::logging::level::ERR>(
              "readData: invalid start address or bytes to read is out of range");
 diff --git a/src/pldmd.cpp b/src/pldmd.cpp
-index 4165b83..0ea5d77 100644
+index 4165b83..252e6dd 100644
 --- a/src/pldmd.cpp
 +++ b/src/pldmd.cpp
-@@ -195,7 +195,7 @@ std::optional<uint8_t> getInstanceId(std::vector<uint8_t>& message)
+@@ -195,7 +195,8 @@ std::optional<uint8_t> getInstanceId(std::vector<uint8_t>& message)
      {
          return std::nullopt;
      }
 -    return message[0] & PLDM_INSTANCE_ID_MASK;
-+    return message[0];
++    /* Inventec - Modify instanceId usage since PLDM_INSTANCE_ID_MASK not declared*/
++    return message[0] & 0x1f;
  }
  
  std::optional<uint8_t> getPldmMessageType(std::vector<uint8_t>& message)
-@@ -205,7 +205,8 @@ std::optional<uint8_t> getPldmMessageType(std::vector<uint8_t>& message)
+@@ -205,7 +206,8 @@ std::optional<uint8_t> getPldmMessageType(std::vector<uint8_t>& message)
      {
          return std::nullopt;
      }
@@ -2240,7 +2241,7 @@ index 4165b83..0ea5d77 100644
  }
  
  // Returns type of message(response,request, Reserved or Unacknowledged PLDM
-@@ -213,12 +214,18 @@ std::optional<uint8_t> getPldmMessageType(std::vector<uint8_t>& message)
+@@ -213,12 +215,18 @@ std::optional<uint8_t> getPldmMessageType(std::vector<uint8_t>& message)
  std::optional<MessageType> getPldmPacketType(std::vector<uint8_t>& message)
  {
      constexpr int rqD = 0;
@@ -2260,7 +2261,7 @@ index 4165b83..0ea5d77 100644
      return static_cast<MessageType>(rqDValue);
  }
  
-@@ -522,7 +529,16 @@ uint8_t createInstanceId(pldm_tid_t tid)
+@@ -522,7 +530,16 @@ uint8_t createInstanceId(pldm_tid_t tid)
  
      auto& instanceId = instanceMap[tid];
  
@@ -2277,7 +2278,7 @@ index 4165b83..0ea5d77 100644
      return instanceId;
  }
  } // namespace pldm
-@@ -541,8 +557,8 @@ void initDevice(const mctpw_eid_t eid, boost::asio::yield_context yield)
+@@ -541,8 +558,8 @@ void initDevice(const mctpw_eid_t eid, boost::asio::yield_context yield)
          return;
      }
  
