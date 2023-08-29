@@ -12,6 +12,10 @@ SRC_URI += "file://0007-Custom-modification-of-BlueField2-for-PLDMD.patch"
 SRC_URI += "file://0008-Bug-1747-SW-pldmd-Change-to-use-Openbmc-libpldm.patch"
 SRC_URI += "file://0009-Bug-1753-SW-pldmd-Add-depends-libbej.patch"
 
+#RDE Temp
+SRC_URI += "file://0001-pldmd-temp-RDE-temp-patch.patch"
+
+
 PCIE_BINDING = "pcie"
 SMBUS_BINDING = "smbus"
 

@@ -1,0 +1,1997 @@
+From de0baac376631598c80e929f0ee83f6578bba070 Mon Sep 17 00:00:00 2001
+From: PJ Chen <chen.pj@inventec.com>
+Date: Tue, 29 Aug 2023 14:41:31 +0800
+Subject: [PATCH] [pldmd][temp] - RDE temp patch
+
+---
+ CMakeLists.txt                |   1 +
+ include/pdr_manager.hpp       |  67 +++
+ include/pdr_redfish.hpp       |  95 ++++
+ include/platform.hpp          |   6 +
+ include/platform_terminus.hpp |   5 +
+ include/pldm.hpp              |  17 +
+ include/rde.hpp               |  56 +++
+ src/pdr_manager.cpp           | 413 ++++++++++++++++-
+ src/platform.cpp              |  29 ++
+ src/platform_terminus.cpp     |  35 ++
+ src/pldmd.cpp                 |  16 +-
+ src/rde.cpp                   | 841 ++++++++++++++++++++++++++++++++++
+ 12 files changed, 1578 insertions(+), 3 deletions(-)
+ create mode 100644 include/pdr_redfish.hpp
+ create mode 100644 include/rde.hpp
+ create mode 100644 src/rde.cpp
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 5d49f8b..3a7522c 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -74,6 +74,7 @@ set (SRC_FILES ${PROJECT_SOURCE_DIR}/src/pldmd.cpp
+                ${PROJECT_SOURCE_DIR}/src/base.cpp
+                ${PROJECT_SOURCE_DIR}/src/utils.cpp
+                ${PROJECT_SOURCE_DIR}/src/fru_support.cpp
++               ${PROJECT_SOURCE_DIR}/src/rde.cpp
+ )
+ 
+ set (HEADER_FILES ${PROJECT_SOURCE_DIR}/include/pldm.hpp
+diff --git a/include/pdr_manager.hpp b/include/pdr_manager.hpp
+index ab74929..17a30ad 100644
+--- a/include/pdr_manager.hpp
++++ b/include/pdr_manager.hpp
+@@ -16,6 +16,7 @@
+ #pragma once
+ 
+ #include "pldm.hpp"
++#include "pdr_redfish.hpp"
+ 
+ #include <boost/asio.hpp>
+ 
+@@ -35,6 +36,7 @@ using EntityAssociationPath = std::vector<pldm_entity>;
+ using SensorID = uint16_t;
+ using EffecterID = uint16_t;
+ using FRURecordSetIdentifier = uint16_t;
++using ResourceID = uint32_t;
+ 
+ struct pldm_pdr_repository_info {
+ 	uint8_t repository_state;
+@@ -111,6 +113,7 @@ class PDRManager
+     PDRManager(const pldm_tid_t tid);
+ 
+     bool pdrManagerInit(boost::asio::yield_context yield);
++    bool pdrManagerRDE(boost::asio::yield_context yield);
+ 
+     /** @brief Get Sensors list*/
+     const std::unordered_map<SensorID, std::string>& getSensors()
+@@ -118,6 +121,12 @@ class PDRManager
+         return _sensorAuxNames;
+     };
+ 
++    /** @brief Get Redfish Resource PDR list*/
++    const std::unordered_map<ResourceID, std::shared_ptr<pldm_redfish_resource_pdr>>& getRedfishResourcePDR() const
++    {
++        return _redfishResourcePDR;
++    }
++
+     /** @brief Get numeric sensor PDR*/
+     std::optional<std::shared_ptr<pldm_numeric_sensor_value_pdr>>
+         getNumericSensorPDR(const SensorID& sensorID);
+@@ -126,6 +135,21 @@ class PDRManager
+     std::optional<std::shared_ptr<StateSensorPDR>>
+         getStateSensorPDR(const SensorID& sensorID);
+ 
++    /* Inventec - PLDM RDE Implementation. */
++    /** @brief Get redfish resource PDR*/
++    std::optional<std::shared_ptr<pldm_redfish_resource_pdr>>
++        getRedfishResourcePDR(const ResourceID& resourceID);
++
++    #if 0
++    /** @brief Get redfish entity association PDR*/
++    std::optional<std::shared_ptr<pldm_redfish_entity_association_pdr>>
++        getRedfishEntityAssociationDR(const ResourceID& resourceID);
++
++    /** @brief Get redfish action PDR*/
++    std::optional<std::shared_ptr<pldm_redfish_action_pdr>>
++        getRedfishActionPDR(const ResourceID& resourceID);
++    #endif
++
+     /** @brief Get Effecter list*/
+     std::unordered_map<EffecterID, std::string> getEffecters()
+     {
+@@ -233,6 +257,17 @@ class PDRManager
+     /** @brief Parse FRU Record Set PDR */
+     void parseFRURecordSetPDR(std::vector<uint8_t>& pdrData);
+ 
++    /* Inventec - RDE Implementation */
++    /** @brief Parse Redfish Resource PDR */
++    void parseRedfishResourcePDR(std::vector<uint8_t>& pdrData);
++    #if 0
++    /** @brief Parse Redfish Entity Association PDR */
++    void parseRedfishEntityAssociationPDR(std::vector<uint8_t>& pdrData);
++
++    /** @brief Parse Redfish Action PDR */
++    void parseRedfishActionPDR(std::vector<uint8_t>& pdrData);
++    #endif
++
+     /**@brief General parser to each PDR type*/
+     template <pldm_pdr_types pdrType>
+     void parsePDR();
+@@ -302,6 +337,38 @@ class PDRManager
+              std::pair<DBusInterfacePtr, DBusObjectPath>>
+         _fruRecordSetIntf;
+ 
++    #if 0
++    /** @brief Holds Redfish Resource D-Bus interfaces and Object paths */
++    std::map<ResourceID,
++             std::pair<DBusInterfacePtr, DBusObjectPath>>
++        _redfishResourceIntf;
++    #endif
++
++    /* Inventec - PLDM RDE Implementation. */
++    /** @brief Holds Redfish Resource PDR */
++    std::unordered_map<ResourceID, std::shared_ptr<pldm_redfish_resource_pdr>>
++        _redfishResourcePDR;
++
++    #if 0
++    /** @brief Holds Redfish Entity Association D-Bus interfaces and Object paths */
++    std::map<ResourceID,
++             std::pair<DBusInterfacePtr, DBusObjectPath>>
++        _redfishEntityAssociationIntf;
++
++    /** @brief Holds Redfish Entity Association PDR */
++    std::unordered_map<ResourceID, std::shared_ptr<pldm_redfish_entity_association_pdr>>
++        _redfishEntityAssociationPDR;
++
++    /** @brief Holds Redfish Action D-Bus interfaces and Object paths */
++    std::map<ResourceID,
++             std::pair<DBusInterfacePtr, DBusObjectPath>>
++        _redfishActionIntf;
++
++    /** @brief Holds Redfish Action PDR */
++    std::unordered_map<ResourceID, std::shared_ptr<pldm_redfish_action_pdr>>
++        _redfishActionPDR;
++    #endif
++
+     /** @brief Holds State Sensor PDR */
+     std::unordered_map<SensorID, std::shared_ptr<StateSensorPDR>>
+         _stateSensorPDR;
+diff --git a/include/pdr_redfish.hpp b/include/pdr_redfish.hpp
+new file mode 100644
+index 0000000..3373133
+--- /dev/null
++++ b/include/pdr_redfish.hpp
+@@ -0,0 +1,95 @@
++/**
++ *
++ */
++#pragma once
++
++#include <boost/asio/spawn.hpp>
++#include <functional>
++
++#include "libpldm/pldm_rde.h"
++#include "libpldm/base.h"
++#include "libpldm/platform.h"
++
++#define MINIMUM_REDFISH_RESOURCE_PDR_LENGTH 24
++
++namespace pldm
++{
++namespace platform
++{
++
++/* Inventec - Add pldm_redfish_resource_pdr type*/
++struct pldm_redfish_additional_resource_ID
++{
++    uint32_t AdditionalResourceID;
++    uint16_t AdditionalResourceSubURILengthBytes;
++    std::string AdditionalResourceSubURI;
++};
++
++struct pldm_redfish_oem_name
++{
++    uint16_t OEMNameLengthBytes;
++    std::string OEMNames;
++};
++
++/** @struct pldm_redfish_resource_pdr
++ *
++ *  Structure representing PLDM Redfish Resource PDR
++ */
++struct pldm_redfish_resource_pdr
++{
++    struct pldm_pdr_hdr hdr;
++    uint32_t ResourceID;
++    bitfield8_t ResourceFlags;
++    uint32_t ContainingResourceID;
++    uint16_t ProposedContainingResourceLengthBytes;
++    std::string ProposedContainingResourceName;
++    uint16_t SubURILengthBytes;
++    std::string SubURI;
++    uint16_t AdditionalResourceIDCount;
++    std::vector<struct pldm_redfish_additional_resource_ID> AdditionalResourceIDs;
++    ver32_t MajorSchemaVersion;
++    uint16_t MajorSchemaDictionaryLengthBytes;
++    uint32_t MajorSchemaDictionarySignature;
++    uint8_t MajorSchemaNameLength;
++    std::string MajorSchemaName;
++    uint16_t OEMCount;
++    std::vector<struct pldm_redfish_oem_name> OemNames;
++};
++
++
++/* Inventec - Add pldm_redfish_entity_association_pdr type*/
++/** @struct pldm_redfish_entity_association_pdr
++ *
++ *  Structure representing PLDM Redfish Entity Association PDR
++ */
++struct pldm_redfish_entity_association_pdr
++{
++    struct pldm_pdr_hdr hdr;
++    uint32_t ContainingResourceID;
++    uint16_t ProposedContainingResourceLengthBytes;
++    uint8_t ProposedContainingResourceName[PLDM_STR_UTF_8_MAX_LEN];
++    uint8_t ContainedEntityCount;
++    uint32_t ContainedEntityResourceID[1];
++} __attribute__((packed));
++
++
++/* Inventec - Add pldm_redfish_action_pdr type*/
++/** @struct pldm_redfish_action_pdr
++ *
++ *  Structure representing PLDM Redfish Action PDR
++ */
++struct pldm_redfish_action_pdr
++{
++    struct pldm_pdr_hdr hdr;
++    uint8_t ActionPDRIndex;
++    uint16_t RelatedResourceCount;
++    uint32_t RelatedResourceID[1];
++    uint8_t ActionCount;
++    uint8_t ActionNameLengthBytes[1];
++    uint8_t ActionName[1];
++    uint8_t ActionPathLengthBytes[1];
++    uint8_t ActionPath[1];
++} __attribute__((packed));
++
++} // namespace platform
++} // namespace pldm
+diff --git a/include/platform.hpp b/include/platform.hpp
+index 2128105..408a53c 100644
+--- a/include/platform.hpp
++++ b/include/platform.hpp
+@@ -44,6 +44,8 @@ class Platform
+     bool initTerminus(boost::asio::yield_context yield, const pldm_tid_t tid,
+                       const pldm::base::CommandSupportTable& commandTable);
+     bool deleteTerminus(const pldm_tid_t tid);
++    /* Inventec - RDE Implementation */
++    bool platformGetRedfishResourceIdList(const pldm_tid_t tid, std::vector<uint32_t>& resourceIdList);
+ 
+   private:
+     bool induceAsyncDelay(boost::asio::yield_context yield, int delay);
+@@ -70,5 +72,9 @@ void pauseSensorPolling();
+ 
+ /** @brief Resume sensor polling if it is paused*/
+ void resumeSensorPolling();
++
++/* Inventec - Get PDRManager by TID*/
++bool getTerminusPDRManager(const pldm_tid_t tid, PDRManager& pdrManager);
++
+ } // namespace platform
+ } // namespace pldm
+diff --git a/include/platform_terminus.hpp b/include/platform_terminus.hpp
+index e955ed1..0e0a209 100644
+--- a/include/platform_terminus.hpp
++++ b/include/platform_terminus.hpp
+@@ -40,10 +40,15 @@ struct PlatformTerminus
+     std::unordered_map<EffecterID, std::unique_ptr<StateEffecterHandler>>
+         stateEffecters;
+ 
++    /* Inventec - RDE Implementation */
++    bool terminusGetRedfishResourceIdList(std::vector<uint32_t>& resourceIdList);
++
+   private:
+     void initSensors(boost::asio::yield_context yield);
+     void initEffecters(boost::asio::yield_context yield);
+     bool initPDRs(boost::asio::yield_context yield);
++    /* Inventec - RDE Implementation */
++    bool initRedfishResourcePDRs(boost::asio::yield_context yield);
+ 
+     pldm_tid_t _tid;
+ };
+diff --git a/include/pldm.hpp b/include/pldm.hpp
+index 7812b8c..94706f6 100644
+--- a/include/pldm.hpp
++++ b/include/pldm.hpp
+@@ -17,6 +17,7 @@
+ 
+ #include "base.hpp"
+ #include "mctp_wrapper.hpp"
++#include "rde.hpp"
+ 
+ #include <boost/asio.hpp>
+ #include <boost/asio/error.hpp>
+@@ -28,6 +29,7 @@
+ #include <vector>
+ 
+ #include "libpldm/base.h"
++#include "libpldm/pldm_rde.h"
+ 
+ using mctpw_eid_t = mctpw::eid_t;
+ 
+@@ -258,6 +260,11 @@ bool platformInit(boost::asio::yield_context yield, const pldm_tid_t tid,
+ 
+ bool deleteMnCTerminus(const pldm_tid_t tid);
+ 
++
++/* Inventec - RDE Implementation*/
++bool getRedfishResourceIdList(const pldm_tid_t tid, std::vector<uint32_t>& resourceIdList);
++
++
+ } // namespace platform
+ 
+ namespace fru
+@@ -279,4 +286,14 @@ void pldmMsgRecvFwUpdCallback(const pldm_tid_t tid, const uint8_t msgTag,
+ 
+ } // namespace fwu
+ 
++namespace rde
++{
++
++bool rdeInit(boost::asio::yield_context yield, const pldm_tid_t tid,
++  std::vector<uint32_t>& resourceIdList);
++
++bool deleteRDEDevice(const pldm_tid_t tid);
++
++} // namespace rde
++
+ } // namespace pldm
+diff --git a/include/rde.hpp b/include/rde.hpp
+new file mode 100644
+index 0000000..6df106f
+--- /dev/null
++++ b/include/rde.hpp
+@@ -0,0 +1,56 @@
++/**
++ *
++ */
++#pragma once
++
++#include <boost/asio/spawn.hpp>
++#include <functional>
++
++#include "libpldm/pldm_rde.h"
++#include "libpldm/base.h"
++#include "libpldm/platform.h"
++
++#include "libbej/bej_decoder_core.h"
++#include "mctp_wrapper.hpp"
++
++
++#define RDE_NEGOTIATE_REDFISH_PARAMS_RESP_SIZE 12
++#define RDE_NEGOTIATE_REDFISH_MEDIUM_PARAMS_RESP_SIZE 6
++#define RDE_GET_DICT_SCHEMA_RESP_SIZE 6
++
++using mctpw_eid_t = mctpw::eid_t;
++using ResourceID = uint32_t;
++using BejDictionariesPtr = std::shared_ptr<BejDictionaries>;
++
++namespace pldm
++{
++namespace rde
++{
++
++class Rde
++{
++public:
++    Rde(boost::asio::yield_context yield, const pldm_tid_t tid, std::vector<ResourceID> &resourceIdList);
++    ~Rde();
++    std::unordered_map<ResourceID, BejDictionariesPtr> _rdeManager;
++    BejDictionariesPtr dictionariesPtr;
++
++private:
++    pldm_tid_t _tid;
++
++    bool rde_negotiate_redfish_parameters(const mctpw_eid_t eid, boost::asio::yield_context yield, const pldm_tid_t tid);
++    bool rde_negotiate_medium_parameters(const mctpw_eid_t eid, boost::asio::yield_context yield, const pldm_tid_t tid);
++    bool rde_multipart_receive(const mctpw_eid_t eid, boost::asio::yield_context yield,
++                               uint8_t instance_id, uint32_t data_transfer_handle, const pldm_tid_t tid, uint16_t operationId, uint8_t schemaClass);
++    bool rde_get_schema_dictionary(const mctpw_eid_t eid, boost::asio::yield_context yield, const pldm_tid_t tid, uint32_t resourceID, uint8_t schemaClass);
++    bool sendRDEOperationInitCommand(const mctpw_eid_t eid, boost::asio::yield_context yield, const pldm_tid_t tid, uint32_t resourceId, uint16_t operationId);
++    bool sendRDEOperationStatusCommand(const mctpw_eid_t eid, boost::asio::yield_context yield,
++                                       const pldm_tid_t tid, uint32_t resourceId, uint16_t operationId);
++    bool sendRDEOperationCompleteCommand(const mctpw_eid_t eid, boost::asio::yield_context yield,
++                                         const pldm_tid_t tid, uint32_t resourceId, uint16_t operationId);
++    bool decodeBEJ(std::string &jsonOutput);
++};
++
++
++} // namespace rde
++} // namespace pldm
+diff --git a/src/pdr_manager.cpp b/src/pdr_manager.cpp
+index 0db70ab..fbe9e38 100644
+--- a/src/pdr_manager.cpp
++++ b/src/pdr_manager.cpp
+@@ -20,6 +20,7 @@
+ #include "platform_association.hpp"
+ #include "pldm.hpp"
+ #include "utils.hpp"
++#include "rde.hpp"
+ 
+ #include <codecvt>
+ #include <fstream>
+@@ -61,6 +62,23 @@ PDRManager::~PDRManager()
+         objectServer->remove_interface(iter.second.first);
+     }
+ 
++    #if 0
++    for (auto& iter : _redfishResourceIntf)
++    {
++        objectServer->remove_interface(iter.second.first);
++    }
++
++    for (auto& iter : _redfishEntityAssociationIntf)
++    {
++        objectServer->remove_interface(iter.second.first);
++    }
++
++    for (auto& iter : _redfishActionIntf)
++    {
++        objectServer->remove_interface(iter.second.first);
++    }
++    #endif
++
+ #ifdef EXPOSE_CHASSIS
+     if (inventoryIntf)
+     {
+@@ -257,6 +275,7 @@ bool PDRManager::getDevicePDRRecord(boost::asio::yield_context yield,
+                                     RecordHandle& nextRecordHandle,
+                                     std::vector<uint8_t>& pdrRecord)
+ {
++    std::fprintf(stderr,"[pj] %s handle %d\n",__func__, recordHandle);
+     std::vector<uint8_t> req(pldmMsgHdrSize + PLDM_GET_PDR_REQ_BYTES);
+     auto reqMsgPtr = reinterpret_cast<pldm_msg*>(req.data());
+     constexpr size_t requestCount =
+@@ -284,6 +303,7 @@ bool PDRManager::getDevicePDRRecord(boost::asio::yield_context yield,
+         if (!sendReceivePldmMessage(yield, _tid, commandTimeout,
+                                     commandRetryCount, req, resp))
+         {
++            std::fprintf(stderr,"[pj] %s:%d fail\n",__FILE__,__LINE__);
+             phosphor::logging::log<phosphor::logging::level::ERR>(
+                 "Failed to send or receive GetPDR request",
+                 phosphor::logging::entry("TID=%d", _tid));
+@@ -295,6 +315,7 @@ bool PDRManager::getDevicePDRRecord(boost::asio::yield_context yield,
+             dataTransferHandle, transferComplete, pdrRecord);
+         if (!ret)
+         {
++            std::fprintf(stderr,"[pj] %s:%d fail\n",__FILE__,__LINE__);
+             // Discard the record if decode failed
+             phosphor::logging::log<phosphor::logging::level::WARNING>(
+                 "handleGetRecordResp failed");
+@@ -313,6 +334,7 @@ bool PDRManager::getDevicePDRRecord(boost::asio::yield_context yield,
+         if (pdrRecord.size() > pdrRepoInfo.largest_record_size ||
+             !(--multipartTransferLimit))
+         {
++            std::fprintf(stderr,"[pj] %s:%d fail\n",__FILE__,__LINE__);
+             phosphor::logging::log<phosphor::logging::level::WARNING>(
+                 "Max PDR record size limit reached",
+                 phosphor::logging::entry("TID=%d", _tid),
+@@ -326,6 +348,7 @@ bool PDRManager::getDevicePDRRecord(boost::asio::yield_context yield,
+ 
+     if (!transferComplete)
+     {
++        std::fprintf(stderr,"[pj] %s:%d fail\n",__FILE__,__LINE__);
+         phosphor::logging::log<phosphor::logging::level::WARNING>(
+             "Multipart PDR data transfer failed. Discarding the record",
+             phosphor::logging::entry("TID=%d", _tid),
+@@ -341,7 +364,7 @@ bool PDRManager::getDevicePDRRepo(
+     std::unordered_map<RecordHandle, std::vector<uint8_t>>& devicePDRs)
+ {
+     RecordHandle recordHandle = 0x00;
+-
++    std::fprintf(stderr,"[pj] %s\n",__func__);
+     do
+     {
+         std::vector<uint8_t> pdrRecord{};
+@@ -349,6 +372,7 @@ bool PDRManager::getDevicePDRRepo(
+         if (!getDevicePDRRecord(yield, recordHandle, nextRecordHandle,
+                                 pdrRecord))
+         {
++            std::fprintf(stderr,"[pj] %s:%d fail\n",__FILE__,__LINE__);
+             return false;
+         }
+ 
+@@ -373,6 +397,7 @@ bool PDRManager::addDevicePDRToRepo(
+     pldm_terminus_locator_pdr* tLocatorPDR = NULL;
+     const pldm_pdr_hdr* pdrHdr;
+ 
++    std::fprintf(stderr, "[pj] %s\n", __func__);
+     /* Inventec - Find PLDM_TERMINUS_LOCATOR_PDR first*/
+     for (auto& pdrRecord : devicePDRs)
+     {
+@@ -386,6 +411,7 @@ bool PDRManager::addDevicePDRToRepo(
+             {
+                 if (terminusLPDRFound)
+                 {
++                    std::fprintf(stderr, "[pj] %s:%d fail\n", __FILE__,__LINE__);
+                     phosphor::logging::log<phosphor::logging::level::ERR>(
+                         "Multiple valid Terminus Locator PDRs found",
+                         phosphor::logging::entry("TID=%d", _tid));
+@@ -400,6 +426,7 @@ bool PDRManager::addDevicePDRToRepo(
+ 
+     if (!terminusLPDRFound)
+     {
++        std::fprintf(stderr, "[pj] %s:%d warning\n", __FILE__,__LINE__);
+         phosphor::logging::log<phosphor::logging::level::WARNING>(
+             "Terminus Locator PDR not found");
+     }
+@@ -418,10 +445,14 @@ bool PDRManager::addDevicePDRToRepo(
+ 
+ bool PDRManager::constructPDRRepo(boost::asio::yield_context yield)
+ {
++    std::fprintf(stderr, "[pj] %s record cout %d\n",
++        __func__,pdrRepoInfo.record_count);
++
+     uint32_t recordCount = pdrRepoInfo.record_count;
+ 
+     if (pdrRepoInfo.repository_state != PLDM_AVAILABLE)
+     {
++        std::fprintf(stderr,"[pj] %s:%d fail\n",__FILE__,__LINE__);
+         phosphor::logging::log<phosphor::logging::level::WARNING>(
+             "Device PDR record data is unavailable",
+             phosphor::logging::entry("TID=%d", _tid));
+@@ -429,6 +460,7 @@ bool PDRManager::constructPDRRepo(boost::asio::yield_context yield)
+     }
+     if (!recordCount)
+     {
++        std::fprintf(stderr,"[pj] %s:%d fail\n",__FILE__,__LINE__);
+         phosphor::logging::log<phosphor::logging::level::WARNING>(
+             "No PDR records to fetch",
+             phosphor::logging::entry("TID=%d", _tid));
+@@ -445,6 +477,7 @@ bool PDRManager::constructPDRRepo(boost::asio::yield_context yield)
+         }
+         if (!noOfCommandTries)
+         {
++            std::fprintf(stderr,"[pj] %s:%d fail\n",__FILE__,__LINE__);
+             phosphor::logging::log<phosphor::logging::level::ERR>(
+                 "Get PDR failed. Unable to fetch PDRs even after 3 tries",
+                 phosphor::logging::entry("TID=%d", _tid));
+@@ -455,12 +488,15 @@ bool PDRManager::constructPDRRepo(boost::asio::yield_context yield)
+ 
+     if (!addDevicePDRToRepo(devicePDRs))
+     {
++        std::fprintf(stderr,"[pj] %s:%d fail\n",__FILE__,__LINE__);
+         return false;
+     }
+ 
+     uint32_t noOfRecordsFetched = pldm_pdr_get_record_count(_pdrRepo.get());
+     if (noOfRecordsFetched != recordCount)
+     {
++        std::fprintf(stderr,"[pj] %s:%d fail %d %d\n",__FILE__,__LINE__,
++            noOfRecordsFetched, recordCount);
+         phosphor::logging::log<phosphor::logging::level::ERR>(
+             ("Unable to fetch all PDR records. Expected number of records: " +
+              std::to_string(recordCount) +
+@@ -1530,6 +1566,288 @@ void PDRManager::parseFRURecordSetPDR(std::vector<uint8_t>& pdrData)
+     _fruRecordSetIntf.emplace(fruRSI, std::make_pair(fruRSIntf, *fruRSPath));
+ }
+ 
++/* Inventec - RDE Implementations */
++void PDRManager::parseRedfishResourcePDR(std::vector<uint8_t> &pdrData)
++{
++    std::fprintf(stderr, "[pj] %s\n", __func__);
++    if (pdrData.size() < sizeof(struct pldm_pdr_hdr) + MINIMUM_REDFISH_RESOURCE_PDR_LENGTH)
++    {
++        std::fprintf(stderr, "[pj] %s:%d fail\n", __FILE__, __LINE__);
++        phosphor::logging::log<phosphor::logging::level::WARNING>(
++            "Redfish Resource PDR empty");
++        return;
++    }
++    uint32_t i = 0, j;
++
++    // Populate the parsed Redfish Resource PDR struct
++    auto parsedPDR = std::make_shared<pldm_redfish_resource_pdr>();
++
++    /* Parsing PDR header*/
++    parsedPDR->hdr.record_handle =
++        (static_cast<uint32_t>(pdrData[i + 3]) << 24) |
++        (static_cast<uint32_t>(pdrData[i + 2]) << 16) |
++        (static_cast<uint32_t>(pdrData[i + 1]) << 8) |
++        pdrData[i];
++    LE32TOH(parsedPDR->hdr.record_handle);
++    i += 4;
++
++    parsedPDR->hdr.version = pdrData[i++];
++    parsedPDR->hdr.type = pdrData[i++];
++
++    parsedPDR->hdr.record_change_num =
++        (static_cast<uint16_t>(pdrData[i + 1]) << 8) | pdrData[i];
++    LE16TOH(parsedPDR->hdr.record_change_num);
++    i += 2;
++
++    parsedPDR->hdr.length =
++        (static_cast<uint16_t>(pdrData[i + 1]) << 8) | pdrData[i];
++    LE16TOH(parsedPDR->hdr.length);
++    i += 2;
++
++    parsedPDR->ResourceID =
++        (static_cast<uint32_t>(pdrData[i + 3]) << 24) |
++        (static_cast<uint32_t>(pdrData[i + 2]) << 16) |
++        (static_cast<uint32_t>(pdrData[i + 1]) << 8) |
++        pdrData[i];
++    LE32TOH(parsedPDR->ResourceID);
++    i += 4;
++
++    parsedPDR->ResourceFlags.byte = pdrData[i++];
++
++    parsedPDR->ContainingResourceID =
++        (static_cast<uint32_t>(pdrData[i + 3]) << 24) |
++        (static_cast<uint32_t>(pdrData[i + 2]) << 16) |
++        (static_cast<uint32_t>(pdrData[i + 1]) << 8) |
++        pdrData[i];
++    LE32TOH(parsedPDR->ContainingResourceID);
++    i += 4;
++
++    parsedPDR->ProposedContainingResourceLengthBytes =
++        (static_cast<uint16_t>(pdrData[i + 1]) << 8) | pdrData[i];
++    LE16TOH(parsedPDR->ProposedContainingResourceLengthBytes);
++    i += 2;
++
++    parsedPDR->ProposedContainingResourceName.assign(
++        pdrData.begin() + i, pdrData.begin() + i + parsedPDR->ProposedContainingResourceLengthBytes);
++
++    i += parsedPDR->ProposedContainingResourceLengthBytes;
++
++    parsedPDR->SubURILengthBytes =
++        (static_cast<uint16_t>(pdrData[i + 1]) << 8) | pdrData[i];
++    LE16TOH(parsedPDR->SubURILengthBytes);
++    i += 2;
++
++    parsedPDR->SubURI.assign(
++        pdrData.begin() + i, pdrData.begin() + i + parsedPDR->SubURILengthBytes);
++    i += parsedPDR->SubURILengthBytes;
++
++    parsedPDR->AdditionalResourceIDCount =
++        (static_cast<uint16_t>(pdrData[i + 1]) << 8) | pdrData[i];
++    LE16TOH(parsedPDR->AdditionalResourceIDCount);
++    i += 2;
++
++    /* Parse AdditionalResourceIDs */
++    for (j = 0; j < parsedPDR->AdditionalResourceIDCount; j++)
++    {
++        struct pldm_redfish_additional_resource_ID adr;
++
++        adr.AdditionalResourceID =
++            (static_cast<uint32_t>(pdrData[i + 3]) << 24) |
++            (static_cast<uint32_t>(pdrData[i + 2]) << 16) |
++            (static_cast<uint32_t>(pdrData[i + 1]) << 8) |
++            pdrData[i];
++        LE32TOH(adr.AdditionalResourceID);
++        i += 4;
++
++        adr.AdditionalResourceSubURILengthBytes =
++            (static_cast<uint16_t>(pdrData[i + 1]) << 8) | pdrData[i];
++        LE16TOH(adr.AdditionalResourceSubURILengthBytes);
++        i += 2;
++        adr.AdditionalResourceSubURI.assign(
++            pdrData.begin() + i, pdrData.begin() + i + adr.AdditionalResourceSubURILengthBytes);
++        i += adr.AdditionalResourceSubURILengthBytes;
++        parsedPDR->AdditionalResourceIDs.push_back(adr);
++    }
++
++    parsedPDR->MajorSchemaVersion.alpha = pdrData[i++];
++    parsedPDR->MajorSchemaVersion.update = pdrData[i++];
++    parsedPDR->MajorSchemaVersion.minor = pdrData[i++];
++    parsedPDR->MajorSchemaVersion.major = pdrData[i++];
++
++    parsedPDR->MajorSchemaDictionaryLengthBytes =
++        (static_cast<uint16_t>(pdrData[i + 1]) << 8) | pdrData[i];
++    LE16TOH(parsedPDR->MajorSchemaDictionaryLengthBytes);
++    i += 2;
++
++    parsedPDR->MajorSchemaDictionarySignature =
++        (static_cast<uint32_t>(pdrData[i + 3]) << 24) |
++        (static_cast<uint32_t>(pdrData[i + 2]) << 16) |
++        (static_cast<uint32_t>(pdrData[i + 1]) << 8) |
++        pdrData[i];
++    LE32TOH(parsedPDR->MajorSchemaDictionarySignature);
++    i += 4;
++
++    parsedPDR->MajorSchemaNameLength = pdrData[i++];
++    parsedPDR->MajorSchemaName.assign(
++        pdrData.begin() + i, pdrData.begin() + i + parsedPDR->MajorSchemaNameLength);
++    i += parsedPDR->MajorSchemaNameLength;
++
++    /* Parse OEMNameLengthBytes and OEMNames */
++    parsedPDR->OEMCount =
++        (static_cast<uint16_t>(pdrData[i + 1]) << 8) | pdrData[i];
++    LE16TOH(parsedPDR->OEMCount);
++    i += 2;
++
++    for (j = 0; j < parsedPDR->OEMCount; j++)
++    {
++        struct pldm_redfish_oem_name oemName;
++
++        oemName.OEMNameLengthBytes =
++            (static_cast<uint16_t>(pdrData[i + 1]) << 8) | pdrData[i];
++        LE16TOH(oemName.OEMNameLengthBytes);
++        i += 2;
++        oemName.OEMNames.assign(
++            pdrData.begin() + i, pdrData.begin() + i + oemName.OEMNameLengthBytes);
++        i += oemName.OEMNameLengthBytes;
++        parsedPDR->OemNames.push_back(oemName);
++    }
++
++    uint32_t resourceID = parsedPDR->ResourceID;
++    _redfishResourcePDR.emplace(resourceID, std::move(parsedPDR));
++}
++
++
++#if 0
++static void populateRedfishEntityAssociation(DBusInterfacePtr &redfishEntityAssociationIntf,
++        const DBusObjectPath &path)
++{
++    const std::string redfishInterface =
++        "xyz.openbmc_project.PLDM.RedfishEntityAssociation";
++
++    auto objServer = getObjServer();
++
++    redfishEntityAssociationIntf = objServer->add_interface(path, redfishInterface);
++    // TODO: Expose more state effecter info from PDR
++    redfishEntityAssociationIntf->initialize();
++}
++
++void PDRManager::parseRedfishEntityAssociationPDR(std::vector<uint8_t> &pdrData)
++{
++    if (pdrData.size() < sizeof(pldm_redfish_entity_association_pdr))
++    {
++        phosphor::logging::log<phosphor::logging::level::WARNING>(
++            "Redfish Entity Association PDR empty");
++        return;
++    }
++
++    const pldm_redfish_entity_association_pdr *redfishPDR =
++        reinterpret_cast<const pldm_redfish_entity_association_pdr *>(pdrData.data());
++
++    // Populate the parsed Redfish Entity Association PDR struct
++    pldm_redfish_entity_association_pdr parsedPDR;
++    parsedPDR.hdr = redfishPDR->hdr;
++    parsedPDR.ContainingResourceID = le32toh(redfishPDR->ContainingResourceID);
++    parsedPDR.ProposedContainingResourceLengthBytes =
++        le16toh(redfishPDR->ProposedContainingResourceLengthBytes);
++    parsedPDR.ContainedEntityCount = redfishPDR->ContainedEntityCount;
++
++    uint32_t resourceID = redfishPDR->ContainingResourceID;
++
++    std::string basePath = "/redfish/v1/";
++    std::string indexStr = std::to_string(redfishPDR->ContainingResourceID);
++    std::string fullPath = basePath + indexStr;
++
++    DBusInterfacePtr redfishEntityAssociationIntf;
++    populateRedfishEntityAssociation(redfishEntityAssociationIntf, fullPath);
++    _redfishEntityAssociationIntf.emplace(resourceID, std::make_pair(redfishEntityAssociationIntf, fullPath));
++
++    std::shared_ptr<pldm_redfish_entity_association_pdr> redfishEntityAssociationPDR =
++        std::make_shared<pldm_redfish_entity_association_pdr>(*redfishPDR);
++
++    _redfishEntityAssociationPDR.emplace(resourceID, std::move(redfishEntityAssociationPDR));
++}
++
++static void populateRedfishAction(DBusInterfacePtr &redfishActionIntf,
++                                  const DBusObjectPath &path)
++{
++    const std::string redfishInterface =
++        "xyz.openbmc_project.PLDM.RedfishAction";
++
++    auto objServer = getObjServer();
++
++    redfishActionIntf = objServer->add_interface(path, redfishInterface);
++    // TODO: Expose more state effecter info from PDR
++    redfishActionIntf->initialize();
++}
++
++void PDRManager::parseRedfishActionPDR(std::vector<uint8_t> &pdrData)
++{
++    if (pdrData.size() < sizeof(pldm_redfish_action_pdr))
++    {
++        phosphor::logging::log<phosphor::logging::level::WARNING>(
++            "Redfish Action PDR empty");
++        return;
++    }
++
++    pldm_redfish_action_pdr *redfishPDR =
++        reinterpret_cast<pldm_redfish_action_pdr *>(pdrData.data());
++
++    // Populate the parsed Redfish Action PDR struct
++    pldm_redfish_action_pdr parsedPDR;
++    parsedPDR.hdr = redfishPDR->hdr;
++    parsedPDR.ActionPDRIndex = redfishPDR->ActionPDRIndex;
++    parsedPDR.RelatedResourceCount = ntohs(redfishPDR->RelatedResourceCount);
++
++    uint32_t resourceID = redfishPDR->ActionPDRIndex;
++
++    // Copy RelatedResourceID values
++    for (uint16_t i = 0; i < parsedPDR.RelatedResourceCount; ++i)
++    {
++        parsedPDR.RelatedResourceID[i] = ntohl(redfishPDR->RelatedResourceID[i]);
++    }
++
++    parsedPDR.ActionCount = redfishPDR->ActionCount;
++
++    // Parse individual actions
++    size_t offset = sizeof(pldm_redfish_action_pdr);
++    for (uint8_t i = 0; i < parsedPDR.ActionCount; ++i)
++    {
++        parsedPDR.ActionNameLengthBytes[i] = redfishPDR->ActionNameLengthBytes[i];
++        parsedPDR.ActionPathLengthBytes[i] = redfishPDR->ActionPathLengthBytes[i];
++
++        // Copy ActionName
++        std::string actionName(reinterpret_cast<const char *>(pdrData.data() + offset),
++                               parsedPDR.ActionNameLengthBytes[i]);
++        offset += parsedPDR.ActionNameLengthBytes[i];
++
++        // Copy ActionPath
++        std::string actionPath(reinterpret_cast<const char *>(pdrData.data() + offset),
++                               parsedPDR.ActionPathLengthBytes[i]);
++        offset += parsedPDR.ActionPathLengthBytes[i];
++    }
++
++    std::string basePath = "/redfish/v1/";
++    std::string indexStr = std::to_string(redfishPDR->ActionPDRIndex);
++    std::string fullPath = basePath + indexStr;
++
++    DBusInterfacePtr redfishActionIntf;
++    populateRedfishAction(redfishActionIntf, fullPath);
++    _redfishActionIntf.emplace(resourceID, std::make_pair(redfishActionIntf, fullPath));
++
++    std::shared_ptr<pldm_redfish_action_pdr> redfishActionPDR =
++        std::make_shared<pldm_redfish_action_pdr>(*redfishPDR);
++
++    _redfishActionPDR.emplace(resourceID, std::move(redfishActionPDR));
++}
++#endif
++
++
++
++
++
++
++
++
+ template <pldm_pdr_types pdrType>
+ void PDRManager::parsePDR()
+ {
+@@ -1579,6 +1897,23 @@ void PDRManager::parsePDR()
+         {
+             parseEntityAssociationPDR(pdrVec);
+         }
++        /* Inventec - RDE Implementations*/
++        else if constexpr (pdrType == PLDM_REDFISH_RESOURCE_PDR)
++        {
++            parseRedfishResourcePDR(pdrVec);
++        }
++        #if 0
++        else if constexpr (pdrType == PLDM_REDFISH_ENTITY_ASSOCIATION_PDR)
++        {
++            std::fprintf(stderr,"PDRManager => parseRedfishEntityAssociationPDR !\n");
++            parseRedfishEntityAssociationPDR(pdrVec);
++        }
++        else if constexpr (pdrType == PLDM_REDFISH_ACTION_PDR)
++        {
++            std::fprintf(stderr,"PDRManager => parseRedfishActionPDR !\n");
++            parseRedfishActionPDR(pdrVec);
++        }
++        #endif
+         else
+         {
+             phosphor::logging::log<phosphor::logging::level::ERR>(
+@@ -1639,6 +1974,42 @@ std::optional<std::shared_ptr<pldm_numeric_effecter_value_pdr>>
+     return std::nullopt;
+ }
+ 
++/* Inventec - RDE Implementation */
++std::optional<std::shared_ptr<pldm_redfish_resource_pdr>>
++    PDRManager::getRedfishResourcePDR(const ResourceID& resourceID)
++{
++    auto iter = _redfishResourcePDR.find(resourceID);
++    if (iter != _redfishResourcePDR.end())
++    {
++        return iter->second;
++    }
++    return std::nullopt;
++}
++#if 0
++
++std::optional<std::shared_ptr<pldm_redfish_entity_association_pdr>>
++    PDRManager::getRedfishEntityAssociationDR(const ResourceID& resourceID)
++{
++    auto iter = _redfishEntityAssociationPDR.find(resourceID);
++    if (iter != _redfishEntityAssociationPDR.end())
++    {
++        return iter->second;
++    }
++    return std::nullopt;
++}
++
++std::optional<std::shared_ptr<pldm_redfish_action_pdr>>
++    PDRManager::getRedfishActionPDR(const ResourceID& resourceID)
++{
++    auto iter = _redfishActionPDR.find(resourceID);
++    if (iter != _redfishActionPDR.end())
++    {
++        return iter->second;
++    }
++    return std::nullopt;
++}
++#endif
++
+ std::shared_ptr<StateEffecterPDR>
+     PDRManager::getStateEffecterPDR(const SensorID& effecterID)
+ {
+@@ -1652,6 +2023,8 @@ std::shared_ptr<StateEffecterPDR>
+ 
+ bool PDRManager::pdrManagerInit(boost::asio::yield_context yield)
+ {
++    std::fprintf(stderr, "[pj] %s\n",__func__);
++
+     std::optional<pldm_pdr_repository_info> pdrInfo =
+         getPDRRepositoryInfo(yield);
+     if (!pdrInfo)
+@@ -1686,10 +2059,48 @@ bool PDRManager::pdrManagerInit(boost::asio::yield_context yield)
+     parsePDR<PLDM_NUMERIC_EFFECTER_PDR>();
+     parsePDR<PLDM_STATE_EFFECTER_PDR>();
+     parsePDR<PLDM_PDR_FRU_RECORD_SET>();
++    
++    /* Inventec - RDE Implementation*/
++    parsePDR<PLDM_REDFISH_RESOURCE_PDR>();
++    #if 0
++    parsePDR<PLDM_REDFISH_ENTITY_ASSOCIATION_PDR>();
++    parsePDR<PLDM_REDFISH_ACTION_PDR>();
++    #endif
+ 
+     return true;
+ }
+ 
++#if 0
++bool PDRManager::pdrManagerRDE(boost::asio::yield_context yield)
++{
++    std::optional<pldm_pdr_repository_info> pdrInfo =
++        getPDRRepositoryInfo(yield);
++    if (!pdrInfo)
++    {
++        return false;
++    }
++    pdrRepoInfo = *pdrInfo;
++    printPDRInfo(pdrRepoInfo);
++
++    PDRRepo pdrRepo(pldm_pdr_init(), pldm_pdr_destroy);
++    _pdrRepo = std::move(pdrRepo);
++
++    if (!constructPDRRepo(yield))
++    {
++        return false;
++    }
++
++    initializePDRDumpIntf();
++    #if 0
++    parsePDR<PLDM_REDFISH_RESOURCE_PDR>();
++    parsePDR<PLDM_REDFISH_ENTITY_ASSOCIATION_PDR>();
++    parsePDR<PLDM_REDFISH_ACTION_PDR>();
++    #endif
++
++    return true;
++}
++#endif
++
+ struct PDRDump
+ {
+     PDRDump(const std::string& fileName) : pdrFile(fileName)
+diff --git a/src/platform.cpp b/src/platform.cpp
+index f20c9e5..4efc20f 100644
+--- a/src/platform.cpp
++++ b/src/platform.cpp
+@@ -15,6 +15,7 @@
+  */
+ #include "platform.hpp"
+ 
++#include <iostream>
+ #include <phosphor-logging/log.hpp>
+ 
+ namespace pldm
+@@ -303,6 +304,7 @@ bool Platform::initTerminus(
+     boost::asio::yield_context yield, const pldm_tid_t tid,
+     const pldm::base::CommandSupportTable& /*commandTable*/)
+ {
++    std::fprintf(stderr, "[pj] %s\n", __func__);
+     phosphor::logging::log<phosphor::logging::level::INFO>(
+         "Running Platform Monitoring and Control initialisation",
+         phosphor::logging::entry("TID=%d", tid));
+@@ -372,6 +374,27 @@ bool Platform::deleteTerminus(const pldm_tid_t tid)
+     return true;
+ }
+ 
++/* Inventec - RDE Implementation */
++bool Platform::platformGetRedfishResourceIdList(const pldm_tid_t tid, std::vector<uint32_t>& resourceIdList)
++{
++    std::fprintf(stderr, "[pj] %s\n",__func__);
++    auto it = platforms.find(tid);
++    if (it == platforms.end())
++    {
++        phosphor::logging::log<phosphor::logging::level::WARNING>(
++            ("No Platform Monitoring and Control resources related to "
++             "TID " +
++             std::to_string(tid))
++                .c_str());
++        return false;
++    }
++    it->second->terminusGetRedfishResourceIdList(resourceIdList);
++
++    return true;
++}
++
++
++
+ void pauseSensorPolling()
+ {
+     platform.stopSensorPolling();
+@@ -393,5 +416,11 @@ bool deleteMnCTerminus(const pldm_tid_t tid)
+     return platform.deleteTerminus(tid);
+ }
+ 
++/* Inventec - RDE Implementation*/
++bool getRedfishResourceIdList(const pldm_tid_t tid, std::vector<uint32_t>& resourceIdList)
++{
++    return platform.platformGetRedfishResourceIdList(tid, resourceIdList);
++}
++
+ } // namespace platform
+ } // namespace pldm
+diff --git a/src/platform_terminus.cpp b/src/platform_terminus.cpp
+index 59b8bc3..020387b 100644
+--- a/src/platform_terminus.cpp
++++ b/src/platform_terminus.cpp
+@@ -15,6 +15,7 @@
+  */
+ #include "platform_terminus.hpp"
+ 
++#include <iostream>
+ #include <phosphor-logging/log.hpp>
+ 
+ namespace pldm
+@@ -34,6 +35,11 @@ PlatformTerminus::PlatformTerminus(boost::asio::yield_context yield,
+     initSensors(yield);
+ 
+     initEffecters(yield);
++
++    if (!initRedfishResourcePDRs(yield))
++    {
++        throw std::runtime_error("Platform terminus initialization failed");
++    }
+ }
+ 
+ void PlatformTerminus::initSensors(boost::asio::yield_context yield)
+@@ -150,5 +156,34 @@ bool PlatformTerminus::initPDRs(boost::asio::yield_context yield)
+ 
+     return true;
+ }
++
++/* Inventec - RDE implementations */
++bool PlatformTerminus::terminusGetRedfishResourceIdList(std::vector<uint32_t>& resourceIdList)
++{
++    // Loop through all elements using a range-based for loop
++    for (const auto& entry : pdrManager->getRedfishResourcePDR()) {
++        std::shared_ptr<pldm_redfish_resource_pdr> ptr = entry.second;
++        resourceIdList.push_back(ptr->ResourceID);
++        for (const auto& it : ptr->AdditionalResourceIDs) {
++            resourceIdList.push_back(it.AdditionalResourceID);
++        }
++    }
++
++    return true;
++}
++
++
++bool PlatformTerminus::initRedfishResourcePDRs(boost::asio::yield_context yield)
++{
++    std::fprintf(stderr,"[pj] %s\n", __func__);
++
++    (void)(yield);
++
++    return true;
++}
++
++
++
++
+ } // namespace platform
+ } // namespace pldm
+\ No newline at end of file
+diff --git a/src/pldmd.cpp b/src/pldmd.cpp
+index 252e6dd..3cb5983 100644
+--- a/src/pldmd.cpp
++++ b/src/pldmd.cpp
+@@ -581,6 +581,19 @@ void initDevice(const mctpw_eid_t eid, boost::asio::yield_context yield)
+             "PLDM firmware update init failed",
+             phosphor::logging::entry("TID=%d", assignedTID));
+     }
++    if (isSupported(PLDM_RDE))
++    {
++        std::vector<uint32_t> resourceIdList;
++
++        pldm::platform::getRedfishResourceIdList(assignedTID, resourceIdList);
++
++        if(!pldm::rde::rdeInit(yield, assignedTID, resourceIdList))
++        {
++            phosphor::logging::log<phosphor::logging::level::ERR>(
++                "PLDM RDE init failed",
++                phosphor::logging::entry("TID=%d", assignedTID));
++        }
++    }
+ }
+ 
+ // Parallel inits fail for devices behind SMBus mux due to timeouts waiting for
+@@ -694,7 +707,7 @@ int main(int argc, char* argv[])
+                    "PLDM Physical Binding. Supported: -b smbus, -b pcie")
+         ->required();
+     CLI11_PARSE(app, argc, argv);
+-    
++
+     auto ioc = std::make_shared<boost::asio::io_context>();
+     setIoContext(ioc);
+     boost::asio::signal_set signals(*ioc, SIGINT, SIGTERM);
+@@ -743,6 +756,5 @@ int main(int argc, char* argv[])
+     });
+ 
+     ioc->run();
+-
+     return 0;
+ }
+diff --git a/src/rde.cpp b/src/rde.cpp
+new file mode 100644
+index 0000000..fc53b22
+--- /dev/null
++++ b/src/rde.cpp
+@@ -0,0 +1,841 @@
++/**
++ *
++ */
++#include "rde.hpp"
++#include "base.hpp"
++
++#include "platform.hpp"
++#include "pldm.hpp"
++#include "pdr_manager.hpp"
++
++#include <numeric>
++#include <phosphor-logging/log.hpp>
++#include <unordered_map>
++#include <unordered_set>
++
++#include "libpldm/platform.h"
++#include "libpldm/utils.h"
++#include "libbej/bej_decoder_core.h"
++#include "libbej/bej_decoder_json.hpp"
++
++
++namespace pldm
++{
++namespace rde
++{
++
++std::map<uint8_t, int> rdeCommandRequestSize =
++{
++    {PLDM_NEGOTIATE_REDFISH_PARAMETERS, 3},
++    {PLDM_NEGOTIATE_MEDIUM_PARAMETERS, 4},
++    {PLDM_GET_SCHEMA_DICTIONARY, 5},
++    {PLDM_RDE_MULTIPART_RECEIVE, 7}
++};
++
++struct pldm_rde_device_info *rdeDeviceInfo =
++        reinterpret_cast<struct pldm_rde_device_info *>(malloc(
++                sizeof(struct pldm_rde_device_info)));
++
++struct pldm_rde_get_schema_dictionary_resp *responseGetSchemaDic =
++        reinterpret_cast<struct pldm_rde_get_schema_dictionary_resp *>(malloc(
++                sizeof(struct pldm_rde_get_schema_dictionary_resp)));
++
++struct pldm_rde_multipart_receive_resp *responseMultipartReceive =
++        reinterpret_cast<struct pldm_rde_multipart_receive_resp *>(malloc(
++                sizeof(struct pldm_rde_multipart_receive_resp)));
++
++std::vector<uint8_t> globalPayloadDic;
++std::vector<uint8_t> globalResponsePayloadBEJ;
++
++std::map<pldm_tid_t, std::shared_ptr<Rde>> rdes{};
++
++
++
++Rde::Rde(boost::asio::yield_context yield, const pldm_tid_t tid, std::vector<ResourceID> &resourceIdList) :
++    _tid(tid)
++{
++    std::fprintf(stderr, "[pj] %s\n", __func__);
++
++    (void)(yield);
++
++    for (const ResourceID &resourceId : resourceIdList)
++    {
++        std::fprintf(stderr, "[pj] resourceIdList %d\n", resourceId);
++    }
++    dictionariesPtr = std::make_shared<BejDictionaries>();
++}
++
++Rde::~Rde()
++{
++    std::fprintf(stderr, "[pj] %s\n", __func__);
++}
++
++
++void logVect(const std::string &prefix, const std::vector<uint8_t> &vec)
++{
++    std::ostringstream oss;
++    oss << prefix << " [";
++    for (size_t i = 0; i < vec.size(); ++i)
++    {
++        oss << "0x" << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(vec[i]);
++        if (i < vec.size() - 1)
++        {
++            oss << ", ";
++        }
++    }
++    oss << "]";
++    phosphor::logging::log<phosphor::logging::level::INFO>(oss.str().c_str());
++}
++void logCRC(const std::string &prefix, uint32_t crcValue)
++{
++    std::ostringstream oss;
++    oss << prefix << " 0x" << std::hex << std::setw(8) << std::setfill('0') << crcValue;
++    phosphor::logging::log<phosphor::logging::level::INFO>(oss.str().c_str());
++}
++void logHexData(const uint8_t *data, size_t size)
++{
++    std::ostringstream oss;
++    oss << "Hex Data: ";
++    for (size_t i = 0; i < size; ++i)
++    {
++        oss << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(data[i]);
++        if (i != size - 1)
++        {
++            oss << " ";
++        }
++    }
++    phosphor::logging::log<phosphor::logging::level::INFO>(oss.str().c_str());
++}
++void logData(const std::string &prefix, const uint8_t *data, size_t size)
++{
++    std::ostringstream oss;
++    oss << prefix << " [";
++    for (size_t i = 0; i < size; ++i)
++    {
++        oss << "0x" << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(data[i]);
++        if (i < size - 1)
++        {
++            oss << ", ";
++        }
++    }
++    oss << "]";
++    phosphor::logging::log<phosphor::logging::level::INFO>(oss.str().c_str());
++}
++std::string bitfield8ToString(bitfield8_t bitfield)
++{
++    std::string result;
++    for (int i = 7; i >= 0; --i)
++    {
++        result += ((bitfield.byte >> i) & 1) ? "1" : "0";
++    }
++    return result;
++}
++std::string bitfield16ToString(bitfield16_t bitfield)
++{
++    std::string result;
++    for (int i = 15; i >= 0; --i)
++    {
++        result += ((bitfield.value >> i) & 1) ? "1" : "0";
++    }
++    return result;
++}
++std::string hexToString(const std::vector<uint8_t> &data)
++{
++    std::ostringstream oss;
++    oss << "Hex Data: ";
++    for (const uint8_t byte : data)
++    {
++        oss << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(byte) << " ";
++    }
++    return oss.str();
++}
++
++
++bool Rde::rde_negotiate_redfish_parameters(const mctpw_eid_t eid, boost::asio::yield_context yield, const pldm_tid_t tid)
++{
++    uint8_t instanceID = pldm::createInstanceId(tid);
++    struct pldm_rde_negotiate_redfish_parameters_req pldm_req;
++    pldm_req.mc_concurrency_support = 13;
++    pldm_req.mc_feature_support = {.value = 0x7389};
++    /*pldm_req.mc_feature_support.value = 0;
++
++    // Set supported operations and functionalities
++    pldm_req.mc_feature_support.value |= (1 << 8); // Support for BEJ v1.1 encoding and decoding
++    pldm_req.mc_feature_support.value |= (1 << 7); // Support for events
++    pldm_req.mc_feature_support.value |= (1 << 6); // Support for execute operation
++    pldm_req.mc_feature_support.value |= (1 << 5); // Support for replace operation
++    pldm_req.mc_feature_support.value |= (1 << 4); // Support for update operation
++    pldm_req.mc_feature_support.value |= (1 << 3); // Support for delete operation
++    pldm_req.mc_feature_support.value |= (1 << 2); // Support for create operation
++    pldm_req.mc_feature_support.value |= (1 << 1); // Support for read operation
++    pldm_req.mc_feature_support.value |= (1 << 0); // Support for header operation*/
++
++    bitfield16_t temp_feature_support = pldm_req.mc_feature_support;
++    int requestBytes = sizeof(pldm_msg_hdr) + rdeCommandRequestSize[PLDM_NEGOTIATE_REDFISH_PARAMETERS];
++    std::vector<uint8_t> requestBuffer(requestBytes);
++
++    int rc = encode_negotiate_redfish_parameters_req(instanceID, pldm_req.mc_concurrency_support, &temp_feature_support,
++             reinterpret_cast<struct pldm_msg *>(requestBuffer.data()));
++
++    if (rc != PLDM_SUCCESS)
++    {
++        return false;
++    }
++
++
++
++    fprintf(stderr, "pldm => rde_negotiate_redfish_parameters requestBuffer content:\n");
++    for (const uint8_t byte : requestBuffer)
++    {
++        fprintf(stderr, "%02X ", byte);
++    }
++    fprintf(stderr, "\n");
++
++
++
++    size_t responseBufferSize = sizeof(pldm_msg_hdr) + RDE_NEGOTIATE_REDFISH_PARAMS_RESP_SIZE;
++    std::vector<uint8_t> responseBuffer(responseBufferSize, 0);
++    uint8_t *responseBufferMsg = responseBuffer.data();
++    auto responseBufferPtr = reinterpret_cast<struct pldm_msg *>(responseBufferMsg);
++
++    bool result = pldm::sendReceivePldmMessage(yield, tid, 100, 3,
++                  requestBuffer, responseBuffer, eid);
++
++    if (!result)
++    {
++        return false;
++    }
++
++    struct pldm_rde_device_info deviceInfo;
++    uint8_t completionCode;
++
++    int decodeResult = decode_negotiate_redfish_parameters_resp(responseBufferPtr, responseBufferSize, &completionCode, &deviceInfo);
++
++
++
++    fprintf(stderr, "pldm => rde_negotiate_redfish_parameters responseBuffer content:\n");
++    for (size_t i = 0; i < responseBufferSize; ++i)
++    {
++        fprintf(stderr, "%02X ", reinterpret_cast<uint8_t *>(responseBufferPtr)[i]);
++        if ((i + 1) % 16 == 0 || i == responseBufferSize - 1)
++        {
++            fprintf(stderr, "\n");
++        }
++    }
++
++
++
++    if (decodeResult == PLDM_SUCCESS)
++    {
++        if (completionCode == PLDM_SUCCESS)
++        {
++            if (rdeDeviceInfo != NULL)
++            {
++                rdeDeviceInfo->device_concurrency = deviceInfo.device_concurrency;
++                rdeDeviceInfo->device_capabilities_flag = deviceInfo.device_capabilities_flag;
++                rdeDeviceInfo->device_feature_support = deviceInfo.device_feature_support;
++                rdeDeviceInfo->device_configuration_signature = deviceInfo.device_configuration_signature;
++                rdeDeviceInfo->device_provider_name = deviceInfo.device_provider_name;
++            }
++        }
++        else
++        {
++            return false;
++        }
++    }
++    else
++    {
++        return false;
++    }
++
++    return true;
++}
++
++bool Rde::rde_negotiate_medium_parameters(const mctpw_eid_t eid, boost::asio::yield_context yield, const pldm_tid_t tid)
++{
++    uint8_t instanceID = pldm::createInstanceId(tid);
++    uint32_t maxTransferSize = 2048;
++
++    int requestBytes = sizeof(pldm_msg_hdr) + rdeCommandRequestSize[PLDM_NEGOTIATE_MEDIUM_PARAMETERS];
++    std::vector<uint8_t> requestBuffer(requestBytes);
++
++    int rc = encode_negotiate_medium_parameters_req(instanceID, maxTransferSize, reinterpret_cast<struct pldm_msg *>(requestBuffer.data()));
++
++    if (rc != PLDM_SUCCESS)
++    {
++        return false;
++    }
++
++
++    fprintf(stderr, "pldm => rde_negotiate_medium_parameters requestBuffer content:\n");
++    for (const uint8_t byte : requestBuffer)
++    {
++        fprintf(stderr, "%02X ", byte);
++    }
++    fprintf(stderr, "\n");
++
++
++    size_t responseBufferSize = sizeof(pldm_msg_hdr) + RDE_NEGOTIATE_REDFISH_MEDIUM_PARAMS_RESP_SIZE;
++    std::vector<uint8_t> responseBuffer(responseBufferSize, 0);
++    uint8_t *responseBufferMsg = responseBuffer.data();
++    auto responseBufferPtr = reinterpret_cast<struct pldm_msg *>(responseBufferMsg);
++
++    bool result = pldm::sendReceivePldmMessage(yield, tid, 100, 3,
++                  requestBuffer, responseBuffer, eid);
++
++    if (!result)
++    {
++        return false;
++    }
++
++    uint8_t completionCode;
++    uint32_t deviceMaxTransferSize;
++
++    int decodeResult = decode_negotiate_medium_parameters_resp(responseBufferPtr, responseBufferSize, &completionCode, &deviceMaxTransferSize);
++
++
++    fprintf(stderr, "pldm => rde_negotiate_medium_parameters responseBuffer content:\n");
++    for (size_t i = 0; i < responseBufferSize; ++i)
++    {
++        fprintf(stderr, "%02X ", reinterpret_cast<uint8_t *>(responseBufferPtr)[i]);
++        if ((i + 1) % 16 == 0 || i == responseBufferSize - 1)
++        {
++            fprintf(stderr, "\n");
++        }
++    }
++
++
++    if (decodeResult == PLDM_SUCCESS)
++    {
++        if (completionCode == PLDM_SUCCESS)
++        {
++            if (rdeDeviceInfo != NULL)
++            {
++                rdeDeviceInfo->device_maximum_transfer_chunk_size = deviceMaxTransferSize;
++
++                fprintf(stderr, "pldm => rde_negotiate_medium_parameters  deviceMaxTransferSize =  %d\n", deviceMaxTransferSize);
++            }
++        }
++        else
++        {
++            return false;
++        }
++    }
++    else
++    {
++        return false;
++    }
++
++    return true;
++}
++
++bool Rde::rde_multipart_receive(const mctpw_eid_t eid, boost::asio::yield_context yield,
++                                uint8_t instance_id, uint32_t data_transfer_handle, const pldm_tid_t tid, uint16_t operationId, uint8_t schemaClass)
++{
++    uint8_t transferOperation = PLDM_XFER_FIRST_PART;
++    size_t requestBytes = sizeof(struct pldm_msg_hdr) + rdeCommandRequestSize[PLDM_RDE_MULTIPART_RECEIVE];
++    std::vector<uint8_t> requestBuffer(requestBytes);
++
++    int rc = encode_rde_multipart_receive_req(instance_id, data_transfer_handle, operationId, transferOperation,
++             reinterpret_cast<struct pldm_msg *>(requestBuffer.data()));
++
++    if (rc != PLDM_SUCCESS)
++    {
++        fprintf(stderr, "pldm => Encoded RDE Multipart Receive response fail!\n");
++        return false;
++    }
++
++
++
++    fprintf(stderr, "pldm => rde_multipart_receive requestBuffer content:\n");
++    for (const uint8_t byte : requestBuffer)
++    {
++        fprintf(stderr, "%02X ", byte);
++    }
++    fprintf(stderr, "\n");
++
++    size_t responseBufferSize = sizeof(struct pldm_msg_hdr) + rdeDeviceInfo->device_maximum_transfer_chunk_size;
++    std::vector<uint8_t> responseBuffer(responseBufferSize, 0);
++    uint8_t *responseBufferMsg = responseBuffer.data();
++    auto responseBufferPtr = reinterpret_cast<struct pldm_msg *>(responseBufferMsg);
++
++    bool result = pldm::sendReceivePldmMessage(yield, tid, 100, 3,
++                  requestBuffer, responseBuffer, eid);
++
++    if (!result)
++    {
++        return false;
++    }
++
++    uint8_t completionCode;
++    uint8_t retTransferFlag;
++    uint32_t retDataTransferHandle;
++    uint32_t dataLengthBytes;
++    uint8_t *returnPayload;
++
++    int decodeResult = decode_rde_multipart_receive_resp(responseBufferPtr, responseBufferSize, &completionCode,
++                       &retTransferFlag, &retDataTransferHandle, &dataLengthBytes, &returnPayload);
++
++
++    fprintf(stderr, "pldm => rde_multipart_receive responseBuffer content:\n");
++    for (size_t i = 0; i < responseBufferSize; ++i)
++    {
++        fprintf(stderr, "%02X ", reinterpret_cast<uint8_t *>(responseBufferPtr)[i]);
++        if ((i + 1) % 16 == 0 || i == responseBufferSize - 1)
++        {
++            fprintf(stderr, "\n");
++        }
++    }
++    fprintf(stderr, "pldm => rde_multipart_receive completionCode:  %d\n", completionCode);
++
++
++    if (decodeResult == PLDM_SUCCESS)
++    {
++        if (completionCode == PLDM_SUCCESS)
++        {
++            fprintf(stderr, "pldm => Decoded RDE Multipart Receive response successfully\n");
++
++            if (schemaClass == 0)
++            {
++                dictionariesPtr->schemaDictionary = returnPayload;
++            }
++            else if (schemaClass == 2)
++            {
++                dictionariesPtr->annotationDictionary = returnPayload;
++            }
++            else if (schemaClass == 4)
++            {
++                dictionariesPtr->errorDictionary = returnPayload;
++            }
++            else
++            {
++                globalPayloadDic.assign(returnPayload, returnPayload + dataLengthBytes);
++            }
++            return true;
++        }
++        else
++        {
++            fprintf(stderr, "pldm => RDE Multipart Receive response completion code is not success\n");
++            return false;
++        }
++    }
++    else
++    {
++        fprintf(stderr, "pldm => Error decoding RDE Multipart Receive response!   %d\n", decodeResult);
++        return false;
++    }
++
++    return true;
++}
++
++bool Rde::rde_get_schema_dictionary(const mctpw_eid_t eid, boost::asio::yield_context yield, const pldm_tid_t tid, uint32_t resourceID, uint8_t schemaClass)
++{
++    uint8_t instanceID = pldm::createInstanceId(tid);
++
++    int requestBytes = sizeof(pldm_msg_hdr) + rdeCommandRequestSize[PLDM_GET_SCHEMA_DICTIONARY];
++    std::vector<uint8_t> requestBuffer(requestBytes);
++
++    int rc = encode_get_schema_dictionary_req(instanceID, resourceID, schemaClass,
++             reinterpret_cast<struct pldm_msg *>(requestBuffer.data()));
++
++    if (rc != PLDM_SUCCESS)
++    {
++        fprintf(stderr, "pldm => Encoded GetSchemaDictionary response fail!\n");
++        return rc;
++    }
++
++    fprintf(stderr, "pldm => rde_get_schema_dictionary requestBuffer content:\n");
++    for (const uint8_t byte : requestBuffer)
++    {
++        fprintf(stderr, "%02X ", byte);
++    }
++    fprintf(stderr, "\n");
++
++    size_t responseBufferSize = sizeof(pldm_msg_hdr) + RDE_GET_DICT_SCHEMA_RESP_SIZE;
++    std::vector<uint8_t> responseBuffer(responseBufferSize, 0);
++    uint8_t *responseBufferMsg = responseBuffer.data();
++    auto responseBufferPtr = reinterpret_cast<struct pldm_msg *>(responseBufferMsg);
++
++    bool result = pldm::sendReceivePldmMessage(yield, tid, 100, 3,
++                  requestBuffer, responseBuffer, eid);
++
++    if (!result)
++    {
++        return false;
++    }
++
++    uint8_t completionCode;
++    uint8_t dictionaryFormat;
++    uint32_t transferHandle;
++
++    int decodeResult = decode_get_schema_dictionary_resp(responseBufferPtr, responseBufferSize, &completionCode,
++                       &dictionaryFormat, &transferHandle);
++
++    fprintf(stderr, "pldm => rde_get_schema_dictionary responseBuffer content:\n");
++    for (size_t i = 0; i < responseBufferSize; ++i)
++    {
++        fprintf(stderr, "%02X ", reinterpret_cast<uint8_t *>(responseBufferPtr)[i]);
++        if ((i + 1) % 16 == 0 || i == responseBufferSize - 1)
++        {
++            fprintf(stderr, "\n");
++        }
++    }
++    fprintf(stderr, "pldm => rde_get_schema_dictionary completionCode:  %d\n", completionCode);
++
++
++    if (decodeResult == PLDM_SUCCESS)
++    {
++        if (completionCode == PLDM_SUCCESS)
++        {
++
++            fprintf(stderr, "pldm => Decoded GetSchemaDictionary response successfully\n");
++
++            fprintf(stderr, "pldm => schemaClass: %d\n", schemaClass);
++            fprintf(stderr, "pldm => dictionaryFormat: %d\n", dictionaryFormat);
++            fprintf(stderr, "pldm => transferHandle: %d\n", transferHandle);
++
++            if (responseGetSchemaDic != NULL)
++            {
++                responseGetSchemaDic->completion_code = completionCode;
++                responseGetSchemaDic->dictionary_format = dictionaryFormat;
++                responseGetSchemaDic->transfer_handle = transferHandle;
++            }
++
++            rde_multipart_receive(eid, yield, instanceID, transferHandle, tid, 0, schemaClass);
++        }
++        else
++        {
++            fprintf(stderr, "pldm => GetSchemaDictionary response completion code is not success\n");
++            return false;
++        }
++    }
++    else
++    {
++        fprintf(stderr, "pldm => Error decoding GetSchemaDictionary response: %d\n", decodeResult);
++        return false;
++    }
++
++    return true;
++}
++
++bool Rde::sendRDEOperationInitCommand(const mctpw_eid_t eid, boost::asio::yield_context yield, const pldm_tid_t tid, uint32_t resourceId, uint16_t operationId)
++{
++    uint8_t instanceID = pldm::createInstanceId(tid);
++    uint8_t operationType = PLDM_RDE_OPERATION_READ;
++    auto operationFlags = std::make_unique<union pldm_rde_operation_flags>();
++    operationFlags.get()->byte = 0x00;
++    uint32_t transferHandle = 0xABCDEF12;
++
++    std::vector<uint8_t> requestBuffer(sizeof(pldm_msg_hdr) + sizeof(struct pldm_rde_operation_init_req));
++
++    int rc = encode_rde_operation_init_req(instanceID, resourceId,
++                                           operationId, operationType,
++                                           operationFlags.get(), transferHandle,
++                                           0, 0,
++                                           NULL, NULL, reinterpret_cast<struct pldm_msg *>(requestBuffer.data()));
++    if (rc != PLDM_SUCCESS)
++    {
++        std::string errorMsg = "pldm => Error encoding rde operation init request! " + std::to_string(rc);
++        phosphor::logging::log<phosphor::logging::level::INFO>(errorMsg.c_str());
++        return rc;
++    }
++
++    constexpr size_t responsePayloadLength = sizeof(struct pldm_msg_hdr) +
++            sizeof(struct pldm_rde_operation_init_resp) + 4;
++    std::vector<uint8_t> responseBuffer(responsePayloadLength);
++    auto responseBufferPtr = reinterpret_cast<pldm_msg *>(responseBuffer.data());
++
++    bool result = pldm::sendReceivePldmMessage(yield, tid, 100, 3,
++                  requestBuffer, responseBuffer, eid);
++
++    if (!result)
++    {
++        phosphor::logging::log<phosphor::logging::level::INFO>(
++            "pldm => sendRDEOperationInitCommand sendReceivePldmMessage fail!");
++        return false;
++    }
++
++    uint8_t returnCompletionCode;
++    uint8_t returnOperationStatus;
++    uint8_t returnCompletionPercentage;
++    uint32_t returnCompletionTimeSeconds;
++    uint32_t returnTransferHandle;
++    uint32_t returnResponsePayloadLength;
++
++    union pldm_rde_op_execution_flags *returnExecutionFlags =
++            static_cast<union pldm_rde_op_execution_flags *>(malloc(sizeof(union pldm_rde_op_execution_flags)));
++    union pldm_rde_permission_flags *returnPermissionFlags =
++            static_cast<union pldm_rde_permission_flags *>(malloc(sizeof(union pldm_rde_permission_flags)));
++
++    auto returnEtag = std::make_unique<pldm_rde_varstring>().get();
++    auto responsePayload = std::make_unique<uint8_t>().get();
++
++    int decodeResult = decode_rde_operation_init_resp(responseBufferPtr, responsePayloadLength, &returnCompletionCode,
++                       &returnCompletionPercentage, &returnOperationStatus,
++                       &returnCompletionTimeSeconds, &returnTransferHandle,
++                       &returnResponsePayloadLength, &returnPermissionFlags,
++                       &returnExecutionFlags, &returnEtag, &responsePayload);
++
++    if (decodeResult == PLDM_SUCCESS)
++    {
++        phosphor::logging::log<phosphor::logging::level::INFO>(
++            ("pldm => sendRDEOperationInitCommand completionCode: " + std::to_string(returnCompletionCode)).c_str());
++
++        if (returnCompletionCode == PLDM_SUCCESS)
++        {
++            phosphor::logging::log<phosphor::logging::level::INFO>(
++                "pldm => Decoded sendRDEOperationInitCommand response successfully");
++
++            phosphor::logging::log<phosphor::logging::level::INFO>(
++                ("pldm => Dictionary Format: " + std::to_string(returnOperationStatus)).c_str());
++
++            phosphor::logging::log<phosphor::logging::level::INFO>(
++                ("pldm => Transfer Handle: " + std::to_string(returnTransferHandle)).c_str());
++
++            globalResponsePayloadBEJ.assign(responsePayload, responsePayload + returnResponsePayloadLength);
++        }
++        else
++        {
++            phosphor::logging::log<phosphor::logging::level::INFO>(
++                "pldm => sendRDEOperationInitCommand response completion code is not success");
++        }
++    }
++    else
++    {
++        std::string errorMsg = "pldm => Error decoding sendRDEOperationInitCommand response! " + std::to_string(decodeResult);
++        phosphor::logging::log<phosphor::logging::level::INFO>(errorMsg.c_str());
++    }
++
++    return true;
++}
++
++bool Rde::sendRDEOperationStatusCommand(const mctpw_eid_t eid, boost::asio::yield_context yield,
++                                        const pldm_tid_t tid, uint32_t resourceId, uint16_t operationId)
++{
++    uint8_t instanceID = pldm::createInstanceId(tid);
++    std::vector<uint8_t> requestBuffer(sizeof(pldm_msg_hdr) + sizeof(struct pldm_rde_operation_status_req));
++
++    int rc = encode_rde_operation_status_req(instanceID, resourceId,
++             operationId, reinterpret_cast<struct pldm_msg *>(requestBuffer.data()));
++    if (rc != PLDM_SUCCESS)
++    {
++        std::string errorMsg = "pldm => Error encoding rde operation status request! " + std::to_string(rc);
++        phosphor::logging::log<phosphor::logging::level::INFO>(errorMsg.c_str());
++        return false;
++    }
++
++    constexpr size_t responsePayloadLength = sizeof(struct pldm_msg_hdr) +
++            sizeof(struct pldm_rde_operation_init_resp) + 4;
++    std::vector<uint8_t> responseBuffer(responsePayloadLength);
++    auto responseBufferPtr = reinterpret_cast<pldm_msg *>(responseBuffer.data());
++
++    bool result = pldm::sendReceivePldmMessage(yield, tid, 100, 3,
++                  requestBuffer, responseBuffer, eid);
++
++    if (!result)
++    {
++        phosphor::logging::log<phosphor::logging::level::INFO>(
++            "pldm => sendRDEOperationStatusCommand sendReceivePldmMessage fail!");
++        return false;
++    }
++
++    uint8_t returnCompletionCode;
++    uint8_t returnOperationStatus;
++    uint8_t returnCompletionPercentage;
++    uint32_t returnCompletionTimeSeconds;
++    uint32_t returnTransferHandle;
++    uint32_t returnResponsePayloadLength;
++
++    union pldm_rde_op_execution_flags *returnExecutionFlags =
++            static_cast<union pldm_rde_op_execution_flags *>(malloc(sizeof(union pldm_rde_op_execution_flags)));
++    union pldm_rde_permission_flags *returnPermissionFlags =
++            static_cast<union pldm_rde_permission_flags *>(malloc(sizeof(union pldm_rde_permission_flags)));
++
++    auto returnEtag = std::make_unique<pldm_rde_varstring>().get();
++    auto responsePayload = std::make_unique<uint8_t>().get();
++
++    int decodeResult = decode_rde_operation_status_resp(responseBufferPtr, responsePayloadLength, &returnCompletionCode,
++                       &returnCompletionPercentage, &returnOperationStatus,
++                       &returnCompletionTimeSeconds, &returnTransferHandle,
++                       &returnResponsePayloadLength, &returnPermissionFlags,
++                       &returnExecutionFlags, &returnEtag, &responsePayload);
++
++    if (decodeResult == PLDM_SUCCESS)
++    {
++        phosphor::logging::log<phosphor::logging::level::INFO>(
++            ("pldm => sendRDEOperationStatusCommand completionCode: " + std::to_string(returnCompletionCode)).c_str());
++
++        if (returnCompletionCode == PLDM_SUCCESS)
++        {
++            phosphor::logging::log<phosphor::logging::level::INFO>(
++                "pldm => Decoded sendRDEOperationStatusCommand response successfully");
++
++            phosphor::logging::log<phosphor::logging::level::INFO>(
++                ("pldm => Operation Status: " + std::to_string(returnOperationStatus)).c_str());
++
++            phosphor::logging::log<phosphor::logging::level::INFO>(
++                ("pldm => Transfer Handle: " + std::to_string(returnTransferHandle)).c_str());
++
++
++        }
++        else
++        {
++            phosphor::logging::log<phosphor::logging::level::INFO>(
++                "pldm => sendRDEOperationStatusCommand response completion code is not success");
++        }
++    }
++    else
++    {
++        std::string errorMsg = "pldm => Error decoding sendRDEOperationStatusCommand response! " + std::to_string(decodeResult);
++        phosphor::logging::log<phosphor::logging::level::INFO>(errorMsg.c_str());
++    }
++
++    return true;
++}
++
++bool Rde::sendRDEOperationCompleteCommand(const mctpw_eid_t eid, boost::asio::yield_context yield,
++        const pldm_tid_t tid, uint32_t resourceId, uint16_t operationId)
++{
++    uint8_t instanceID = pldm::createInstanceId(tid);
++    std::vector<uint8_t> requestBuffer(sizeof(pldm_msg_hdr) + sizeof(struct pldm_rde_operation_complete_req));
++
++    int rc = encode_rde_operation_complete_req(instanceID, resourceId,
++             operationId, reinterpret_cast<struct pldm_msg *>(requestBuffer.data()));
++    if (rc != PLDM_SUCCESS)
++    {
++        std::string errorMsg = "pldm => Error encoding rde operation complete request! " + std::to_string(rc);
++        phosphor::logging::log<phosphor::logging::level::INFO>(errorMsg.c_str());
++        return false;
++    }
++
++    constexpr size_t responsePayloadLength = sizeof(struct pldm_msg_hdr) + 1;
++    std::vector<uint8_t> responseBuffer(responsePayloadLength);
++    auto responseBufferPtr = reinterpret_cast<pldm_msg *>(responseBuffer.data());
++
++    bool result = pldm::sendReceivePldmMessage(yield, tid, 100, 3,
++                  requestBuffer, responseBuffer, eid);
++
++    if (!result)
++    {
++        phosphor::logging::log<phosphor::logging::level::INFO>(
++            "pldm => sendRDEOperationCompleteCommand sendReceivePldmMessage fail!");
++        return false;
++    }
++
++    uint8_t returnCompletionCode;
++
++    int decodeResult = decode_rde_operation_complete_resp(responseBufferPtr, responsePayloadLength, &returnCompletionCode);
++
++    if (decodeResult == PLDM_SUCCESS)
++    {
++        phosphor::logging::log<phosphor::logging::level::INFO>(
++            ("pldm => sendRDEOperationCompleteCommand completionCode: " + std::to_string(returnCompletionCode)).c_str());
++
++        if (returnCompletionCode == PLDM_SUCCESS)
++        {
++            phosphor::logging::log<phosphor::logging::level::INFO>(
++                "pldm => RDE operation completed successfully");
++        }
++        else
++        {
++            phosphor::logging::log<phosphor::logging::level::INFO>(
++                "pldm => RDE operation completion code is not success");
++        }
++    }
++    else
++    {
++        std::string errorMsg = "pldm => Error decoding sendRDEOperationCompleteCommand response! " + std::to_string(decodeResult);
++        phosphor::logging::log<phosphor::logging::level::INFO>(errorMsg.c_str());
++    }
++
++    return true;
++}
++
++bool Rde::decodeBEJ(std::string &jsonOutput)
++{
++    libbej::BejDecoderJson decoder;
++
++    int result = decoder.decode(*dictionariesPtr, globalResponsePayloadBEJ);
++    if (result == 0)
++    {
++        jsonOutput = decoder.getOutput();
++    }
++    else
++    {
++        return false;
++    }
++
++    free(rdeDeviceInfo);
++    rdeDeviceInfo = NULL;
++    free(responseGetSchemaDic);
++    responseGetSchemaDic = NULL;
++    free(responseMultipartReceive);
++    responseMultipartReceive = NULL;
++    globalPayloadDic.clear();
++    globalResponsePayloadBEJ.clear();
++
++    return true;
++}
++
++bool deleteRDEDevice(const pldm_tid_t tid)
++{
++    phosphor::logging::log<phosphor::logging::level::INFO>(
++        "Running Delete RDEDevice", phosphor::logging::entry("TID=%d", tid));
++
++    return true;
++}
++
++bool rdeInit(boost::asio::yield_context yield, const pldm_tid_t tid,
++             std::vector<uint32_t> &resourceIdList)
++{
++    std::fprintf(stderr, "[pj] %s\n", __func__);
++    phosphor::logging::log<phosphor::logging::level::INFO>(
++        "Running RDE initialisation", phosphor::logging::entry("TID=%d", tid));
++
++    std::shared_ptr<Rde> rde =
++        std::make_shared<Rde>(yield, tid, resourceIdList);
++
++    rdes.insert_or_assign(tid, std::move(rde));
++
++#if 0
++    rde_negotiate_redfish_parameters(eid, yield, tid);
++    rde_negotiate_medium_parameters(eid, yield, tid);
++
++    pldm::platform::PDRManager pdrManager(tid);
++    pdrManager.pdrManagerRDE(yield);
++    const auto &redfishResourcePDRMap = pdrManager.getRedfishResourcePDR();
++
++    if (!redfishResourcePDRMap.empty())
++    {
++        for (const auto &entry : redfishResourcePDRMap)
++        {
++            std::shared_ptr<pldm_redfish_resource_pdr> pdrPtr = entry.second;
++            if (pdrPtr)
++            {
++                phosphor::logging::log<phosphor::logging::level::INFO>(
++                    ("ResourceID: " + std::to_string(pdrPtr->ResourceID)).c_str());
++
++                rde_get_schema_dictionary(eid, yield, tid, pdrPtr->ResourceID, 0);
++                rde_get_schema_dictionary(eid, yield, tid, pdrPtr->ResourceID, 2);
++                rde_get_schema_dictionary(eid, yield, tid, pdrPtr->ResourceID, 4);
++
++                sendRDEOperationInitCommand(eid, yield, tid, pdrPtr->ResourceID, 32770);
++                sendRDEOperationCompleteCommand(eid, yield, tid, pdrPtr->ResourceID, 32770);
++            }
++            else
++            {
++                phosphor::logging::log<phosphor::logging::level::WARNING>(
++                    "Null pointer in redfishResourcePDRMap");
++            }
++        }
++    }
++    else
++    {
++        phosphor::logging::log<phosphor::logging::level::INFO>(
++            "redfishResourcePDRMap is empty");
++    }
++#endif
++    return true;
++}
++} // namespace rde
++} // namespace pldm
+\ No newline at end of file
+-- 
+2.25.1
+
