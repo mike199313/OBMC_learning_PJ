@@ -1,22 +1,22 @@
-From de0baac376631598c80e929f0ee83f6578bba070 Mon Sep 17 00:00:00 2001
+From 36df6c7a6ac43a653e13fe2639a3ac0c1b81ceff Mon Sep 17 00:00:00 2001
 From: PJ Chen <chen.pj@inventec.com>
-Date: Tue, 29 Aug 2023 14:41:31 +0800
-Subject: [PATCH] [pldmd][temp] - RDE temp patch
+Date: Tue, 5 Sep 2023 10:55:29 +0800
+Subject: [PATCH] [temp][20230905] - RDE Implementation
 
 ---
  CMakeLists.txt                |   1 +
  include/pdr_manager.hpp       |  67 +++
  include/pdr_redfish.hpp       |  95 ++++
- include/platform.hpp          |   6 +
- include/platform_terminus.hpp |   5 +
- include/pldm.hpp              |  17 +
+ include/platform.hpp          |  10 +
+ include/platform_terminus.hpp |   9 +
+ include/pldm.hpp              |  20 +
  include/rde.hpp               |  56 +++
- src/pdr_manager.cpp           | 413 ++++++++++++++++-
- src/platform.cpp              |  29 ++
- src/platform_terminus.cpp     |  35 ++
- src/pldmd.cpp                 |  16 +-
- src/rde.cpp                   | 841 ++++++++++++++++++++++++++++++++++
- 12 files changed, 1578 insertions(+), 3 deletions(-)
+ src/pdr_manager.cpp           | 409 +++++++++++++++-
+ src/platform.cpp              |  74 +++
+ src/platform_terminus.cpp     | 322 +++++++++++++
+ src/pldmd.cpp                 |  59 ++-
+ src/rde.cpp                   | 857 ++++++++++++++++++++++++++++++++++
+ 12 files changed, 1976 insertions(+), 3 deletions(-)
  create mode 100644 include/pdr_redfish.hpp
  create mode 100644 include/rde.hpp
  create mode 100644 src/rde.cpp
@@ -255,19 +255,23 @@ index 0000000..3373133
 +} // namespace platform
 +} // namespace pldm
 diff --git a/include/platform.hpp b/include/platform.hpp
-index 2128105..408a53c 100644
+index 2128105..47e2b87 100644
 --- a/include/platform.hpp
 +++ b/include/platform.hpp
-@@ -44,6 +44,8 @@ class Platform
+@@ -44,6 +44,12 @@ class Platform
      bool initTerminus(boost::asio::yield_context yield, const pldm_tid_t tid,
                        const pldm::base::CommandSupportTable& commandTable);
      bool deleteTerminus(const pldm_tid_t tid);
 +    /* Inventec - RDE Implementation */
-+    bool platformGetRedfishResourceIdList(const pldm_tid_t tid, std::vector<uint32_t>& resourceIdList);
++    bool platformGetRedfishResourceIdList(const pldm_tid_t tid,
++      std::vector<uint32_t>& resourceIdList);
++    bool platformGetResourceIdByUri(const std::string uri,
++      pldm_tid_t& tid, ResourceID& resourceId);
++    bool platformGetResourceUriCollections(std::string& collections);
  
    private:
      bool induceAsyncDelay(boost::asio::yield_context yield, int delay);
-@@ -70,5 +72,9 @@ void pauseSensorPolling();
+@@ -70,5 +76,9 @@ void pauseSensorPolling();
  
  /** @brief Resume sensor polling if it is paused*/
  void resumeSensorPolling();
@@ -278,15 +282,26 @@ index 2128105..408a53c 100644
  } // namespace platform
  } // namespace pldm
 diff --git a/include/platform_terminus.hpp b/include/platform_terminus.hpp
-index e955ed1..0e0a209 100644
+index e955ed1..6529235 100644
 --- a/include/platform_terminus.hpp
 +++ b/include/platform_terminus.hpp
-@@ -40,10 +40,15 @@ struct PlatformTerminus
+@@ -25,6 +25,7 @@ namespace pldm
+ {
+ namespace platform
+ {
++
+ struct PlatformTerminus
+ {
+   public:
+@@ -40,10 +41,18 @@ struct PlatformTerminus
      std::unordered_map<EffecterID, std::unique_ptr<StateEffecterHandler>>
          stateEffecters;
  
 +    /* Inventec - RDE Implementation */
-+    bool terminusGetRedfishResourceIdList(std::vector<uint32_t>& resourceIdList);
++    std::unordered_map<ResourceID, std::string> resourceIdUriMap;
++    bool terminusGetRedfishResourceIdList(std::vector<ResourceID>& resourceIdList);
++    bool terminusGetResourceIdByUri(const std::string uri, ResourceID& resourceId);
++    bool terminusGetResourceUriCollections(std::string& collections);
 +
    private:
      void initSensors(boost::asio::yield_context yield);
@@ -298,7 +313,7 @@ index e955ed1..0e0a209 100644
      pldm_tid_t _tid;
  };
 diff --git a/include/pldm.hpp b/include/pldm.hpp
-index 7812b8c..94706f6 100644
+index 7812b8c..59fb30c 100644
 --- a/include/pldm.hpp
 +++ b/include/pldm.hpp
 @@ -17,6 +17,7 @@
@@ -317,19 +332,20 @@ index 7812b8c..94706f6 100644
  
  using mctpw_eid_t = mctpw::eid_t;
  
-@@ -258,6 +260,11 @@ bool platformInit(boost::asio::yield_context yield, const pldm_tid_t tid,
+@@ -258,6 +260,12 @@ bool platformInit(boost::asio::yield_context yield, const pldm_tid_t tid,
  
  bool deleteMnCTerminus(const pldm_tid_t tid);
  
 +
 +/* Inventec - RDE Implementation*/
-+bool getRedfishResourceIdList(const pldm_tid_t tid, std::vector<uint32_t>& resourceIdList);
-+
++bool getRedfishResourceIdList(const pldm_tid_t tid, std::vector<ResourceID>& resourceIdList);
++bool getResourceIdByUri(const std::string uri, pldm_tid_t& tid, ResourceID& resourceId);
++bool getResourceUriCollections(std::string& collections);
 +
  } // namespace platform
  
  namespace fru
-@@ -279,4 +286,14 @@ void pldmMsgRecvFwUpdCallback(const pldm_tid_t tid, const uint8_t msgTag,
+@@ -279,4 +287,16 @@ void pldmMsgRecvFwUpdCallback(const pldm_tid_t tid, const uint8_t msgTag,
  
  } // namespace fwu
  
@@ -337,9 +353,11 @@ index 7812b8c..94706f6 100644
 +{
 +
 +bool rdeInit(boost::asio::yield_context yield, const pldm_tid_t tid,
-+  std::vector<uint32_t>& resourceIdList);
++  std::vector<ResourceID>& resourceIdList);
 +
 +bool deleteRDEDevice(const pldm_tid_t tid);
++
++bool rdeOperationRead(const pldm_tid_t tid, ResourceID resourceId, std::string& json);
 +
 +} // namespace rde
 +
@@ -407,7 +425,7 @@ index 0000000..6df106f
 +} // namespace rde
 +} // namespace pldm
 diff --git a/src/pdr_manager.cpp b/src/pdr_manager.cpp
-index 0db70ab..fbe9e38 100644
+index 0db70ab..640d133 100644
 --- a/src/pdr_manager.cpp
 +++ b/src/pdr_manager.cpp
 @@ -20,6 +20,7 @@
@@ -442,145 +460,23 @@ index 0db70ab..fbe9e38 100644
  #ifdef EXPOSE_CHASSIS
      if (inventoryIntf)
      {
-@@ -257,6 +275,7 @@ bool PDRManager::getDevicePDRRecord(boost::asio::yield_context yield,
-                                     RecordHandle& nextRecordHandle,
-                                     std::vector<uint8_t>& pdrRecord)
- {
-+    std::fprintf(stderr,"[pj] %s handle %d\n",__func__, recordHandle);
-     std::vector<uint8_t> req(pldmMsgHdrSize + PLDM_GET_PDR_REQ_BYTES);
-     auto reqMsgPtr = reinterpret_cast<pldm_msg*>(req.data());
-     constexpr size_t requestCount =
-@@ -284,6 +303,7 @@ bool PDRManager::getDevicePDRRecord(boost::asio::yield_context yield,
-         if (!sendReceivePldmMessage(yield, _tid, commandTimeout,
-                                     commandRetryCount, req, resp))
-         {
-+            std::fprintf(stderr,"[pj] %s:%d fail\n",__FILE__,__LINE__);
-             phosphor::logging::log<phosphor::logging::level::ERR>(
-                 "Failed to send or receive GetPDR request",
-                 phosphor::logging::entry("TID=%d", _tid));
-@@ -295,6 +315,7 @@ bool PDRManager::getDevicePDRRecord(boost::asio::yield_context yield,
-             dataTransferHandle, transferComplete, pdrRecord);
-         if (!ret)
-         {
-+            std::fprintf(stderr,"[pj] %s:%d fail\n",__FILE__,__LINE__);
-             // Discard the record if decode failed
-             phosphor::logging::log<phosphor::logging::level::WARNING>(
-                 "handleGetRecordResp failed");
-@@ -313,6 +334,7 @@ bool PDRManager::getDevicePDRRecord(boost::asio::yield_context yield,
-         if (pdrRecord.size() > pdrRepoInfo.largest_record_size ||
-             !(--multipartTransferLimit))
-         {
-+            std::fprintf(stderr,"[pj] %s:%d fail\n",__FILE__,__LINE__);
-             phosphor::logging::log<phosphor::logging::level::WARNING>(
-                 "Max PDR record size limit reached",
-                 phosphor::logging::entry("TID=%d", _tid),
-@@ -326,6 +348,7 @@ bool PDRManager::getDevicePDRRecord(boost::asio::yield_context yield,
- 
-     if (!transferComplete)
-     {
-+        std::fprintf(stderr,"[pj] %s:%d fail\n",__FILE__,__LINE__);
-         phosphor::logging::log<phosphor::logging::level::WARNING>(
-             "Multipart PDR data transfer failed. Discarding the record",
-             phosphor::logging::entry("TID=%d", _tid),
-@@ -341,7 +364,7 @@ bool PDRManager::getDevicePDRRepo(
+@@ -341,7 +359,6 @@ bool PDRManager::getDevicePDRRepo(
      std::unordered_map<RecordHandle, std::vector<uint8_t>>& devicePDRs)
  {
      RecordHandle recordHandle = 0x00;
 -
-+    std::fprintf(stderr,"[pj] %s\n",__func__);
      do
      {
          std::vector<uint8_t> pdrRecord{};
-@@ -349,6 +372,7 @@ bool PDRManager::getDevicePDRRepo(
-         if (!getDevicePDRRecord(yield, recordHandle, nextRecordHandle,
-                                 pdrRecord))
-         {
-+            std::fprintf(stderr,"[pj] %s:%d fail\n",__FILE__,__LINE__);
-             return false;
-         }
- 
-@@ -373,6 +397,7 @@ bool PDRManager::addDevicePDRToRepo(
-     pldm_terminus_locator_pdr* tLocatorPDR = NULL;
-     const pldm_pdr_hdr* pdrHdr;
- 
-+    std::fprintf(stderr, "[pj] %s\n", __func__);
-     /* Inventec - Find PLDM_TERMINUS_LOCATOR_PDR first*/
-     for (auto& pdrRecord : devicePDRs)
-     {
-@@ -386,6 +411,7 @@ bool PDRManager::addDevicePDRToRepo(
-             {
-                 if (terminusLPDRFound)
-                 {
-+                    std::fprintf(stderr, "[pj] %s:%d fail\n", __FILE__,__LINE__);
-                     phosphor::logging::log<phosphor::logging::level::ERR>(
-                         "Multiple valid Terminus Locator PDRs found",
-                         phosphor::logging::entry("TID=%d", _tid));
-@@ -400,6 +426,7 @@ bool PDRManager::addDevicePDRToRepo(
- 
-     if (!terminusLPDRFound)
-     {
-+        std::fprintf(stderr, "[pj] %s:%d warning\n", __FILE__,__LINE__);
-         phosphor::logging::log<phosphor::logging::level::WARNING>(
-             "Terminus Locator PDR not found");
-     }
-@@ -418,10 +445,14 @@ bool PDRManager::addDevicePDRToRepo(
- 
- bool PDRManager::constructPDRRepo(boost::asio::yield_context yield)
- {
-+    std::fprintf(stderr, "[pj] %s record cout %d\n",
-+        __func__,pdrRepoInfo.record_count);
-+
-     uint32_t recordCount = pdrRepoInfo.record_count;
- 
-     if (pdrRepoInfo.repository_state != PLDM_AVAILABLE)
-     {
-+        std::fprintf(stderr,"[pj] %s:%d fail\n",__FILE__,__LINE__);
-         phosphor::logging::log<phosphor::logging::level::WARNING>(
-             "Device PDR record data is unavailable",
-             phosphor::logging::entry("TID=%d", _tid));
-@@ -429,6 +460,7 @@ bool PDRManager::constructPDRRepo(boost::asio::yield_context yield)
-     }
-     if (!recordCount)
-     {
-+        std::fprintf(stderr,"[pj] %s:%d fail\n",__FILE__,__LINE__);
-         phosphor::logging::log<phosphor::logging::level::WARNING>(
-             "No PDR records to fetch",
-             phosphor::logging::entry("TID=%d", _tid));
-@@ -445,6 +477,7 @@ bool PDRManager::constructPDRRepo(boost::asio::yield_context yield)
-         }
-         if (!noOfCommandTries)
-         {
-+            std::fprintf(stderr,"[pj] %s:%d fail\n",__FILE__,__LINE__);
-             phosphor::logging::log<phosphor::logging::level::ERR>(
-                 "Get PDR failed. Unable to fetch PDRs even after 3 tries",
-                 phosphor::logging::entry("TID=%d", _tid));
-@@ -455,12 +488,15 @@ bool PDRManager::constructPDRRepo(boost::asio::yield_context yield)
- 
-     if (!addDevicePDRToRepo(devicePDRs))
-     {
-+        std::fprintf(stderr,"[pj] %s:%d fail\n",__FILE__,__LINE__);
-         return false;
-     }
- 
-     uint32_t noOfRecordsFetched = pldm_pdr_get_record_count(_pdrRepo.get());
-     if (noOfRecordsFetched != recordCount)
-     {
-+        std::fprintf(stderr,"[pj] %s:%d fail %d %d\n",__FILE__,__LINE__,
-+            noOfRecordsFetched, recordCount);
-         phosphor::logging::log<phosphor::logging::level::ERR>(
-             ("Unable to fetch all PDR records. Expected number of records: " +
-              std::to_string(recordCount) +
-@@ -1530,6 +1566,288 @@ void PDRManager::parseFRURecordSetPDR(std::vector<uint8_t>& pdrData)
+@@ -1530,6 +1547,305 @@ void PDRManager::parseFRURecordSetPDR(std::vector<uint8_t>& pdrData)
      _fruRecordSetIntf.emplace(fruRSI, std::make_pair(fruRSIntf, *fruRSPath));
  }
  
 +/* Inventec - RDE Implementations */
 +void PDRManager::parseRedfishResourcePDR(std::vector<uint8_t> &pdrData)
 +{
-+    std::fprintf(stderr, "[pj] %s\n", __func__);
 +    if (pdrData.size() < sizeof(struct pldm_pdr_hdr) + MINIMUM_REDFISH_RESOURCE_PDR_LENGTH)
 +    {
-+        std::fprintf(stderr, "[pj] %s:%d fail\n", __FILE__, __LINE__);
 +        phosphor::logging::log<phosphor::logging::level::WARNING>(
 +            "Redfish Resource PDR empty");
 +        return;
@@ -635,9 +531,12 @@ index 0db70ab..fbe9e38 100644
 +    LE16TOH(parsedPDR->ProposedContainingResourceLengthBytes);
 +    i += 2;
 +
-+    parsedPDR->ProposedContainingResourceName.assign(
-+        pdrData.begin() + i, pdrData.begin() + i + parsedPDR->ProposedContainingResourceLengthBytes);
-+
++    /* Skip the last null byte for string.*/
++    if(parsedPDR->ProposedContainingResourceLengthBytes > 0)
++    {
++        parsedPDR->ProposedContainingResourceName.assign(
++            pdrData.begin() + i, pdrData.begin() + i + parsedPDR->ProposedContainingResourceLengthBytes - 1);
++    }
 +    i += parsedPDR->ProposedContainingResourceLengthBytes;
 +
 +    parsedPDR->SubURILengthBytes =
@@ -645,8 +544,12 @@ index 0db70ab..fbe9e38 100644
 +    LE16TOH(parsedPDR->SubURILengthBytes);
 +    i += 2;
 +
-+    parsedPDR->SubURI.assign(
-+        pdrData.begin() + i, pdrData.begin() + i + parsedPDR->SubURILengthBytes);
++    /* Skip the last null byte for string.*/
++    if(parsedPDR->SubURILengthBytes > 0)
++    {
++        parsedPDR->SubURI.assign(
++            pdrData.begin() + i, pdrData.begin() + i + parsedPDR->SubURILengthBytes - 1);
++    }
 +    i += parsedPDR->SubURILengthBytes;
 +
 +    parsedPDR->AdditionalResourceIDCount =
@@ -671,8 +574,12 @@ index 0db70ab..fbe9e38 100644
 +            (static_cast<uint16_t>(pdrData[i + 1]) << 8) | pdrData[i];
 +        LE16TOH(adr.AdditionalResourceSubURILengthBytes);
 +        i += 2;
-+        adr.AdditionalResourceSubURI.assign(
-+            pdrData.begin() + i, pdrData.begin() + i + adr.AdditionalResourceSubURILengthBytes);
++        /* Skip the last null byte for string.*/
++        if(adr.AdditionalResourceSubURILengthBytes > 0)
++        {
++            adr.AdditionalResourceSubURI.assign(
++                pdrData.begin() + i, pdrData.begin() + i + adr.AdditionalResourceSubURILengthBytes - 1);
++        }
 +        i += adr.AdditionalResourceSubURILengthBytes;
 +        parsedPDR->AdditionalResourceIDs.push_back(adr);
 +    }
@@ -696,8 +603,12 @@ index 0db70ab..fbe9e38 100644
 +    i += 4;
 +
 +    parsedPDR->MajorSchemaNameLength = pdrData[i++];
-+    parsedPDR->MajorSchemaName.assign(
-+        pdrData.begin() + i, pdrData.begin() + i + parsedPDR->MajorSchemaNameLength);
++    /* Skip the last null byte for string.*/
++    if(parsedPDR->MajorSchemaNameLength > 0)
++    {
++        parsedPDR->MajorSchemaName.assign(
++            pdrData.begin() + i, pdrData.begin() + i + parsedPDR->MajorSchemaNameLength - 1);
++    }
 +    i += parsedPDR->MajorSchemaNameLength;
 +
 +    /* Parse OEMNameLengthBytes and OEMNames */
@@ -714,8 +625,12 @@ index 0db70ab..fbe9e38 100644
 +            (static_cast<uint16_t>(pdrData[i + 1]) << 8) | pdrData[i];
 +        LE16TOH(oemName.OEMNameLengthBytes);
 +        i += 2;
-+        oemName.OEMNames.assign(
-+            pdrData.begin() + i, pdrData.begin() + i + oemName.OEMNameLengthBytes);
++        /* Skip the last null byte for string.*/
++        if(oemName.OEMNameLengthBytes > 0)
++        {
++            oemName.OEMNames.assign(
++                pdrData.begin() + i, pdrData.begin() + i + oemName.OEMNameLengthBytes - 1);
++        }
 +        i += oemName.OEMNameLengthBytes;
 +        parsedPDR->OemNames.push_back(oemName);
 +    }
@@ -859,7 +774,7 @@ index 0db70ab..fbe9e38 100644
  template <pldm_pdr_types pdrType>
  void PDRManager::parsePDR()
  {
-@@ -1579,6 +1897,23 @@ void PDRManager::parsePDR()
+@@ -1579,6 +1895,23 @@ void PDRManager::parsePDR()
          {
              parseEntityAssociationPDR(pdrVec);
          }
@@ -883,7 +798,7 @@ index 0db70ab..fbe9e38 100644
          else
          {
              phosphor::logging::log<phosphor::logging::level::ERR>(
-@@ -1639,6 +1974,42 @@ std::optional<std::shared_ptr<pldm_numeric_effecter_value_pdr>>
+@@ -1639,6 +1972,42 @@ std::optional<std::shared_ptr<pldm_numeric_effecter_value_pdr>>
      return std::nullopt;
  }
  
@@ -926,16 +841,7 @@ index 0db70ab..fbe9e38 100644
  std::shared_ptr<StateEffecterPDR>
      PDRManager::getStateEffecterPDR(const SensorID& effecterID)
  {
-@@ -1652,6 +2023,8 @@ std::shared_ptr<StateEffecterPDR>
- 
- bool PDRManager::pdrManagerInit(boost::asio::yield_context yield)
- {
-+    std::fprintf(stderr, "[pj] %s\n",__func__);
-+
-     std::optional<pldm_pdr_repository_info> pdrInfo =
-         getPDRRepositoryInfo(yield);
-     if (!pdrInfo)
-@@ -1686,10 +2059,48 @@ bool PDRManager::pdrManagerInit(boost::asio::yield_context yield)
+@@ -1686,10 +2055,48 @@ bool PDRManager::pdrManagerInit(boost::asio::yield_context yield)
      parsePDR<PLDM_NUMERIC_EFFECTER_PDR>();
      parsePDR<PLDM_STATE_EFFECTER_PDR>();
      parsePDR<PLDM_PDR_FRU_RECORD_SET>();
@@ -985,7 +891,7 @@ index 0db70ab..fbe9e38 100644
  {
      PDRDump(const std::string& fileName) : pdrFile(fileName)
 diff --git a/src/platform.cpp b/src/platform.cpp
-index f20c9e5..4efc20f 100644
+index f20c9e5..e30cf13 100644
 --- a/src/platform.cpp
 +++ b/src/platform.cpp
 @@ -15,6 +15,7 @@
@@ -996,22 +902,14 @@ index f20c9e5..4efc20f 100644
  #include <phosphor-logging/log.hpp>
  
  namespace pldm
-@@ -303,6 +304,7 @@ bool Platform::initTerminus(
-     boost::asio::yield_context yield, const pldm_tid_t tid,
-     const pldm::base::CommandSupportTable& /*commandTable*/)
- {
-+    std::fprintf(stderr, "[pj] %s\n", __func__);
-     phosphor::logging::log<phosphor::logging::level::INFO>(
-         "Running Platform Monitoring and Control initialisation",
-         phosphor::logging::entry("TID=%d", tid));
-@@ -372,6 +374,27 @@ bool Platform::deleteTerminus(const pldm_tid_t tid)
+@@ -372,6 +373,56 @@ bool Platform::deleteTerminus(const pldm_tid_t tid)
      return true;
  }
  
 +/* Inventec - RDE Implementation */
-+bool Platform::platformGetRedfishResourceIdList(const pldm_tid_t tid, std::vector<uint32_t>& resourceIdList)
++bool Platform::platformGetRedfishResourceIdList(const pldm_tid_t tid,
++    std::vector<uint32_t>& resourceIdList)
 +{
-+    std::fprintf(stderr, "[pj] %s\n",__func__);
 +    auto it = platforms.find(tid);
 +    if (it == platforms.end())
 +    {
@@ -1027,36 +925,84 @@ index f20c9e5..4efc20f 100644
 +    return true;
 +}
 +
++/* Inventec - RDE Implementation */
++bool Platform::platformGetResourceIdByUri(const std::string uri,
++    pldm_tid_t& tid, ResourceID& resourceId)
++{
++    for (auto it : platforms)
++    {
++        if(it.second->terminusGetResourceIdByUri(uri,resourceId))
++        {
++            /* Found matching URI*/
++            tid = it.first;
++            return true;
++        }
++    }
++    return false;
++}
 +
++
++
++/* Inventec - RDE Implementation */
++bool Platform::platformGetResourceUriCollections(std::string& collections)
++{
++    collections.clear();
++
++    for (auto terminus : platforms)
++    {
++        terminus.second->terminusGetResourceUriCollections(collections);
++    }
++
++    return true;
++}
 +
  void pauseSensorPolling()
  {
      platform.stopSensorPolling();
-@@ -393,5 +416,11 @@ bool deleteMnCTerminus(const pldm_tid_t tid)
+@@ -393,5 +444,28 @@ bool deleteMnCTerminus(const pldm_tid_t tid)
      return platform.deleteTerminus(tid);
  }
  
 +/* Inventec - RDE Implementation*/
-+bool getRedfishResourceIdList(const pldm_tid_t tid, std::vector<uint32_t>& resourceIdList)
++bool getRedfishResourceIdList(const pldm_tid_t tid, std::vector<ResourceID>& resourceIdList)
 +{
 +    return platform.platformGetRedfishResourceIdList(tid, resourceIdList);
 +}
 +
++/* Inventec - RDE Implementation*/
++bool getResourceIdByUri(const std::string uri,
++    pldm_tid_t& tid, ResourceID& resourceId)
++{
++    platform.platformGetResourceIdByUri(uri, tid, resourceId);
++    return true;
++}
++
++/* Inventec - RDE Implementation*/
++bool getResourceUriCollections(std::string& collections)
++{
++    platform.platformGetResourceUriCollections(collections);
++
++    return true;
++}
++
++
  } // namespace platform
  } // namespace pldm
 diff --git a/src/platform_terminus.cpp b/src/platform_terminus.cpp
-index 59b8bc3..020387b 100644
+index 59b8bc3..77ed648 100644
 --- a/src/platform_terminus.cpp
 +++ b/src/platform_terminus.cpp
-@@ -15,6 +15,7 @@
+@@ -15,6 +15,9 @@
   */
  #include "platform_terminus.hpp"
  
 +#include <iostream>
++#include <vector>
++#include <algorithm>
  #include <phosphor-logging/log.hpp>
  
  namespace pldm
-@@ -34,6 +35,11 @@ PlatformTerminus::PlatformTerminus(boost::asio::yield_context yield,
+@@ -34,6 +37,11 @@ PlatformTerminus::PlatformTerminus(boost::asio::yield_context yield,
      initSensors(yield);
  
      initEffecters(yield);
@@ -1068,13 +1014,13 @@ index 59b8bc3..020387b 100644
  }
  
  void PlatformTerminus::initSensors(boost::asio::yield_context yield)
-@@ -150,5 +156,34 @@ bool PlatformTerminus::initPDRs(boost::asio::yield_context yield)
+@@ -150,5 +158,319 @@ bool PlatformTerminus::initPDRs(boost::asio::yield_context yield)
  
      return true;
  }
 +
 +/* Inventec - RDE implementations */
-+bool PlatformTerminus::terminusGetRedfishResourceIdList(std::vector<uint32_t>& resourceIdList)
++bool PlatformTerminus::terminusGetRedfishResourceIdList(std::vector<ResourceID>& resourceIdList)
 +{
 +    // Loop through all elements using a range-based for loop
 +    for (const auto& entry : pdrManager->getRedfishResourcePDR()) {
@@ -1089,23 +1035,308 @@ index 59b8bc3..020387b 100644
 +}
 +
 +
++/* Inventec - RDE implementations */
++bool getProposedUriPrefix(const std::string resourceName, std::string& uri)
++{
++    std::map<std::string, std::string> containingMap = {
++        {
++            "System", 
++            "/redfish/v1/Systems/%s"
++        },
++        {
++            "NetworkInterfaceCollection.NetworkInterfaceCollection",
++            "/redfish/v1/Systems/%s/NetworkInterfaces/%s"
++        },
++        {
++            "NetworkAdapterCollection.NetworkAdapterCollection",
++            "/redfish/v1/Chassis/%s/NetworkAdapters/%s"
++        },
++        {
++            "PCIeDeviceCollection.PCIeDeviceCollection",
++            "/redfish/v1/Chassis/%s/PCIeDevices/%s"
++        }
++    };
++
++    auto it = containingMap.find(resourceName);
++
++    if (it != containingMap.end())
++    {
++        uri = it->second;
++    }
++    else
++    {
++        return false;
++    }
++    return true;
++}
++
++/* Inventec - RDE implementations */
 +bool PlatformTerminus::initRedfishResourcePDRs(boost::asio::yield_context yield)
 +{
-+    std::fprintf(stderr,"[pj] %s\n", __func__);
++    std::optional<ResourceID> pendingResourceId;
++    std::vector<ResourceID> resourceIdList;
++    std::vector<ResourceID> allResourceIdList;
++    std::shared_ptr<pldm_redfish_resource_pdr> ptr;
++    std::string uri;
++    std::string uriPrefix;
++    size_t dotPosition;
 +
 +    (void)(yield);
++    resourceIdUriMap.clear();
++
++    for (const auto& entry : pdrManager->getRedfishResourcePDR()) { 
++        ptr = entry.second;
++        resourceIdList.push_back(ptr->ResourceID);
++    }
++
++    terminusGetRedfishResourceIdList(allResourceIdList);
++    
++    while(!resourceIdList.empty())
++    {
++        uri.clear();
++        uriPrefix.clear();
++
++        auto itPdr = pdrManager->getRedfishResourcePDR().find(resourceIdList.front());
++        if(itPdr != pdrManager->getRedfishResourcePDR().end())
++        {
++            ptr = itPdr->second;
++
++            if( 0 == ptr->ContainingResourceID)
++            {
++                if(ptr->ProposedContainingResourceName.length())
++                {
++                    size_t pos; 
++                    if(!getProposedUriPrefix(ptr->ProposedContainingResourceName, uriPrefix))
++                    {
++                        phosphor::logging::log<phosphor::logging::level::WARNING>(
++                            ("ContainingResource name " + ptr->ProposedContainingResourceName 
++                            + " not found in database")
++                            .c_str());
++                        return false;
++                    }
++                    /* Replace the first occurrence with pldm_tid */
++                    pos = uriPrefix.find("%s");
++                    if (pos != std::string::npos) {
++                        uriPrefix.replace(pos, 2, "pldm_"+std::to_string(_tid));
++                    }
++
++                    // Find the next occurrence of "%s" in the modified string
++                    pos = uriPrefix.find("%s");
++
++                    /* Replace the second occurrence with resourceId if any */
++                    if (pos != std::string::npos) {
++                        uriPrefix.replace(pos, 2, "resourceId_"+std::to_string(ptr->ResourceID));
++                    }
++                }                
++                /* For the root, no need to use MajorSchemaName as URI*/
++                /* Add SubURI if any */
++                if(ptr->SubURI.length())
++                {
++                    /* 
++                        In DSP0248 28.26 Redfish Resource PDR,
++                        If ContainingResourceID is EXTERNAL,
++                        this is the only case in which a leading 
++                        slash (“/”) is allowed for a SubURI.
++                    */
++                    uri += uriPrefix + ptr->SubURI;
++                }
++                else
++                {
++                    uri += uriPrefix;
++                }
++
++                /* Add to resourceIdUriMap */
++                resourceIdUriMap.emplace(ptr->ResourceID, uri);
++
++                for (auto additionRoot : ptr->AdditionalResourceIDs)
++                { 
++                    /* Add AdditionalResourceSubURI if any */
++                    if(additionRoot.AdditionalResourceSubURI.length())
++                    {
++                        /* 
++                            In DSP0248 28.26 Redfish Resource PDR,
++                            If ContainingResourceID is EXTERNAL,
++                            this is the only case in which a leading 
++                            slash (“/”) is allowed for a SubURI.
++                        */
++                        uri = uriPrefix + additionRoot.AdditionalResourceSubURI;
++                    }
++                    else
++                    {
++                        phosphor::logging::log<phosphor::logging::level::WARNING>(
++                            ("AdditionalResourceID " + std::to_string(additionRoot.AdditionalResourceID) 
++                            + " should have SubURI")
++                            .c_str());
++                        return false;
++                    }
++                    resourceIdUriMap.emplace(additionRoot.AdditionalResourceID, uri);
++                }
++
++                /* Remove the processed resource ID */
++                resourceIdList.erase(resourceIdList.begin());
++            }
++            else
++            {
++                /* Check is containing resource ID prepare yet. */
++                auto itMap = resourceIdUriMap.find(ptr->ContainingResourceID);
++
++                if (itMap != resourceIdUriMap.end())
++                {
++                    dotPosition = ptr->MajorSchemaName.find('.');
++                    if (dotPosition != std::string::npos)
++                    {
++                        // Extract the substring before the dot
++                        uriPrefix = ptr->MajorSchemaName.substr(0, dotPosition);
++                    }
++                    else
++                    {
++                        phosphor::logging::log<phosphor::logging::level::WARNING>(
++                            ("MajorSchemaName " + ptr->MajorSchemaName +" does not match the format")
++                            .c_str());
++                        return false;
++                    }
++                    /* Add SubURI if any */
++                    if(ptr->SubURI.length())
++                    {
++                        uri = itMap->second + "/" + uriPrefix + "/" + ptr->SubURI;
++                    }
++                    else
++                    {
++                        uri = itMap->second + "/" + uriPrefix;
++                    }
++
++                    resourceIdUriMap.emplace(ptr->ResourceID, uri);
++
++                    for (auto additionContaining : ptr->AdditionalResourceIDs)
++                    {                        
++                        /* Add AdditionalResourceSubURI if any */
++                        if(additionContaining.AdditionalResourceSubURI.length())
++                        {
++                            uri = itMap->second + "/" + uriPrefix + "/" +
++                                additionContaining.AdditionalResourceSubURI;
++                        }
++                        else
++                        {
++                            uri = itMap->second + "/" + uriPrefix;
++                        }
++                        resourceIdUriMap.emplace(additionContaining.AdditionalResourceID, uri);
++                    }
++
++                    /* Remove the processed resource ID */
++                    resourceIdList.erase(resourceIdList.begin());
++                } 
++                else
++                {
++                    /* The ContainingResourceID was not found in the map */
++                    auto itRotate = std::find(resourceIdList.begin(), resourceIdList.end(), ptr->ContainingResourceID);
++    
++                    if (itRotate != resourceIdList.end())
++                    {
++                        /* Rotate containingResourceID to move the element to the beginning */
++                        std::rotate(resourceIdList.begin(), itRotate, itRotate + 1);
++                    }
++                    else
++                    {
++                        /* Check is it in the Additional list */
++                        auto itAll= std::find(allResourceIdList.begin(), allResourceIdList.end(), ptr->ContainingResourceID);
++
++                        if (itAll != allResourceIdList.end())
++                        {
++                            /* Check is this ResourceId processed before */
++                            if (pendingResourceId.has_value())
++                            {
++                                if(pendingResourceId.value() == ptr->ResourceID)
++                                {
++                                    /* 
++                                       This resource has been pending, and reparse again,
++                                       means there's no containingResourceID PDR found.
++                                    */
++                                    phosphor::logging::log<phosphor::logging::level::WARNING>(
++                                        ("ResourceID "+ std::to_string(ptr->ResourceID) +
++                                        "ContainingResource ID is not in the list, "
++                                        "ContainingResourceID " +
++                                        std::to_string(ptr->ContainingResourceID))
++                                            .c_str());
++                                    return false;
++                                }
++                            }
++                            else
++                            {
++                                /* Assign pending ResourceId */
++                                pendingResourceId = ptr->ResourceID;
++                            }
++
++                            /* Move current resoureId to the end and wait for further handler. */
++                            std::rotate(resourceIdList.begin(), resourceIdList.begin() + 1, resourceIdList.end());
++                        }
++                        else
++                        {
++                            /* Containing ID is not in PDRs*/
++                            phosphor::logging::log<phosphor::logging::level::WARNING>(
++                                ("ContainingResource ID not found in Redfish Resource PDRs, "
++                                "ContainingResourceID " +
++                                std::to_string(ptr->ContainingResourceID))
++                                    .c_str());
++                            return false;
++                        }
++                    }
++                }
++            }
++        }
++        else
++        {
++            phosphor::logging::log<phosphor::logging::level::WARNING>(
++                ("Resource ID not found in Redfish Resource PDRs, "
++                "resourceID " +
++                std::to_string(resourceIdList.front()))
++                    .c_str());
++            return false;
++        }
++    }
 +
 +    return true;
 +}
 +
++/* Inventec - RDE implementations */
++bool PlatformTerminus::terminusGetResourceIdByUri(const std::string uri, ResourceID& resourceId)
++{
++    for (const auto& entry : resourceIdUriMap)
++    {
++        if( uri == entry.second)
++        {
++            resourceId = entry.first;
++            return true;
++        }
++    }
++    return false;
++}
 +
 +
++/* Inventec - RDE implementations */
++bool PlatformTerminus::terminusGetResourceUriCollections(std::string& collections)
++{
++    std::vector<std::string> uriList;
++
++    for (const auto& entry : resourceIdUriMap)
++    {
++        uriList.push_back(entry.second);
++    }
++
++    std::sort(uriList.begin(), uriList.end());
++
++    for (auto str : uriList)
++    {
++        collections += str + ",";
++    }
++
++    return true;
++}
 +
  } // namespace platform
  } // namespace pldm
 \ No newline at end of file
 diff --git a/src/pldmd.cpp b/src/pldmd.cpp
-index 252e6dd..3cb5983 100644
+index 252e6dd..92f0149 100644
 --- a/src/pldmd.cpp
 +++ b/src/pldmd.cpp
 @@ -581,6 +581,19 @@ void initDevice(const mctpw_eid_t eid, boost::asio::yield_context yield)
@@ -1128,7 +1359,55 @@ index 252e6dd..3cb5983 100644
  }
  
  // Parallel inits fail for devices behind SMBus mux due to timeouts waiting for
-@@ -694,7 +707,7 @@ int main(int argc, char* argv[])
+@@ -686,6 +699,47 @@ void enableDebug()
+     }
+ }
+ 
++
++/* Inventec - RDE Implementation */
++int rdeOperationInit(std::shared_ptr<sdbusplus::asio::object_server> objServer)
++{
++    std::string pldmRdeObj =
++        "/xyz/openbmc_project/pldm/rde";
++
++    pldm::DBusInterfacePtr pldmRdeInterface =
++        objServer->add_interface(pldmRdeObj, "xyz.openbmc_project.PLDM.RDE.Operation");
++
++    pldmRdeInterface->register_method("getResource",
++        [](const std::string uri)
++    {
++        std::string ret;
++        ResourceID resourceId;
++        pldm_tid_t tid;
++
++        /* Find matching resoruce ID */
++        pldm::platform::getResourceIdByUri(uri, tid, resourceId);
++        /* Do RDE operation - read */
++        pldm::rde::rdeOperationRead(tid, resourceId, ret);
++
++        return ret;
++    });
++
++    /* Get current collections for debugging purpose.*/
++    pldmRdeInterface->register_method("getUriCollections",
++        [](void)
++    {
++        std::string ret;
++
++        pldm::platform::getResourceUriCollections(ret);
++        return ret;
++    });
++
++    pldmRdeInterface->initialize();
++    return true;
++}
++
++
++
+ int main(int argc, char* argv[])
+ {
+     CLI::App app("PLDM Daemon");
+@@ -694,7 +748,7 @@ int main(int argc, char* argv[])
                     "PLDM Physical Binding. Supported: -b smbus, -b pcie")
          ->required();
      CLI11_PARSE(app, argc, argv);
@@ -1137,19 +1416,22 @@ index 252e6dd..3cb5983 100644
      auto ioc = std::make_shared<boost::asio::io_context>();
      setIoContext(ioc);
      boost::asio::signal_set signals(*ioc, SIGINT, SIGTERM);
-@@ -743,6 +756,5 @@ int main(int argc, char* argv[])
+@@ -742,7 +796,8 @@ int main(int argc, char* argv[])
+         }
      });
  
-     ioc->run();
--
+-    ioc->run();
++    rdeOperationInit(objectServer);
+ 
++    ioc->run();
      return 0;
  }
 diff --git a/src/rde.cpp b/src/rde.cpp
 new file mode 100644
-index 0000000..fc53b22
+index 0000000..8b9ce54
 --- /dev/null
 +++ b/src/rde.cpp
-@@ -0,0 +1,841 @@
+@@ -0,0 +1,857 @@
 +/**
 + *
 + */
@@ -1206,20 +1488,15 @@ index 0000000..fc53b22
 +Rde::Rde(boost::asio::yield_context yield, const pldm_tid_t tid, std::vector<ResourceID> &resourceIdList) :
 +    _tid(tid)
 +{
-+    std::fprintf(stderr, "[pj] %s\n", __func__);
-+
 +    (void)(yield);
++    (void)(resourceIdList);
 +
-+    for (const ResourceID &resourceId : resourceIdList)
-+    {
-+        std::fprintf(stderr, "[pj] resourceIdList %d\n", resourceId);
-+    }
 +    dictionariesPtr = std::make_shared<BejDictionaries>();
 +}
 +
 +Rde::~Rde()
 +{
-+    std::fprintf(stderr, "[pj] %s\n", __func__);
++
 +}
 +
 +
@@ -1940,7 +2217,6 @@ index 0000000..fc53b22
 +bool rdeInit(boost::asio::yield_context yield, const pldm_tid_t tid,
 +             std::vector<uint32_t> &resourceIdList)
 +{
-+    std::fprintf(stderr, "[pj] %s\n", __func__);
 +    phosphor::logging::log<phosphor::logging::level::INFO>(
 +        "Running RDE initialisation", phosphor::logging::entry("TID=%d", tid));
 +
@@ -1989,6 +2265,28 @@ index 0000000..fc53b22
 +#endif
 +    return true;
 +}
++
++bool rdeOperationRead(const pldm_tid_t tid, ResourceID resourceId, std::string& json)
++{
++    if (rdes.find(tid) != rdes.end()) {
++        std::shared_ptr<Rde> rde = rdes[tid];
++
++        /* Do Rde operation read.*/
++        json = "rdeOperationRead complete\n";
++    }
++    else
++    {
++        phosphor::logging::log<phosphor::logging::level::WARNING>(
++            ("RDE operation read fail,"
++            "tid " + std::to_string(tid) +
++            "resourceID" + std::to_string(resourceId))
++                .c_str());
++    }
++    return true;
++}
++
++
++
 +} // namespace rde
 +} // namespace pldm
 \ No newline at end of file
