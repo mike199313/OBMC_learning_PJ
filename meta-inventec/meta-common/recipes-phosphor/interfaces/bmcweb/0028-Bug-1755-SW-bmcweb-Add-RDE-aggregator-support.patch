@@ -1,4 +1,4 @@
-From 456a1ef9f7adcb25f65be829cf8b72b60bae7d5a Mon Sep 17 00:00:00 2001
+From 49c3fd95ab22b41d45a49909137a62e5f87bcad1 Mon Sep 17 00:00:00 2001
 From: PJ Chen <chen.pj@inventec.com>
 Date: Mon, 7 Aug 2023 19:48:41 +0800
 Subject: [PATCH] Bug 1755 - [SW][bmcweb] - Add RDE aggregator support
@@ -19,15 +19,26 @@ Solution/Change:
 Entry Test:
   N/A
 ---
- redfish-core/include/redfish_aggregator.hpp | 315 +++++++++++++++++++-
+ redfish-core/include/redfish_aggregator.hpp | 317 +++++++++++++++++++-
  redfish-core/lib/aggregation_service.hpp    |  57 +++-
- 2 files changed, 342 insertions(+), 30 deletions(-)
+ 2 files changed, 344 insertions(+), 30 deletions(-)
 
 diff --git a/redfish-core/include/redfish_aggregator.hpp b/redfish-core/include/redfish_aggregator.hpp
-index 245c6982..6ee493a5 100644
+index 245c6982..5ddf2dfb 100644
 --- a/redfish-core/include/redfish_aggregator.hpp
 +++ b/redfish-core/include/redfish_aggregator.hpp
-@@ -29,6 +29,11 @@ enum class SearchType
+@@ -15,6 +15,10 @@ namespace redfish
+ 
+ constexpr unsigned int aggregatorReadBodyLimit = 50 * 1024 * 1024; // 50MB
+ 
++constexpr auto PldmPcieService = "xyz.openbmc_project.pldm-pcie";
++constexpr auto PldmPcieRdeObject = "/xyz/openbmc_project/pldm/rde";
++constexpr auto PldmPcieRdeOperationInterface = "xyz.openbmc_project.PLDM.RDE.Operation";
++
+ enum class Result
+ {
+     LocalHandle,
+@@ -29,6 +33,11 @@ enum class SearchType
      Resource
  };
  
@@ -39,7 +50,7 @@ index 245c6982..6ee493a5 100644
  // clang-format off
  // These are all of the properties as of version 2022.2 of the Redfish Resource
  // and Schema Guide whose Type is "string (URI)" and the name does not end in a
-@@ -384,7 +389,9 @@ class RedfishAggregator
+@@ -384,7 +393,9 @@ class RedfishAggregator
      // of satellite configs when the class is first created
      static void constructorCallback(
          const boost::system::error_code& ec,
@@ -50,7 +61,7 @@ index 245c6982..6ee493a5 100644
      {
          if (ec)
          {
-@@ -395,13 +402,17 @@ class RedfishAggregator
+@@ -395,13 +406,17 @@ class RedfishAggregator
          BMCWEB_LOG_DEBUG << "There were "
                           << std::to_string(satelliteInfo.size())
                           << " satellite configs found at startup";
@@ -69,7 +80,7 @@ index 245c6982..6ee493a5 100644
      {
          for (const auto& objectPath : objects)
          {
-@@ -427,6 +438,14 @@ class RedfishAggregator
+@@ -427,6 +442,14 @@ class RedfishAggregator
                      addSatelliteConfig("5B247A", interface.second,
                                         satelliteInfo);
                  }
@@ -84,7 +95,7 @@ index 245c6982..6ee493a5 100644
              }
          }
      }
-@@ -530,6 +549,46 @@ class RedfishAggregator
+@@ -530,6 +553,46 @@ class RedfishAggregator
                           << result.first->second.encoded_host_and_port();
      }
  
@@ -131,7 +142,7 @@ index 245c6982..6ee493a5 100644
      enum AggregationType
      {
          Collection,
-@@ -570,8 +629,12 @@ class RedfishAggregator
+@@ -570,8 +633,12 @@ class RedfishAggregator
          const crow::Request& req,
          const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
          const std::unordered_map<std::string, boost::urls::url>& satelliteInfo,
@@ -144,14 +155,14 @@ index 245c6982..6ee493a5 100644
          // Determine if the resource ID begins with a known prefix
          for (const auto& satellite : satelliteInfo)
          {
-@@ -586,9 +649,29 @@ class RedfishAggregator
+@@ -586,9 +653,29 @@ class RedfishAggregator
                  // then forward to the associated satellite BMC
                  getInstance().forwardRequest(req, asyncResp, satellite.first,
                                               satelliteInfo);
 -                return;
 +                validPrefix = true;
-+            }
-+        }
+             }
+         }
 +        // Determine if the resource ID begins with a known prefix
 +        for (const auto& rdeSatellite : rdeSatelliteInfo)
 +        {
@@ -166,8 +177,8 @@ index 245c6982..6ee493a5 100644
 +                forwardRdeRequest(req, asyncResp, rdeSatellite.first,
 +                                  rdeSatelliteInfo);
 +                validPrefix = true;
-             }
-         }
++            }
++        }
 +        if (validPrefix)
 +        {
 +            return;
@@ -175,7 +186,7 @@ index 245c6982..6ee493a5 100644
  
          // We didn't recognize the prefix and need to return a 404
          std::string nameStr = req.url().segments().back();
-@@ -602,7 +685,9 @@ class RedfishAggregator
+@@ -602,7 +689,9 @@ class RedfishAggregator
          const std::shared_ptr<crow::Request>& sharedReq,
          const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
          const boost::system::error_code& ec,
@@ -186,7 +197,7 @@ index 245c6982..6ee493a5 100644
      {
          if (sharedReq == nullptr)
          {
-@@ -615,9 +700,9 @@ class RedfishAggregator
+@@ -615,9 +704,9 @@ class RedfishAggregator
              return;
          }
  
@@ -198,7 +209,7 @@ index 245c6982..6ee493a5 100644
          {
              // For collections we'll also handle the request locally so we
              // don't need to write an error code
-@@ -640,8 +725,8 @@ class RedfishAggregator
+@@ -640,8 +729,8 @@ class RedfishAggregator
              BMCWEB_LOG_DEBUG << "Aggregating a collection";
              // We need to use a specific response handler and send the
              // request to all known satellites
@@ -209,7 +220,7 @@ index 245c6982..6ee493a5 100644
              return;
          }
  
-@@ -661,7 +746,8 @@ class RedfishAggregator
+@@ -661,7 +750,8 @@ class RedfishAggregator
              {
                  // We've matched a resource collection so this current segment
                  // must contain an aggregation prefix
@@ -219,7 +230,7 @@ index 245c6982..6ee493a5 100644
                  return;
              }
  
-@@ -718,7 +804,9 @@ class RedfishAggregator
+@@ -718,7 +808,9 @@ class RedfishAggregator
      void forwardCollectionRequests(
          const crow::Request& thisReq,
          const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
@@ -230,7 +241,7 @@ index 245c6982..6ee493a5 100644
      {
          for (const auto& sat : satelliteInfo)
          {
-@@ -732,8 +820,193 @@ class RedfishAggregator
+@@ -732,8 +824,191 @@ class RedfishAggregator
                                          false /*useSSL*/, thisReq.fields(),
                                          thisReq.method(), cb);
          }
@@ -251,9 +262,8 @@ index 245c6982..6ee493a5 100644
 +                }
 +                processRdeCollectionResponse(rsat.first, asyncResp, jsonString);
 +                },
-+                "xyz.openbmc_project.rdeService",
-+                "/xyz/openbmc_project/rdeObject" + rsat.second.name,
-+                "xyz.openbmc_project.rdeInterface", "getCollection", targetURI);
++                PldmPcieService, PldmPcieRdeObject,
++                PldmPcieRdeOperationInterface, "getResource", targetURI);
 +        }
      }
  
@@ -304,8 +314,8 @@ index 245c6982..6ee493a5 100644
 +            }
 +            processRdeResponse(prefix, asyncResp, jsonString);
 +            },
-+            "xyz.openbmc_project.rdeService", "/xyz/openbmc_project/rdeObject/"+sat->second.name,
-+            "xyz.openbmc_project.rdeInterface", "getResource", targetURI);
++            PldmPcieService, PldmPcieRdeObject,
++            PldmPcieRdeOperationInterface, "getResource", targetURI);
 +    }
 +    // Processes the response returned by a RDE Device and loads its
 +    // contents into asyncResp
@@ -314,7 +324,6 @@ index 245c6982..6ee493a5 100644
 +                           const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
 +                           const std::string& respString)
 +    {
-+
 +        nlohmann::json jsonVal =
 +            nlohmann::json::parse(respString, nullptr, false);
 +        if (jsonVal.is_discarded())
@@ -424,7 +433,7 @@ index 245c6982..6ee493a5 100644
    public:
      RedfishAggregator(const RedfishAggregator&) = delete;
      RedfishAggregator& operator=(const RedfishAggregator&) = delete;
-@@ -752,7 +1025,8 @@ class RedfishAggregator
+@@ -752,7 +1027,8 @@ class RedfishAggregator
      static void getSatelliteConfigs(
          std::function<
              void(const boost::system::error_code&,
@@ -434,7 +443,7 @@ index 245c6982..6ee493a5 100644
              handler)
      {
          BMCWEB_LOG_DEBUG << "Gathering satellite configs";
-@@ -761,18 +1035,20 @@ class RedfishAggregator
+@@ -761,18 +1037,20 @@ class RedfishAggregator
                  const boost::system::error_code& ec,
                  const dbus::utility::ManagedObjectType& objects) {
              std::unordered_map<std::string, boost::urls::url> satelliteInfo;
@@ -457,7 +466,7 @@ index 245c6982..6ee493a5 100644
  
              if (!satelliteInfo.empty())
              {
-@@ -780,12 +1056,18 @@ class RedfishAggregator
+@@ -780,12 +1058,18 @@ class RedfishAggregator
                                   << std::to_string(satelliteInfo.size())
                                   << " satellite BMCs";
              }
@@ -477,7 +486,7 @@ index 245c6982..6ee493a5 100644
              },
              "xyz.openbmc_project.EntityManager",
              "/xyz/openbmc_project/inventory",
-@@ -1028,7 +1310,10 @@ class RedfishAggregator
+@@ -1028,7 +1312,10 @@ class RedfishAggregator
                  // satellites due to
                  // /redfish/v1/AggregationService/AggregationSources/5B247A
                  // being a local resource describing the satellite

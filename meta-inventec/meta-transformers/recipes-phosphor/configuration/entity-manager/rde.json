@@ -1,0 +1,11 @@
+{
+    "Exposes": [
+        {
+            "Name": "rde-pcie",
+            "Type": "RdeSatelliteController"
+        }
+    ],
+    "Name": "rde",
+    "Probe": "TRUE",
+    "Type": "Card"
+}

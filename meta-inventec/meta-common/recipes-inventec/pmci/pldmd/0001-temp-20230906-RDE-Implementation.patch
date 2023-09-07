@@ -1,7 +1,7 @@
-From 36df6c7a6ac43a653e13fe2639a3ac0c1b81ceff Mon Sep 17 00:00:00 2001
+From c389b127cb321cc324a8310939102d7f8a4f5625 Mon Sep 17 00:00:00 2001
 From: PJ Chen <chen.pj@inventec.com>
 Date: Tue, 5 Sep 2023 10:55:29 +0800
-Subject: [PATCH] [temp][20230905] - RDE Implementation
+Subject: [PATCH] [temp][20230906] - RDE Implementation
 
 ---
  CMakeLists.txt                |   1 +
@@ -9,14 +9,14 @@ Subject: [PATCH] [temp][20230905] - RDE Implementation
  include/pdr_redfish.hpp       |  95 ++++
  include/platform.hpp          |  10 +
  include/platform_terminus.hpp |   9 +
- include/pldm.hpp              |  20 +
- include/rde.hpp               |  56 +++
- src/pdr_manager.cpp           | 409 +++++++++++++++-
+ include/pldm.hpp              |  21 +
+ include/rde.hpp               |  56 ++
+ src/pdr_manager.cpp           | 409 ++++++++++++++-
  src/platform.cpp              |  74 +++
- src/platform_terminus.cpp     | 322 +++++++++++++
- src/pldmd.cpp                 |  59 ++-
- src/rde.cpp                   | 857 ++++++++++++++++++++++++++++++++++
- 12 files changed, 1976 insertions(+), 3 deletions(-)
+ src/platform_terminus.cpp     | 322 ++++++++++++
+ src/pldmd.cpp                 |  65 ++-
+ src/rde.cpp                   | 932 ++++++++++++++++++++++++++++++++++
+ 12 files changed, 2058 insertions(+), 3 deletions(-)
  create mode 100644 include/pdr_redfish.hpp
  create mode 100644 include/rde.hpp
  create mode 100644 src/rde.cpp
@@ -313,7 +313,7 @@ index e955ed1..6529235 100644
      pldm_tid_t _tid;
  };
 diff --git a/include/pldm.hpp b/include/pldm.hpp
-index 7812b8c..59fb30c 100644
+index 7812b8c..594aac6 100644
 --- a/include/pldm.hpp
 +++ b/include/pldm.hpp
 @@ -17,6 +17,7 @@
@@ -345,7 +345,7 @@ index 7812b8c..59fb30c 100644
  } // namespace platform
  
  namespace fru
-@@ -279,4 +287,16 @@ void pldmMsgRecvFwUpdCallback(const pldm_tid_t tid, const uint8_t msgTag,
+@@ -279,4 +287,17 @@ void pldmMsgRecvFwUpdCallback(const pldm_tid_t tid, const uint8_t msgTag,
  
  } // namespace fwu
  
@@ -358,6 +358,7 @@ index 7812b8c..59fb30c 100644
 +bool deleteRDEDevice(const pldm_tid_t tid);
 +
 +bool rdeOperationRead(const pldm_tid_t tid, ResourceID resourceId, std::string& json);
++bool rdeGetTopCollections(const std::string uri,std::string& json);
 +
 +} // namespace rde
 +
@@ -1336,7 +1337,7 @@ index 59b8bc3..77ed648 100644
  } // namespace pldm
 \ No newline at end of file
 diff --git a/src/pldmd.cpp b/src/pldmd.cpp
-index 252e6dd..92f0149 100644
+index 252e6dd..a5a6464 100644
 --- a/src/pldmd.cpp
 +++ b/src/pldmd.cpp
 @@ -581,6 +581,19 @@ void initDevice(const mctpw_eid_t eid, boost::asio::yield_context yield)
@@ -1359,7 +1360,7 @@ index 252e6dd..92f0149 100644
  }
  
  // Parallel inits fail for devices behind SMBus mux due to timeouts waiting for
-@@ -686,6 +699,47 @@ void enableDebug()
+@@ -686,6 +699,53 @@ void enableDebug()
      }
  }
  
@@ -1379,6 +1380,12 @@ index 252e6dd..92f0149 100644
 +        std::string ret;
 +        ResourceID resourceId;
 +        pldm_tid_t tid;
++
++        /* Check is URI a top collections*/
++        if(pldm::rde::rdeGetTopCollections(uri,ret))
++        {
++            return ret;
++        }
 +
 +        /* Find matching resoruce ID */
 +        pldm::platform::getResourceIdByUri(uri, tid, resourceId);
@@ -1407,7 +1414,7 @@ index 252e6dd..92f0149 100644
  int main(int argc, char* argv[])
  {
      CLI::App app("PLDM Daemon");
-@@ -694,7 +748,7 @@ int main(int argc, char* argv[])
+@@ -694,7 +754,7 @@ int main(int argc, char* argv[])
                     "PLDM Physical Binding. Supported: -b smbus, -b pcie")
          ->required();
      CLI11_PARSE(app, argc, argv);
@@ -1416,7 +1423,7 @@ index 252e6dd..92f0149 100644
      auto ioc = std::make_shared<boost::asio::io_context>();
      setIoContext(ioc);
      boost::asio::signal_set signals(*ioc, SIGINT, SIGTERM);
-@@ -742,7 +796,8 @@ int main(int argc, char* argv[])
+@@ -742,7 +802,8 @@ int main(int argc, char* argv[])
          }
      });
  
@@ -1428,10 +1435,10 @@ index 252e6dd..92f0149 100644
  }
 diff --git a/src/rde.cpp b/src/rde.cpp
 new file mode 100644
-index 0000000..8b9ce54
+index 0000000..258d485
 --- /dev/null
 +++ b/src/rde.cpp
-@@ -0,0 +1,857 @@
+@@ -0,0 +1,932 @@
 +/**
 + *
 + */
@@ -2286,6 +2293,81 @@ index 0000000..8b9ce54
 +}
 +
 +
++
++/* Top Collections result handle functions */
++static bool rdeTopCollectionsChassisHandle(std::string& json)
++{
++    /*
++        The Chassis @odata.id may be /redfish/v1/Chassis/pldm_{tid}
++    */
++    json += "{";
++    json += "\"@odata.id\": \"/redfish/v1/Chassis\",";
++    json += "\"@odata.type\": \"#ChassisCollection.ChassisCollection\",";
++    json += "\"Members\": [";
++    for (auto it : rdes) {
++        json += "{";
++        json += "\"@odata.id\": \"/redfish/v1/Chassis/pldm_" + std::to_string(it.first)+"\"";
++        json += "},";
++    }
++    /* Remove the last "," */
++    json.pop_back();
++
++    json += "],";
++    json += "\"Members@odata.count\": " + std::to_string(rdes.size()) + ",",
++	json += "\"Name\": \"RDE Chassis Collection\"";
++    json += "}";
++    return true;
++}
++
++static bool rdeTopCollectionsSystems(std::string& json)
++{
++    /*
++        The System @odata.id may be /redfish/v1/Systems/pldm_{tid}
++    */
++    json += "{";
++    json += "\"@odata.id\": \"/redfish/v1/Systems\",";
++    json += "\"@odata.type\": \"#ChassisCollection.ChassisCollection\",";
++    json += "\"Members\": [";
++    for (auto it : rdes) {
++        json += "{";
++        json += "\"@odata.id\": \"/redfish/v1/Systems/pldm_" + std::to_string(it.first)+"\"";
++        json += "},";
++    }
++    /* Remove the last "," */
++    json.pop_back();
++
++    json += "],";
++    json += "\"Members@odata.count\": " + std::to_string(rdes.size()) + ",",
++	json += "\"Name\": \"RDE Computer System Collection\"";
++    json += "}";
++    return true;
++}
++
++bool rdeGetTopCollections(const std::string uri,std::string& json)
++{
++    bool found = false;
++    std::string uriTemp = uri;
++    /* Check is uri the top collections*/
++    /* Todo: Add more collections for all kinds of PLDM RDE device*/
++    std::unordered_map<std::string, std::function<bool(std::string&)>> topCollections {
++        {"/redfish/v1/Chassis", rdeTopCollectionsChassisHandle},
++        {"/redfish/v1/Systems", rdeTopCollectionsSystems},
++    };
++
++    if (!uriTemp.empty() && uriTemp.back() == '/')
++    {
++        /* Remove the last character */
++        uriTemp.pop_back();
++    }
++
++    if (topCollections.find(uriTemp) != topCollections.end())
++    {
++        found = true;
++        topCollections[uriTemp](json);
++    }
++
++    return found;
++}
 +
 +} // namespace rde
 +} // namespace pldm

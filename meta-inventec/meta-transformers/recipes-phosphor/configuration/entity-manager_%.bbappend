@@ -9,6 +9,7 @@ SRC_URI += "file://runbmc.json"
 SRC_URI += "file://scmbridge.json"
 SRC_URI += "file://event.json"
 SRC_URI += "file://pid.json"
+SRC_URI += "file://rde.json"
 
 
 do_install:append() {
@@ -20,5 +21,6 @@ do_install:append() {
     install -m 0644 ${WORKDIR}/scmbridge.json ${D}/usr/share/entity-manager/configurations
     install -m 0644 ${WORKDIR}/event.json ${D}/usr/share/entity-manager/configurations
     install -m 0644 ${WORKDIR}/pid.json ${D}/usr/share/entity-manager/configurations
+    install -m 0644 ${WORKDIR}/rde.json ${D}/usr/share/entity-manager/configurations
 }
 
